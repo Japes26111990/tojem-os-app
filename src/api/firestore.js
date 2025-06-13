@@ -46,6 +46,76 @@ export const deleteEmployee = (employeeId) => {
   return deleteDoc(employeeDoc);
 };
 
+// --- SUPPLIERS API ---
+const suppliersCollection = collection(db, 'suppliers');
+
+export const getSuppliers = async () => {
+  const snapshot = await getDocs(suppliersCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+export const addSupplier = (supplierData) => {
+  return addDoc(suppliersCollection, supplierData);
+};
+export const deleteSupplier = (supplierId) => {
+  const supplierDoc = doc(db, 'suppliers', supplierId);
+  return deleteDoc(supplierDoc);
+};
+
+// --- WORKSHOP SUPPLIES API (Formerly Consumables) ---
+const workshopSuppliesCollection = collection(db, 'workshopSupplies');
+
+export const getWorkshopSupplies = async () => {
+  const snapshot = await getDocs(workshopSuppliesCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const addWorkshopSupply = (supplyData) => {
+  return addDoc(workshopSuppliesCollection, supplyData);
+};
+
+export const deleteWorkshopSupply = (supplyId) => {
+  const supplyDoc = doc(db, 'workshopSupplies', supplyId);
+  return deleteDoc(supplyDoc);
+};
+// ... all existing API code up to Workshop Supplies ...
+
+// --- COMPONENTS API (Newly Added) ---
+const componentsCollection = collection(db, 'components');
+
+export const getComponents = async () => {
+  const snapshot = await getDocs(componentsCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const addComponent = (componentData) => {
+  return addDoc(componentsCollection, componentData);
+};
+
+export const deleteComponent = (componentId) => {
+  const componentDoc = doc(db, 'components', componentId);
+  return deleteDoc(componentDoc);
+};
+
+// --- RAW MATERIALS API (Newly Added) ---
+const rawMaterialsCollection = collection(db, 'rawMaterials');
+
+export const getRawMaterials = async () => {
+  const snapshot = await getDocs(rawMaterialsCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const addRawMaterial = (materialData) => {
+  return addDoc(rawMaterialsCollection, materialData);
+};
+
+export const deleteRawMaterial = (materialId) => {
+  const materialDoc = doc(db, 'rawMaterials', materialId);
+  return deleteDoc(materialDoc);
+};
+
+// ... other existing API code ...
+
+
 // --- PRODUCT CATALOG API ---
 const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
