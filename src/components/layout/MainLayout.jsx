@@ -26,9 +26,12 @@ const MainLayout = ({ children }) => {
         </header>
 
         <nav className="mb-8 flex justify-center bg-gray-800 p-2 rounded-xl border border-gray-700 shadow-lg">
-          <div className="flex space-x-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <NavLink to="/" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
               Dashboard
+            </NavLink>
+            <NavLink to="/stock" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
+              Stock Control
             </NavLink>
             <NavLink to="/creator" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
               Job Creator
@@ -39,7 +42,6 @@ const MainLayout = ({ children }) => {
             <NavLink to="/scan" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
               Scanner
             </NavLink>
-            {/* --- NEW LINK ADDED BELOW --- */}
             <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
               QC
             </NavLink>

@@ -10,7 +10,8 @@ import SettingsPage from './pages/SettingsPage';
 import JobCreatorPage from './pages/JobCreatorPage';
 import LiveTrackingPage from './pages/LiveTrackingPage';
 import ScannerPage from './pages/ScannerPage';
-import QcPage from './pages/QcPage'; // Import the new page
+import QcPage from './pages/QcPage';
+import StockControlPage from './pages/StockControlPage';
 
 
 // UI Components
@@ -47,13 +48,12 @@ function App() {
             <ProtectedRoute>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/stock" element={<StockControlPage />} />
                 <Route path="/creator" element={<JobCreatorPage />} />
                 <Route path="/tracking" element={<LiveTrackingPage />} />
                 <Route path="/scan" element={<ScannerPage />} />
+                <Route path="/qc" element={<QcPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/scan" element={<ScannerPage />} />
-<Route path="/qc" element={<QcPage />} /> {/* ADD THIS LINE */}
-<Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </ProtectedRoute>
           }
