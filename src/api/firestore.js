@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment } from 'firebase/firestore';
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -198,17 +198,14 @@ export const getAllInventoryItems = async () => {
     return allItems;
 };
 
-// --- JOB STEP DETAILS API (Newly Added) ---
+// --- JOB STEP DETAILS API ---
 const jobStepDetailsCollection = collection(db, 'jobStepDetails');
-
 export const getJobStepDetails = async () => {
     const snapshot = await getDocs(jobStepDetailsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 export const setJobStepDetail = (partId, departmentId, data) => {
     const docRef = doc(db, 'jobStepDetails', `${partId}_${departmentId}`);
-    // setDoc will create a new document or overwrite an existing one
     return setDoc(docRef, { ...data, partId, departmentId });
 };
 
@@ -218,25 +215,21 @@ const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
 const modelsCollection = collection(db, 'models');
 const partsCollection = collection(db, 'parts');
-
 export const getManufacturers = async () => {
   const snapshot = await getDocs(manufacturersCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addManufacturer = (name) => addDoc(manufacturersCollection, { name });
-
 export const getMakes = async () => {
   const snapshot = await getDocs(makesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addMake = (data) => addDoc(makesCollection, data);
-
 export const getModels = async () => {
   const snapshot = await getDocs(modelsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addModel = (data) => addDoc(modelsCollection, data);
-
 export const getParts = async () => {
   const snapshot = await getDocs(partsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -246,14 +239,12 @@ export const addPart = (data) => addDoc(partsCollection, data);
 
 // --- JOB CARDS API ---
 const jobCardsCollection = collection(db, 'createdJobCards');
-
 export const addJobCard = (jobCardData) => {
   return addDoc(jobCardsCollection, {
     ...jobCardData,
     createdAt: serverTimestamp() 
   });
 };
-
 export const listenToJobCards = (callback) => {
   const q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -262,7 +253,6 @@ export const listenToJobCards = (callback) => {
   });
   return unsubscribe;
 };
-
 export const getJobByJobId = async (jobId) => {
   const q = query(jobCardsCollection, where("jobId", "==", jobId));
   const querySnapshot = await getDocs(q);
@@ -270,19 +260,12 @@ export const getJobByJobId = async (jobId) => {
     throw new Error(`No job found with ID: ${jobId}`);
   }
   const jobDoc = querySnapshot.docs[0];
-  return { id: jobDoc.id, ...doc.data() };
+  return { id: jobDoc.id, ...jobDoc.data() };
 };
-
 export const updateJobStatus = (docId, newStatus) => {
   const jobDocRef = doc(db, 'createdJobCards', docId);
   return updateDoc(jobDocRef, { status: newStatus });
 };
-
-export const updateJobRejection = (docId, reason) => {
-  const jobDocRef = doc(db, 'createdJobCards', docId);
-  return updateDoc(jobDocRef, { status: 'Issue', issueReason: reason });
-};
-
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
   return runTransaction(db, async (transaction) => {
     const jobRef = doc(db, 'createdJobCards', job.id);
