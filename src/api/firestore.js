@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -167,17 +167,14 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
     return batch.commit();
 };
 export const requeueOrDeleteItem = async (queuedItem) => {
-    const itemCategory = queuedItem.category.replace(' ', ''); // "Raw Material" -> "RawMaterial"
-    const inventoryCollectionName = `${itemCategory.charAt(0).toLowerCase() + itemCategory.slice(1)}s`; // "component" -> "components"
-    
+    const itemCategory = queuedItem.category.replace(' ', '');
+    const inventoryCollectionName = `${itemCategory.charAt(0).toLowerCase() + itemCategory.slice(1)}s`;
     const inventoryDocRef = doc(db, inventoryCollectionName, queuedItem.itemId);
     const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
-    
     const inventoryDoc = await getDoc(inventoryDocRef);
     if (!inventoryDoc.exists()) {
         return deleteDoc(purchaseQueueDocRef);
     }
-
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
         return updateDoc(purchaseQueueDocRef, { status: 'pending' });
@@ -201,6 +198,21 @@ export const getAllInventoryItems = async () => {
     return allItems;
 };
 
+// --- JOB STEP DETAILS API (Newly Added) ---
+const jobStepDetailsCollection = collection(db, 'jobStepDetails');
+
+export const getJobStepDetails = async () => {
+    const snapshot = await getDocs(jobStepDetailsCollection);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const setJobStepDetail = (partId, departmentId, data) => {
+    const docRef = doc(db, 'jobStepDetails', `${partId}_${departmentId}`);
+    // setDoc will create a new document or overwrite an existing one
+    return setDoc(docRef, { ...data, partId, departmentId });
+};
+
+
 // --- PRODUCT CATALOG API ---
 const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
@@ -212,16 +224,19 @@ export const getManufacturers = async () => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addManufacturer = (name) => addDoc(manufacturersCollection, { name });
+
 export const getMakes = async () => {
   const snapshot = await getDocs(makesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addMake = (data) => addDoc(makesCollection, data);
+
 export const getModels = async () => {
   const snapshot = await getDocs(modelsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addModel = (data) => addDoc(modelsCollection, data);
+
 export const getParts = async () => {
   const snapshot = await getDocs(partsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -231,12 +246,14 @@ export const addPart = (data) => addDoc(partsCollection, data);
 
 // --- JOB CARDS API ---
 const jobCardsCollection = collection(db, 'createdJobCards');
+
 export const addJobCard = (jobCardData) => {
   return addDoc(jobCardsCollection, {
     ...jobCardData,
     createdAt: serverTimestamp() 
   });
 };
+
 export const listenToJobCards = (callback) => {
   const q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -245,6 +262,7 @@ export const listenToJobCards = (callback) => {
   });
   return unsubscribe;
 };
+
 export const getJobByJobId = async (jobId) => {
   const q = query(jobCardsCollection, where("jobId", "==", jobId));
   const querySnapshot = await getDocs(q);
@@ -254,11 +272,41 @@ export const getJobByJobId = async (jobId) => {
   const jobDoc = querySnapshot.docs[0];
   return { id: jobDoc.id, ...doc.data() };
 };
+
 export const updateJobStatus = (docId, newStatus) => {
   const jobDocRef = doc(db, 'createdJobCards', docId);
   return updateDoc(jobDocRef, { status: newStatus });
 };
+
 export const updateJobRejection = (docId, reason) => {
   const jobDocRef = doc(db, 'createdJobCards', docId);
   return updateDoc(jobDocRef, { status: 'Issue', issueReason: reason });
+};
+
+export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
+  return runTransaction(db, async (transaction) => {
+    const jobRef = doc(db, 'createdJobCards', job.id);
+    if (isApproved) {
+      transaction.update(jobRef, { status: 'Complete' });
+    } else {
+      transaction.update(jobRef, { status: 'Issue', issueReason: rejectionReason });
+    }
+    if (job.consumables && job.consumables.length > 0) {
+      const allInventory = await getAllInventoryItems();
+      const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
+      for (const consumable of job.consumables) {
+        const inventoryItem = inventoryMap.get(consumable.id);
+        if (inventoryItem) {
+          let collectionName = '';
+          if (inventoryItem.category === 'Component') collectionName = 'components';
+          else if (inventoryItem.category === 'Raw Material') collectionName = 'rawMaterials';
+          else if (inventoryItem.category === 'Workshop Supply') collectionName = 'workshopSupplies';
+          if (collectionName) {
+            const itemRef = doc(db, collectionName, consumable.id);
+            transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
+          }
+        }
+      }
+    }
+  });
 };

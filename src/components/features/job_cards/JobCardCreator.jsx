@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard } from '../../../api/firestore';
+import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getAllInventoryItems } from '../../../api/firestore';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 
-// This is the Preview sub-component that shows the generated card
+// --- UPGRADED JobCardPreview to include the photo placeholder ---
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -21,17 +21,51 @@ const JobCardPreview = ({ details }) => {
                        <p className="text-xs text-gray-500 mt-1">{details.jobId}</p>
                     </div>
                 </div>
-                 <div className="mt-6">
-                    <p><b>Employee:</b> {details.employeeName}</p>
-                    <p className="mt-4"><i>Further details like steps, tools, and consumables will be defined in a later phase.</i></p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
+                    {/* The photo placeholder is now here */}
+                    <div>
+                        {details.photoUrl ? (
+                            <img src={details.photoUrl} alt={details.partName} className="rounded-lg object-cover w-full h-64 mb-4 border" />
+                        ) : (
+                            <div className="rounded-lg w-full h-64 mb-4 border bg-gray-100 flex items-center justify-center text-gray-400">
+                                <span>No Image Available</span>
+                            </div>
+                        )}
+                        <div className="space-y-2 text-sm">
+                            <p><b>Employee:</b> {details.employeeName}</p>
+                            <p><b>Est. Time:</b> {details.estimatedTime || 'N/A'} mins</p>
+                            <p><b>Description:</b> {details.description || 'No description.'}</p>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools</h3>
+                            <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
+                                {details.tools && details.tools.length > 0 ? details.tools.map((tool, i) => <li key={i}>{tool.name}</li>) : <li>No specific tools required.</li>}
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
+                            <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
+                                {details.consumables && details.consumables.length > 0 ? details.consumables.map((c, i) => <li key={i}>{c.name}: {c.quantity}</li>) : <li>No consumables required.</li>}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                 <div className="mt-6 border-t pt-4">
+                    <h3 className="text-lg font-bold text-gray-800 mb-2">Steps</h3>
+                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">
+                        {details.steps && details.steps.length > 0 ? details.steps.map((step, i) => <li key={i}>{step}</li>) : <li>No steps defined.</li>}
+                    </ol>
                 </div>
             </div>
         </div>
     )
 };
 
+
 const JobCardCreator = () => {
-    const [allData, setAllData] = useState({ manufacturers: [], makes: [], models: [], parts: [], departments: [], employees: [] });
+    const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], allConsumables: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
     const [jobDetails, setJobDetails] = useState(null);
@@ -39,10 +73,10 @@ const JobCardCreator = () => {
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
-            const [manufacturers, makes, models, parts, departments, employees] = await Promise.all([
-                getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees()
+            const [man, mak, mod, par, dep, emp, steps, t, inv] = await Promise.all([
+                getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getAllInventoryItems()
             ]);
-            setAllData({ manufacturers, makes, models, parts, departments, employees });
+            setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, allConsumables: inv });
             setLoading(false);
         };
         fetchData();
@@ -52,7 +86,6 @@ const JobCardCreator = () => {
         const { name, value } = e.target;
         setSelection(prev => {
             const updated = { ...prev, [name]: value };
-            // Reset subsequent selections when a parent changes
             if (name === 'manufacturerId') { updated.makeId = ''; updated.modelId = ''; updated.partId = ''; }
             if (name === 'makeId') { updated.modelId = ''; updated.partId = ''; }
             if (name === 'modelId') { updated.partId = ''; }
@@ -61,30 +94,33 @@ const JobCardCreator = () => {
         });
     };
 
-    // Cascading filter logic
     const filteredMakes = useMemo(() => (allData.makes || []).filter(m => m.manufacturerId === selection.manufacturerId), [allData.makes, selection.manufacturerId]);
     const filteredModels = useMemo(() => (allData.models || []).filter(m => m.makeId === selection.makeId), [allData.models, selection.makeId]);
     const filteredParts = useMemo(() => (allData.parts || []).filter(p => p.modelId === selection.modelId), [allData.parts, selection.modelId]);
     const filteredEmployees = useMemo(() => (allData.employees || []).filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
 
-    // Effect to generate job details for preview
+    // This effect now includes the photoUrl from the part data
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
         if (partId && departmentId && employeeId) {
             const part = allData.parts.find(p => p.id === partId);
             const department = allData.departments.find(d => d.id === departmentId);
             const employee = allData.employees.find(e => e.id === employeeId);
-            
+            const recipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
+
             if (part && department && employee) {
               setJobDetails({
                   jobId: `JOB-${Date.now()}`,
-                  partId: part.id,
                   partName: part.name,
-                  departmentId: department.id,
+                  photoUrl: part.photoUrl || '', // Get the photoUrl from the part
                   departmentName: department.name,
-                  employeeId: employee.id,
                   employeeName: employee.name,
                   status: 'Pending',
+                  description: recipe?.description || 'N/A',
+                  estimatedTime: recipe?.estimatedTime || 0,
+                  steps: recipe?.steps || [],
+                  tools: (recipe?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
+                  consumables: (recipe?.consumables || []),
               });
             }
         } else {
@@ -97,7 +133,6 @@ const JobCardCreator = () => {
         try {
             await addJobCard(jobDetails);
             alert(`Job Card ${jobDetails.jobId} created successfully!`);
-            // Basic print functionality
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script></head><body><div class="p-8">${printContents}</div></body></html>`);

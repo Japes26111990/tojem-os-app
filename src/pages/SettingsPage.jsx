@@ -5,8 +5,8 @@ import ToolsManager from '../components/features/settings/ToolsManager';
 import EmployeesManager from '../components/features/settings/EmployeesManager';
 import ProductCatalogManager from '../components/features/settings/ProductCatalogManager';
 import SuppliersManager from '../components/features/settings/SuppliersManager';
-// Import the new unified manager
 import InventoryManager from '../components/features/settings/InventoryManager';
+import JobStepManager from '../components/features/settings/JobStepManager'; // 1. Import the new component
 
 const SettingsPage = () => {
   return (
@@ -14,7 +14,9 @@ const SettingsPage = () => {
       <div className="space-y-8">
         <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
         
-        {/* We can re-organize the order here for a better flow */}
+        {/* 2. Add the new component here at the top */}
+        <JobStepManager /> 
+
         <ProductCatalogManager />
         <SuppliersManager />
         <InventoryManager /> 

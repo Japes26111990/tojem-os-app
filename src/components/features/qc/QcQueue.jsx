@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, updateJobStatus, updateJobRejection } from '../../../api/firestore';
+import { listenToJobCards, processQcDecision } from '../../../api/firestore'; // Use the new function
 import Button from '../../ui/Button';
 
 const QcQueue = () => {
@@ -14,40 +14,33 @@ const QcQueue = () => {
     return () => unsubscribe();
   }, []);
 
-  // Use useMemo to filter for only the jobs that are 'Awaiting QC'
   const qcJobs = useMemo(() => {
     return allJobs.filter(job => job.status === 'Awaiting QC');
   }, [allJobs]);
 
   const handleApprove = async (job) => {
-    if (window.confirm(`Are you sure you want to approve the job for "${job.partName}"?`)) {
+    if (window.confirm(`Are you sure you want to approve this job? This will deduct used items from stock.`)) {
       try {
-        // For now, we just update the status. We will add inventory logic later.
-        await updateJobStatus(job.id, 'Complete');
-        alert('Job approved!');
+        await processQcDecision(job, true); // Call with 'true' for approval
+        alert('Job approved and stock updated!');
       } catch (err) {
-        alert('Failed to approve job.');
+        alert('Failed to process approval.');
         console.error(err);
       }
     }
   };
 
   const handleReject = async (job) => {
-    const reason = prompt(`Please provide a reason for rejecting the job for "${job.partName}":`);
+    const reason = prompt(`Please provide a reason for rejecting this job:`);
     if (reason) {
       try {
-        await updateJobRejection(job.id, reason);
-        alert('Job marked with an issue.');
+        await processQcDecision(job, false, reason); // Call with 'false' and a reason for rejection
+        alert('Job marked with an issue, and stock has been deducted.');
       } catch (err) {
-        alert('Failed to reject job.');
+        alert('Failed to process rejection.');
         console.error(err);
       }
     }
-  };
-
-  const formatDate = (timestamp) => {
-    if (!timestamp) return 'N/A';
-    return new Date(timestamp.seconds * 1000).toLocaleString();
   };
 
   if (loading) return <p className="text-center text-gray-400">Loading QC queue...</p>;
@@ -56,7 +49,7 @@ const QcQueue = () => {
     <div className="bg-gray-800 p-2 sm:p-6 rounded-xl border border-gray-700 shadow-lg">
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead>
+           <thead>
             <tr className="border-b border-gray-600">
               <th className="p-3 text-sm font-semibold text-gray-400">Job ID</th>
               <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
@@ -65,7 +58,7 @@ const QcQueue = () => {
             </tr>
           </thead>
           <tbody>
-            {qcJobs.map(job => (
+            {(qcJobs || []).map(job => (
               <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
                 <td className="p-3 text-gray-300">{job.partName}</td>

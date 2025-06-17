@@ -10,20 +10,20 @@ import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 
 const ProductCatalogManager = () => {
-  // State for the lists of data
   const [manufacturers, setManufacturers] = useState([]);
   const [makes, setMakes] = useState([]);
   const [models, setModels] = useState([]);
   const [parts, setParts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // State for the new item input fields
   const [newManufacturer, setNewManufacturer] = useState('');
   const [newMake, setNewMake] = useState('');
   const [newModel, setNewModel] = useState('');
-  const [newPart, setNewPart] = useState('');
+  
+  // Add state for the new part's name and photo URL
+  const [newPartName, setNewPartName] = useState('');
+  const [newPartPhotoUrl, setNewPartPhotoUrl] = useState('');
 
-  // State for the selected IDs in the dropdowns
   const [selectedManufacturerId, setSelectedManufacturerId] = useState('');
   const [selectedMakeId, setSelectedMakeId] = useState('');
   const [selectedModelId, setSelectedModelId] = useState('');
@@ -42,62 +42,22 @@ const ProductCatalogManager = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- DEBUGGING BLOCK ADDED HERE ---
-  useEffect(() => {
-    // This will log the current value of newManufacturer every time you type
-    console.log("The 'newManufacturer' state is now:", newManufacturer);
-  }, [newManufacturer]);
-  // --- END OF DEBUGGING BLOCK ---
-
-  const handleAddManufacturer = async (e) => {
-    e.preventDefault();
-    if (!newManufacturer.trim()) return;
-    try {
-      await addManufacturer(newManufacturer);
-      setNewManufacturer('');
-      fetchData();
-    } catch (error) {
-      console.error("Error adding manufacturer:", error);
-      alert("Failed to add manufacturer. Check the console for details.");
-    }
-  };
-
-  const handleAddMake = async (e) => {
-    e.preventDefault();
-    if (!newMake.trim()) return;
-    try {
-      await addMake({ name: newMake, manufacturerId: selectedManufacturerId });
-      setNewMake('');
-      fetchData();
-    } catch (error) {
-      console.error("Error adding make:", error);
-      alert("Failed to add make. Check the console for details.");
-    }
-  };
-
-  const handleAddModel = async (e) => {
-    e.preventDefault();
-    if (!newModel.trim()) return;
-    try {
-      await addModel({ name: newModel, makeId: selectedMakeId });
-      setNewModel('');
-      fetchData();
-    } catch (error) {
-      console.error("Error adding model:", error);
-      alert("Failed to add model. Check the console for details.");
-    }
-  };
-
+  const handleAddManufacturer = async (e) => { e.preventDefault(); if (!newManufacturer.trim()) return; await addManufacturer(newManufacturer); setNewManufacturer(''); fetchData(); };
+  const handleAddMake = async (e) => { e.preventDefault(); if (!newMake.trim()) return; await addMake({ name: newMake, manufacturerId: selectedManufacturerId }); setNewMake(''); fetchData(); };
+  const handleAddModel = async (e) => { e.preventDefault(); if (!newModel.trim()) return; await addModel({ name: newModel, makeId: selectedMakeId }); setNewModel(''); fetchData(); };
+  
+  // Upgrade handleAddPart to include the photoUrl
   const handleAddPart = async (e) => {
     e.preventDefault();
-    if (!newPart.trim()) return;
+    if (!newPartName.trim() || !selectedModelId) return;
     try {
-      await addPart({ name: newPart, modelId: selectedModelId });
-      setNewPart('');
-      fetchData();
+        await addPart({ name: newPartName, photoUrl: newPartPhotoUrl, modelId: selectedModelId });
+        setNewPartName('');
+        setNewPartPhotoUrl('');
+        fetchData();
     } catch (error) {
-      console.error("Error adding part:", error);
-      alert("Failed to add part. Check the console for details.");
+        console.error("Error adding part:", error);
+        alert("Failed to add part.");
     }
   };
 
@@ -119,7 +79,7 @@ const ProductCatalogManager = () => {
             <Input value={newManufacturer} onChange={(e) => setNewManufacturer(e.target.value)} placeholder="Add Manufacturer..." />
             <Button type="submit" className="w-full">Add</Button>
           </form>
-          <ul className="space-y-1 text-sm">{(manufacturers || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
+          <ul className="space-y-1 text-sm max-h-60 overflow-y-auto">{(manufacturers || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
         </div>
 
         {/* Column 2: Makes */}
@@ -132,7 +92,7 @@ const ProductCatalogManager = () => {
                 <Input value={newMake} onChange={(e) => setNewMake(e.target.value)} placeholder="Add Make..." />
                 <Button type="submit" className="w-full">Add</Button>
               </form>
-              <ul className="space-y-1 text-sm">{(filteredMakes || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
+              <ul className="space-y-1 text-sm max-h-60 overflow-y-auto">{(filteredMakes || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
             </>
           )}
         </div>
@@ -147,22 +107,28 @@ const ProductCatalogManager = () => {
                 <Input value={newModel} onChange={(e) => setNewModel(e.target.value)} placeholder="Add Model..." />
                 <Button type="submit" className="w-full">Add</Button>
               </form>
-              <ul className="space-y-1 text-sm">{(filteredModels || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
+              <ul className="space-y-1 text-sm max-h-60 overflow-y-auto">{(filteredModels || []).map(m => <li key={m.id} className="bg-gray-700 p-2 rounded">{m.name}</li>)}</ul>
             </>
           )}
         </div>
 
-        {/* Column 4: Parts */}
+        {/* Column 4: Parts - UPGRADED */}
         <div className="space-y-4 bg-gray-900/50 p-4 rounded-lg">
           <h4 className="font-bold text-blue-400">4. Parts</h4>
           <Dropdown options={filteredModels || []} value={selectedModelId} onChange={e => setSelectedModelId(e.target.value)} placeholder="Select Model..." disabled={!selectedMakeId}/>
           {selectedModelId && (
             <>
               <form onSubmit={handleAddPart} className="space-y-2">
-                <Input value={newPart} onChange={(e) => setNewPart(e.target.value)} placeholder="Add Part..." />
-                <Button type="submit" className="w-full">Add</Button>
+                <Input value={newPartName} onChange={(e) => setNewPartName(e.target.value)} placeholder="Add Part Name..." />
+                <Input value={newPartPhotoUrl} onChange={(e) => setNewPartPhotoUrl(e.target.value)} placeholder="Paste Photo URL..." />
+                <Button type="submit" className="w-full">Add Part</Button>
               </form>
-              <ul className="space-y-1 text-sm">{(filteredParts || []).map(p => <li key={p.id} className="bg-gray-700 p-2 rounded">{p.name}</li>)}</ul>
+              <ul className="space-y-1 text-sm max-h-40 overflow-y-auto">{(filteredParts || []).map(p => (
+                  <li key={p.id} className="bg-gray-700 p-2 rounded flex items-center gap-2">
+                    {p.photoUrl && <img src={p.photoUrl} alt={p.name} className="w-8 h-8 rounded object-cover"/>}
+                    <span>{p.name}</span>
+                  </li>
+                ))}</ul>
             </>
           )}
         </div>
