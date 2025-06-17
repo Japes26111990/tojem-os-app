@@ -12,25 +12,12 @@ import LiveTrackingPage from './pages/LiveTrackingPage';
 import ScannerPage from './pages/ScannerPage';
 import QcPage from './pages/QcPage';
 import StockControlPage from './pages/StockControlPage';
-
+import DashboardPage from './pages/DashboardPage'; // Import the new dashboard
 
 // UI Components
-import Button from './components/ui/Button';
+// Note: We don't need Button here anymore as it's not directly used.
 
-function Dashboard() {
-  const { user, signOut } = useAuth();
-  return (
-    <MainLayout>
-      <div className="bg-gray-800 p-8 rounded-xl border border-gray-700">
-        <h2 className="text-2xl font-bold mb-4">Welcome to the Dashboard!</h2>
-        <p className="text-gray-400 mb-6">You are signed in as: <span className="font-semibold text-blue-400">{user.email}</span></p>
-        <Button onClick={signOut} variant="danger" className="py-1 px-3 text-xs">
-          Sign Out
-        </Button>
-      </div>
-    </MainLayout>
-  );
-}
+// The old simple Dashboard function has been removed.
 
 function App() {
   const { user } = useAuth();
@@ -47,7 +34,8 @@ function App() {
           element={
             <ProtectedRoute>
               <Routes>
-                <Route path="/" element={<Dashboard />} />
+                {/* UPDATED: The root path now renders our new DashboardPage */}
+                <Route path="/" element={<DashboardPage />} />
                 <Route path="/stock" element={<StockControlPage />} />
                 <Route path="/creator" element={<JobCreatorPage />} />
                 <Route path="/tracking" element={<LiveTrackingPage />} />

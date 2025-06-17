@@ -1,57 +1,57 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../ui/Button';
+import Sidebar from './Sidebar'; // Import our new Sidebar
+import { PanelLeftClose, PanelRightClose } from 'lucide-react'; // Icons for the toggle button
 
 const MainLayout = ({ children }) => {
   const { user, signOut } = useAuth();
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   const linkClass = "px-4 py-2 rounded-lg text-sm font-medium transition-colors";
   const activeLinkClass = "bg-blue-600 text-white";
   const inactiveLinkClass = "text-gray-400 hover:bg-gray-700 hover:text-white";
 
   return (
-    <div className="bg-gray-900 min-h-screen text-white">
-      <div className="max-w-7xl mx-auto p-4 sm:p-8">
-        <header className="flex justify-between items-center mb-6">
-          <div className="text-left">
-            <h1 className="text-3xl font-extrabold text-blue-400">TOJEM OS</h1>
+    <div className="flex h-screen bg-gray-900 text-white">
+      {/* --- SIDEBAR --- */}
+      <Sidebar isOpen={isSidebarOpen} />
+
+      {/* --- MAIN CONTENT AREA --- */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        
+        {/* Header Section */}
+        <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50">
+          <div className="flex items-center gap-4">
+             <Button onClick={() => setSidebarOpen(!isSidebarOpen)} variant="secondary" className="p-2">
+                {isSidebarOpen ? <PanelLeftClose size={20}/> : <PanelRightClose size={20}/>}
+             </Button>
+            <h1 className="text-xl font-extrabold text-blue-400 hidden sm:block">TOJEM OS</h1>
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-400">Signed in as {user.email}</p>
-            <Button onClick={signOut} variant="secondary" className="mt-2 py-1 px-3 text-xs">
+            <Button onClick={signOut} variant="secondary" className="mt-1 py-1 px-3 text-xs">
               Sign Out
             </Button>
           </div>
         </header>
 
-        <nav className="mb-8 flex justify-center bg-gray-800 p-2 rounded-xl border border-gray-700 shadow-lg">
+        {/* Top Navigation Bar */}
+        <nav className="flex justify-center bg-gray-800/20 p-2 shadow-lg border-b border-gray-700">
           <div className="flex flex-wrap justify-center gap-2">
-            <NavLink to="/" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Dashboard
-            </NavLink>
-            <NavLink to="/stock" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Stock Control
-            </NavLink>
-            <NavLink to="/creator" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Job Creator
-            </NavLink>
-            <NavLink to="/tracking" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Tracking
-            </NavLink>
-            <NavLink to="/scan" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Scanner
-            </NavLink>
-            <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              QC
-            </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>
-              Settings
-            </NavLink>
+            <NavLink to="/" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Dashboard</NavLink>
+            <NavLink to="/stock" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Stock Control</NavLink>
+            <NavLink to="/creator" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Job Creator</NavLink>
+            <NavLink to="/tracking" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Tracking</NavLink>
+            <NavLink to="/scan" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Scanner</NavLink>
+            <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>QC</NavLink>
+            <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Settings</NavLink>
           </div>
         </nav>
 
-        <main>
+        {/* Page Content - now with its own scrollbar */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-8">
           {children}
         </main>
       </div>

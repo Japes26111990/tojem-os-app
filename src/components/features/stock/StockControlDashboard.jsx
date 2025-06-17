@@ -4,7 +4,25 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Search } from 'lucide-react';
 
-const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => { /* ... No changes ... */ };
+const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
+    const stock = Number(currentStock);
+    const reorder = Number(reorderLevel);
+    const standard = Number(standardStockLevel);
+    if (isNaN(stock) || isNaN(reorder) || isNaN(standard) || standard <= reorder) return <div className="text-xs text-gray-500 italic">Not tracked</div>;
+    const isLowStock = stock < reorder;
+    const range = standard - reorder;
+    const stockInRange = stock - reorder;
+    const percentage = Math.max(0, Math.min((stockInRange / range) * 100, 100));
+    return (
+        <div className="w-full">
+            <div className="flex justify-between text-xs mb-1">
+                <span className="font-semibold text-gray-300">{stock} / {standard}</span>
+                <span className={`font-bold ${isLowStock ? 'text-red-400' : 'text-green-400'}`}>{isLowStock ? `Low (Reorder at ${reorder})` : 'In Stock'}</span>
+            </div>
+            <div className="w-full bg-gray-600 rounded-full h-2"><div className={`h-2 rounded-full ${isLowStock ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${percentage}%` }}></div></div>
+        </div>
+    );
+};
 
 const StockControlDashboard = () => {
   const [allItems, setAllItems] = useState([]);
@@ -51,7 +69,6 @@ const StockControlDashboard = () => {
         supplierId: item.supplierId,
         itemCode: item.itemCode || '',
         category: item.category,
-        // Add the new fields we need for the queue
         currentStock: item.currentStock,
         reorderLevel: item.reorderLevel,
         standardStockLevel: item.standardStockLevel,
@@ -70,7 +87,21 @@ const StockControlDashboard = () => {
   return (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
       <div className="flex flex-wrap gap-4 items-center mb-4 p-4 bg-gray-900/50 rounded-lg">
-         {/* ... Search, Sort, and Filter controls are the same ... */}
+          <div className="relative flex-grow">
+            <Input placeholder="Search all inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          </div>
+          <div>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white">
+              <option value="name-asc">Sort by Name</option>
+              <option value="supplier">Sort by Supplier</option>
+              <option value="stock-low-high">Sort by Stock Level</option>
+            </select>
+          </div>
+          <div className="flex items-center space-x-2 text-white">
+            <input type="checkbox" id="lowStockToggle" checked={showLowStock} onChange={e => setShowLowStock(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
+            <label htmlFor="lowStockToggle" className="text-sm font-medium">Show only low stock</label>
+          </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -87,16 +118,23 @@ const StockControlDashboard = () => {
             {(displayedItems).map(item => {
               const isQueued = queuedItemIds.has(item.id);
               return (
-                <tr key={`<span class="math-inline">\{item\.id\}\-</span>{item.category}`} className="border-b border-gray-700 hover:bg-gray-700/50">
+                // --- THIS IS THE CORRECTED LINE ---
+                <tr key={`${item.id}-${item.category}`} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="p-3 text-gray-200 font-semibold">{item.name}</td>
                   <td className="p-3 text-gray-400">{item.category}</td>
                   <td className="p-3 text-gray-400">{getSupplierName(item.supplierId)}</td>
-                  <td className="p-3"><StockLevelIndicator currentStock={item.currentStock} reorderLevel={item.reorderLevel} standardStockLevel={item.standardStockLevel} /></td>
+                  <td className="p-3">
+                    <StockLevelIndicator 
+                        currentStock={item.currentStock} 
+                        reorderLevel={item.reorderLevel} 
+                        standardStockLevel={item.standardStockLevel} 
+                    />
+                  </td>
                   <td className="p-3">
                     {isQueued ? (
-                      <Button variant="success" disabled={true}>Queued</Button>
+                      <Button variant="success" disabled={true} className="text-xs">Queued</Button>
                     ) : (
-                      <Button variant="primary" onClick={() => handleAddToQueue(item)}>Add to Queue</Button>
+                      <Button variant="primary" onClick={() => handleAddToQueue(item)} className="text-xs">Add to Queue</Button>
                     )}
                   </td>
                 </tr>

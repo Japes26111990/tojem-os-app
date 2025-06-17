@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch } from 'firebase/firestore';
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -124,23 +124,80 @@ export const getPurchaseQueue = async () => {
 export const addToPurchaseQueue = (itemData) => {
   return addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
 };
+export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities) => {
+  if (!itemsToOrder || itemsToOrder.length === 0) return;
+  const batch = writeBatch(db);
+  const orderDate = new Date();
+  const etaDays = supplier.estimatedEtaDays || 0;
+  const expectedArrivalDate = new Date();
+  expectedArrivalDate.setDate(orderDate.getDate() + Number(etaDays));
+  itemsToOrder.forEach(item => {
+    const docRef = doc(db, 'purchaseQueue', item.id);
+    const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+    const orderQty = orderQuantities[item.id] || recommendedQty;
+    batch.update(docRef, { 
+      status: 'ordered',
+      orderDate: orderDate,
+      expectedArrivalDate: expectedArrivalDate,
+      orderedQty: Number(orderQty)
+    });
+  });
+  return batch.commit();
+};
+export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceived) => {
+    if (!queuedItem || !quantityReceived || quantityReceived <= 0) {
+        throw new Error("Invalid item or quantity received.");
+    }
+    const itemCategory = queuedItem.category;
+    const inventoryItemId = queuedItem.itemId;
+    let inventoryCollectionName;
+    if (itemCategory === 'Component') inventoryCollectionName = 'components';
+    else if (itemCategory === 'Raw Material') inventoryCollectionName = 'rawMaterials';
+    else if (itemCategory === 'Workshop Supply') inventoryCollectionName = 'workshopSupplies';
+    else throw new Error(`Unknown inventory category: ${itemCategory}`);
+    const inventoryDocRef = doc(db, inventoryCollectionName, inventoryItemId);
+    const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
+    const batch = writeBatch(db);
+    const inventoryDoc = await getDoc(inventoryDocRef);
+    if (!inventoryDoc.exists()) throw new Error("Original inventory item not found.");
+    const currentStock = inventoryDoc.data().currentStock || 0;
+    const newStockLevel = Number(currentStock) + Number(quantityReceived);
+    batch.update(inventoryDocRef, { currentStock: newStockLevel });
+    batch.update(purchaseQueueDocRef, { status: 'completed' });
+    return batch.commit();
+};
+export const requeueOrDeleteItem = async (queuedItem) => {
+    const itemCategory = queuedItem.category.replace(' ', ''); // "Raw Material" -> "RawMaterial"
+    const inventoryCollectionName = `${itemCategory.charAt(0).toLowerCase() + itemCategory.slice(1)}s`; // "component" -> "components"
+    
+    const inventoryDocRef = doc(db, inventoryCollectionName, queuedItem.itemId);
+    const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
+    
+    const inventoryDoc = await getDoc(inventoryDocRef);
+    if (!inventoryDoc.exists()) {
+        return deleteDoc(purchaseQueueDocRef);
+    }
 
-// --- MASTER INVENTORY API (Newly Added) ---
+    const itemData = inventoryDoc.data();
+    if (itemData.currentStock < itemData.reorderLevel) {
+        return updateDoc(purchaseQueueDocRef, { status: 'pending' });
+    } else {
+        return deleteDoc(purchaseQueueDocRef);
+    }
+};
+
+// --- MASTER INVENTORY API ---
 export const getAllInventoryItems = async () => {
-    // We use Promise.all to fetch from all three inventory collections at the same time
     const [components, rawMaterials, workshopSupplies] = await Promise.all([
         getComponents(),
         getRawMaterials(),
         getWorkshopSupplies()
     ]);
-
-    // We add a 'category' to each item so we know what it is in the UI
     const allItems = [
         ...components.map(item => ({ ...item, category: 'Component' })),
         ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
         ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
     ];
-
     return allItems;
 };
 
@@ -155,19 +212,16 @@ export const getManufacturers = async () => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addManufacturer = (name) => addDoc(manufacturersCollection, { name });
-
 export const getMakes = async () => {
   const snapshot = await getDocs(makesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addMake = (data) => addDoc(makesCollection, data);
-
 export const getModels = async () => {
   const snapshot = await getDocs(modelsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addModel = (data) => addDoc(modelsCollection, data);
-
 export const getParts = async () => {
   const snapshot = await getDocs(partsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -177,14 +231,12 @@ export const addPart = (data) => addDoc(partsCollection, data);
 
 // --- JOB CARDS API ---
 const jobCardsCollection = collection(db, 'createdJobCards');
-
 export const addJobCard = (jobCardData) => {
   return addDoc(jobCardsCollection, {
     ...jobCardData,
     createdAt: serverTimestamp() 
   });
 };
-
 export const listenToJobCards = (callback) => {
   const q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -193,7 +245,6 @@ export const listenToJobCards = (callback) => {
   });
   return unsubscribe;
 };
-
 export const getJobByJobId = async (jobId) => {
   const q = query(jobCardsCollection, where("jobId", "==", jobId));
   const querySnapshot = await getDocs(q);
@@ -201,14 +252,12 @@ export const getJobByJobId = async (jobId) => {
     throw new Error(`No job found with ID: ${jobId}`);
   }
   const jobDoc = querySnapshot.docs[0];
-  return { id: jobDoc.id, ...jobDoc.data() };
+  return { id: jobDoc.id, ...doc.data() };
 };
-
 export const updateJobStatus = (docId, newStatus) => {
   const jobDocRef = doc(db, 'createdJobCards', docId);
   return updateDoc(jobDocRef, { status: newStatus });
 };
-
 export const updateJobRejection = (docId, reason) => {
   const jobDocRef = doc(db, 'createdJobCards', docId);
   return updateDoc(jobDocRef, { status: 'Issue', issueReason: reason });

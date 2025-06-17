@@ -1,17 +1,17 @@
 import { useState, useEffect, useMemo } from 'react';
+import { addToPurchaseQueue } from '../api/firestore'; // The import was missing here
 
-// This hook contains all the logic for our inventory manager components
 export const useInventoryManager = (api, suppliers) => {
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '' });
-  const [loading, setLoading] = useState(true);
   const [editingItemId, setEditingItemId] = useState(null);
-
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [showLowStock, setShowLowStock] = useState(false);
 
   const fetchData = async () => {
+    if (!api) return;
     setLoading(true);
     const fetchedItems = await api.get();
     setItems(fetchedItems);
@@ -19,7 +19,9 @@ export const useInventoryManager = (api, suppliers) => {
   };
 
   useEffect(() => {
-    fetchData();
+    if (api && api.get) {
+      fetchData();
+    }
   }, [api]);
 
   const getSupplierName = (supplierId) => (suppliers || []).find(s => s.id === supplierId)?.name || 'N/A';
@@ -37,8 +39,8 @@ export const useInventoryManager = (api, suppliers) => {
         case 'name-asc': return a.name.localeCompare(b.name);
         case 'name-desc': return b.name.localeCompare(a.name);
         case 'supplier': return getSupplierName(a.supplierId).localeCompare(getSupplierName(b.supplierId));
-        case 'stock-low-high': return (a.currentStock / a.reorderLevel) - (b.currentStock / b.reorderLevel);
-        case 'stock-high-low': return (b.currentStock / a.reorderLevel) - (a.currentStock / a.reorderLevel);
+        case 'stock-low-high': return (Number(a.currentStock) / Number(a.reorderLevel)) - (Number(b.currentStock) / Number(b.reorderLevel));
+        case 'stock-high-low': return (Number(b.currentStock) / Number(a.reorderLevel)) - (Number(a.currentStock) / Number(b.reorderLevel));
         default: return 0;
       }
     });
@@ -66,21 +68,23 @@ export const useInventoryManager = (api, suppliers) => {
     };
 
     try {
+      let docId = editingItemId;
       if (editingItemId) {
         await api.update(editingItemId, dataToSave);
       } else {
-        await api.add(dataToSave);
+        const newDoc = await api.add(dataToSave);
+        docId = newDoc.id;
       }
-      // Check for auto-reorder
-      if (dataToSave.currentStock < dataToSave.reorderLevel) {
-        await api.addToQueue({
-          itemId: editingItemId || 'new_item', // A temporary ID if new
+      
+      if (dataToSave.reorderLevel > 0 && dataToSave.currentStock < dataToSave.reorderLevel) {
+        await addToPurchaseQueue({
+          itemId: docId,
           itemName: dataToSave.name,
           supplierId: dataToSave.supplierId,
           itemCode: dataToSave.itemCode,
           category: api.categoryName
         });
-        alert(`${dataToSave.name} is low on stock and has been automatically added to the reorder list!`);
+        alert(`'${dataToSave.name}' is low on stock and has been automatically added to the reorder list!`);
       }
       cancelEdit();
       fetchData();
@@ -90,39 +94,13 @@ export const useInventoryManager = (api, suppliers) => {
     }
   };
 
-  const handleEdit = (item) => {
-    setEditingItemId(item.id);
-    setNewItem(item);
-  };
-
-  const cancelEdit = () => {
-    setEditingItemId(null);
-    setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '' });
-  };
-
-  const handleDelete = async (id) => {
-    if (window.confirm("Are you sure?")) {
-      await api.delete(id);
-      fetchData();
-    }
-  };
+  const handleEdit = (item) => { setEditingItemId(item.id); setNewItem(item); };
+  const cancelEdit = () => { setEditingItemId(null); setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '' }); };
+  const handleDelete = async (id) => { if (window.confirm("Are you sure?")) { await api.delete(id); fetchData(); } };
 
   return {
-    newItem,
-    loading,
-    editingItemId,
-    displayedItems,
-    sortBy,
-    searchTerm,
-    showLowStock,
-    handleInputChange,
-    handleSubmit,
-    handleEdit,
-    cancelEdit,
-    handleDelete,
-    setSortBy,
-    setSearchTerm,
-    setShowLowStock,
-    getSupplierName,
+    newItem, loading, editingItemId, displayedItems, sortBy, searchTerm, showLowStock,
+    handleInputChange, handleSubmit, handleEdit, cancelEdit, handleDelete,
+    setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };

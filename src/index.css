@@ -1,3 +1,21 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- ADD THIS RULE AT THE BOTTOM --- */
+/* This forces dropdown options to have a dark background and white text */
+select option {
+  background-color: #374151; /* This is Tailwind's gray-700 */
+  color: #ffffff;
+}
+
+/* --- ADD THIS NEW RULESET TO FIX NUMBER INPUTS --- */
+/* Hide the default spinner buttons on number inputs */
+input[type=number]::-webkit-inner-spin-button, 
+input[type=number]::-webkit-outer-spin-button { 
+  -webkit-appearance: none; 
+  margin: 0; 
+}
+input[type=number] {
+  -moz-appearance: textfield; /* For Firefox */
+}
