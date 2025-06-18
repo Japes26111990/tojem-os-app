@@ -29,6 +29,21 @@ export const deleteTool = (toolId) => {
   return deleteDoc(toolDoc);
 };
 
+// --- TOOL ACCESSORIES API ---
+const toolAccessoriesCollection = collection(db, 'toolAccessories');
+export const getToolAccessories = async () => {
+    const snapshot = await getDocs(toolAccessoriesCollection);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+export const addToolAccessory = (accessoryData) => {
+    // accessoryData should be an object like { name: 'Drill Bit', toolId: '...' }
+    return addDoc(toolAccessoriesCollection, accessoryData);
+};
+export const deleteToolAccessory = (accessoryId) => {
+    const accessoryDoc = doc(db, 'toolAccessories', accessoryId);
+    return deleteDoc(accessoryDoc);
+};
+
 // --- EMPLOYEES API ---
 const employeesCollection = collection(db, 'employees');
 export const getEmployees = async () => {
@@ -235,6 +250,10 @@ export const getParts = async () => {
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addPart = (data) => addDoc(partsCollection, data);
+export const updatePart = (partId, updatedData) => {
+  const partDoc = doc(db, 'parts', partId);
+  return updateDoc(partDoc, updatedData);
+};
 
 
 // --- JOB CARDS API ---

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getAllInventoryItems } from '../../../api/firestore';
+import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems } from '../../../api/firestore';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 
-// --- UPGRADED JobCardPreview to include the photo placeholder ---
+// Updated JobCardPreview to include accessories
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -22,7 +22,6 @@ const JobCardPreview = ({ details }) => {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
-                    {/* The photo placeholder is now here */}
                     <div>
                         {details.photoUrl ? (
                             <img src={details.photoUrl} alt={details.partName} className="rounded-lg object-cover w-full h-64 mb-4 border" />
@@ -41,7 +40,14 @@ const JobCardPreview = ({ details }) => {
                         <div>
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
-                                {details.tools && details.tools.length > 0 ? details.tools.map((tool, i) => <li key={i}>{tool.name}</li>) : <li>No specific tools required.</li>}
+                                {details.tools && details.tools.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No specific tools required.</li>}
+                            </ul>
+                        </div>
+                        {/* --- NEW: Display Accessories --- */}
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Accessories</h3>
+                            <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
+                                {details.accessories && details.accessories.length > 0 ? details.accessories.map((acc) => <li key={acc.id}>{acc.name}</li>) : <li>No specific accessories required.</li>}
                             </ul>
                         </div>
                         <div>
@@ -63,9 +69,9 @@ const JobCardPreview = ({ details }) => {
     )
 };
 
-
 const JobCardCreator = () => {
-    const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], allConsumables: [] });
+    // Added toolAccessories to the state
+    const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
     const [jobDetails, setJobDetails] = useState(null);
@@ -73,10 +79,12 @@ const JobCardCreator = () => {
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
-            const [man, mak, mod, par, dep, emp, steps, t, inv] = await Promise.all([
-                getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getAllInventoryItems()
+            // Added getToolAccessories to the fetch
+            const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
+                getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
             ]);
-            setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, allConsumables: inv });
+            // Added toolAccessories to the data object
+            setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv });
             setLoading(false);
         };
         fetchData();
@@ -99,7 +107,6 @@ const JobCardCreator = () => {
     const filteredParts = useMemo(() => (allData.parts || []).filter(p => p.modelId === selection.modelId), [allData.parts, selection.modelId]);
     const filteredEmployees = useMemo(() => (allData.employees || []).filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
 
-    // This effect now includes the photoUrl from the part data
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
         if (partId && departmentId && employeeId) {
@@ -112,7 +119,7 @@ const JobCardCreator = () => {
               setJobDetails({
                   jobId: `JOB-${Date.now()}`,
                   partName: part.name,
-                  photoUrl: part.photoUrl || '', // Get the photoUrl from the part
+                  photoUrl: part.photoUrl || '',
                   departmentName: department.name,
                   employeeName: employee.name,
                   status: 'Pending',
@@ -120,6 +127,8 @@ const JobCardCreator = () => {
                   estimatedTime: recipe?.estimatedTime || 0,
                   steps: recipe?.steps || [],
                   tools: (recipe?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
+                  // --- NEW: Map accessory IDs to full accessory objects ---
+                  accessories: (recipe?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
                   consumables: (recipe?.consumables || []),
               });
             }
