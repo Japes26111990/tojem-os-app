@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../ui/Button';
-import Sidebar from './Sidebar'; // Import our new Sidebar
-import { PanelLeftClose, PanelRightClose } from 'lucide-react'; // Icons for the toggle button
+import Sidebar from './Sidebar';
+import { PanelLeftClose, PanelRightClose } from 'lucide-react';
 
 const MainLayout = ({ children }) => {
   const { user, signOut } = useAuth();
@@ -15,18 +15,15 @@ const MainLayout = ({ children }) => {
 
   return (
     <div className="flex h-screen bg-gray-900 text-white">
-      {/* --- SIDEBAR --- */}
       <Sidebar isOpen={isSidebarOpen} />
 
-      {/* --- MAIN CONTENT AREA --- */}
       <div className="flex-1 flex flex-col overflow-hidden">
         
-        {/* Header Section */}
         <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50">
           <div className="flex items-center gap-4">
-             <Button onClick={() => setSidebarOpen(!isSidebarOpen)} variant="secondary" className="p-2">
+              <Button onClick={() => setSidebarOpen(!isSidebarOpen)} variant="secondary" className="p-2">
                 {isSidebarOpen ? <PanelLeftClose size={20}/> : <PanelRightClose size={20}/>}
-             </Button>
+              </Button>
             <h1 className="text-xl font-extrabold text-blue-400 hidden sm:block">TOJEM OS</h1>
           </div>
           <div className="text-right">
@@ -37,7 +34,6 @@ const MainLayout = ({ children }) => {
           </div>
         </header>
 
-        {/* Top Navigation Bar */}
         <nav className="flex justify-center bg-gray-800/20 p-2 shadow-lg border-b border-gray-700">
           <div className="flex flex-wrap justify-center gap-2">
             <NavLink to="/" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Dashboard</NavLink>
@@ -46,11 +42,12 @@ const MainLayout = ({ children }) => {
             <NavLink to="/tracking" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Tracking</NavLink>
             <NavLink to="/scan" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Scanner</NavLink>
             <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>QC</NavLink>
+            {/* --- ADD THE NEW LINK HERE --- */}
+            <NavLink to="/performance" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Performance</NavLink>
             <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Settings</NavLink>
           </div>
         </nav>
 
-        {/* Page Content - now with its own scrollbar */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-8">
           {children}
         </main>

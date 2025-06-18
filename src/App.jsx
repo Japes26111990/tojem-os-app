@@ -12,12 +12,8 @@ import LiveTrackingPage from './pages/LiveTrackingPage';
 import ScannerPage from './pages/ScannerPage';
 import QcPage from './pages/QcPage';
 import StockControlPage from './pages/StockControlPage';
-import DashboardPage from './pages/DashboardPage'; // Import the new dashboard
-
-// UI Components
-// Note: We don't need Button here anymore as it's not directly used.
-
-// The old simple Dashboard function has been removed.
+import DashboardPage from './pages/DashboardPage';
+import PerformancePage from './pages/PerformancePage'; // <-- 1. IMPORT THE NEW PAGE
 
 function App() {
   const { user } = useAuth();
@@ -34,13 +30,13 @@ function App() {
           element={
             <ProtectedRoute>
               <Routes>
-                {/* UPDATED: The root path now renders our new DashboardPage */}
                 <Route path="/" element={<DashboardPage />} />
                 <Route path="/stock" element={<StockControlPage />} />
                 <Route path="/creator" element={<JobCreatorPage />} />
                 <Route path="/tracking" element={<LiveTrackingPage />} />
                 <Route path="/scan" element={<ScannerPage />} />
                 <Route path="/qc" element={<QcPage />} />
+                <Route path="/performance" element={<PerformancePage />} /> {/* <-- 2. ADD THE NEW ROUTE */}
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </ProtectedRoute>
