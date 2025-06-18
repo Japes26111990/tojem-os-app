@@ -41,8 +41,9 @@ const MainLayout = ({ children }) => {
             <NavLink to="/creator" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Job Creator</NavLink>
             <NavLink to="/tracking" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Tracking</NavLink>
             <NavLink to="/scan" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Scanner</NavLink>
+            {/* --- THE FIX IS ON THIS LINE --- */}
             <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>QC</NavLink>
-            {/* --- ADD THE NEW LINK HERE --- */}
+            <NavLink to="/issues" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : 'text-red-400 hover:bg-red-500/20 hover:text-white'}`}>Issues</NavLink>
             <NavLink to="/performance" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Performance</NavLink>
             <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Settings</NavLink>
           </div>

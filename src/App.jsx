@@ -13,7 +13,8 @@ import ScannerPage from './pages/ScannerPage';
 import QcPage from './pages/QcPage';
 import StockControlPage from './pages/StockControlPage';
 import DashboardPage from './pages/DashboardPage';
-import PerformancePage from './pages/PerformancePage'; // <-- 1. IMPORT THE NEW PAGE
+import PerformancePage from './pages/PerformancePage';
+import IssuesPage from './pages/IssuesPage'; // <-- 1. IMPORT THE NEW PAGE
 
 function App() {
   const { user } = useAuth();
@@ -36,7 +37,8 @@ function App() {
                 <Route path="/tracking" element={<LiveTrackingPage />} />
                 <Route path="/scan" element={<ScannerPage />} />
                 <Route path="/qc" element={<QcPage />} />
-                <Route path="/performance" element={<PerformancePage />} /> {/* <-- 2. ADD THE NEW ROUTE */}
+                <Route path="/issues" element={<IssuesPage />} /> {/* <-- 2. ADD THE NEW ROUTE */}
+                <Route path="/performance" element={<PerformancePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </ProtectedRoute>
