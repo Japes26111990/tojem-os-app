@@ -1,10 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  getComponents, addComponent, updateComponent, deleteComponent,
-  getRawMaterials, addRawMaterial, updateRawMaterial, deleteRawMaterial,
-  getWorkshopSupplies, addWorkshopSupply, updateWorkshopSupply, deleteWorkshopSupply,
-  getSuppliers 
-} from '../../../api/firestore';
+import { getComponents, addComponent, updateComponent, deleteComponent, getRawMaterials, addRawMaterial, updateRawMaterial, deleteRawMaterial, getWorkshopSupplies, addWorkshopSupply, updateWorkshopSupply, deleteWorkshopSupply, getSuppliers } from '../../../api/firestore';
 import { useInventoryManager } from '../../../hooks/useInventoryManager';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
@@ -60,12 +55,12 @@ const InventoryManager = () => {
   return (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
       <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
-         <h3 className="text-xl font-bold text-white">Manage Inventory Items</h3>
-         <select value={category} onChange={e => setCategory(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white">
-            <option value="components">Components</option>
-            <option value="rawMaterials">Raw Materials</option>
-            <option value="workshopSupplies">Workshop Supplies</option>
-         </select>
+        <h3 className="text-xl font-bold text-white">Manage Inventory Items</h3>
+        <select value={category} onChange={e => setCategory(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white">
+          <option value="components">Components</option>
+          <option value="rawMaterials">Raw Materials</option>
+          <option value="workshopSupplies">Workshop Supplies</option>
+        </select>
       </div>
       <p className="text-sm text-gray-400 mb-6">{categoryInfo[category].desc}</p>
       
@@ -80,6 +75,22 @@ const InventoryManager = () => {
             <Input label="Reorder" name="reorderLevel" type="number" value={manager.newItem.reorderLevel} onChange={manager.handleInputChange} placeholder="20" />
             <Input label="Standard" name="standardStockLevel" type="number" value={manager.newItem.standardStockLevel} onChange={manager.handleInputChange} placeholder="200" />
         </div>
+        
+        {category === 'rawMaterials' && (
+            <div className="flex items-center justify-center h-full pt-6">
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                    <input 
+                        type="checkbox" 
+                        name="requiresCatalyst"
+                        checked={manager.newItem.requiresCatalyst || false}
+                        onChange={manager.handleInputChange}
+                        className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                    />
+                    Requires Catalyst
+                </label>
+            </div>
+        )}
+        
         <div className="flex space-x-2 lg:col-start-4">
           <Button type="submit" variant="primary" className="w-full">{manager.editingItemId ? 'Update' : 'Add'}</Button>
           {manager.editingItemId && <Button type="button" variant="secondary" onClick={manager.cancelEdit}>Cancel</Button>}
@@ -88,12 +99,10 @@ const InventoryManager = () => {
 
       <div className="flex flex-wrap gap-4 items-center mb-4 p-4 bg-gray-900/50 rounded-lg">
         <div className="relative flex-grow">
-          {/* --- UPDATED LINE BELOW --- */}
           <Input name="search-inventory" placeholder="Search by name..." value={manager.searchTerm} onChange={e => manager.setSearchTerm(e.target.value)} />
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
         </div>
         <div>
-          {/* --- UPDATED LINE BELOW --- */}
           <select name="sort-inventory" value={manager.sortBy} onChange={e => manager.setSortBy(e.target.value)} className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white">
             <option value="name-asc">Sort by Name (A-Z)</option>
             <option value="name-desc">Sort by Name (Z-A)</option>
@@ -116,7 +125,10 @@ const InventoryManager = () => {
       <div className="space-y-3 mt-2">
         {manager.loading ? <p className="text-center p-4">Loading...</p> : (manager.displayedItems || []).map(item => (
           <div key={item.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center bg-gray-700 p-3 rounded-lg">
-            <p className="font-semibold col-span-2">{item.name}</p>
+            <p className="font-semibold col-span-2 flex items-center">
+                {item.name}
+                {item.requiresCatalyst && <span className="ml-2 text-xs bg-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full" title="Requires Catalyst">C</span>}
+            </p>
             <p>{manager.getSupplierName(item.supplierId)}</p>
             <div className="col-span-2"><StockLevelIndicator {...item} /></div>
             <div className="flex items-center justify-end gap-2">

@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { addToPurchaseQueue } from '../api/firestore'; // The import was missing here
+import { addToPurchaseQueue } from '../api/firestore';
 
 export const useInventoryManager = (api, suppliers) => {
   const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '' });
+  const [newItem, setNewItem] = useState({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', requiresCatalyst: false });
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -48,8 +48,9 @@ export const useInventoryManager = (api, suppliers) => {
   }, [items, searchTerm, sortBy, showLowStock, suppliers]);
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setNewItem(prevState => ({ ...prevState, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    const val = type === 'checkbox' ? checked : value;
+    setNewItem(prevState => ({ ...prevState, [name]: val }));
   };
 
   const handleSubmit = async (e) => {
@@ -65,6 +66,7 @@ export const useInventoryManager = (api, suppliers) => {
       currentStock: parseInt(newItem.currentStock, 10) || 0,
       reorderLevel: parseInt(newItem.reorderLevel, 10) || 0,
       standardStockLevel: parseInt(newItem.standardStockLevel, 10) || 0,
+      requiresCatalyst: newItem.requiresCatalyst || false,
     };
 
     try {
@@ -95,7 +97,7 @@ export const useInventoryManager = (api, suppliers) => {
   };
 
   const handleEdit = (item) => { setEditingItemId(item.id); setNewItem(item); };
-  const cancelEdit = () => { setEditingItemId(null); setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '' }); };
+  const cancelEdit = () => { setEditingItemId(null); setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', requiresCatalyst: false }); };
   const handleDelete = async (id) => { if (window.confirm("Are you sure?")) { await api.delete(id); fetchData(); } };
 
   return {

@@ -1,5 +1,8 @@
 import { db } from './firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment, limit, startAfter } from 'firebase/firestore';
+
+// --- [All of your other API functions (getDepartments, getTools, etc.) remain exactly the same] ---
+// --- [The code is too long to repeat, but ensure all previous functions are here] ---
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -311,9 +314,7 @@ export const updateJobStatus = async (docId, newStatus) => {
 
     return updateDoc(jobDocRef, dataToUpdate);
 };
-
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
-  // Get all necessary lookup data before starting the transaction
   const allInventory = await getAllInventoryItems();
   const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
   const allEmployees = await getEmployees();
@@ -321,13 +322,11 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
 
   return runTransaction(db, async (transaction) => {
     const jobRef = doc(db, 'createdJobCards', job.id);
-    // You MUST read from the document inside the transaction before you write to it.
     const jobDoc = await transaction.get(jobRef);
     if (!jobDoc.exists()) {
         throw "Job document does not exist!";
     }
     const currentJobData = jobDoc.data();
-
 
     const dataToUpdate = {};
 
@@ -337,8 +336,8 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
         let materialCost = 0;
         let laborCost = 0;
 
-        if (currentJobData.consumables && currentJobData.consumables.length > 0) {
-            for (const consumable of currentJobData.consumables) {
+        if (currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
+            for (const consumable of currentJobData.processedConsumables) {
                 const inventoryItem = inventoryMap.get(consumable.id);
                 if (inventoryItem && inventoryItem.price) {
                     materialCost += (inventoryItem.price * consumable.quantity);
@@ -349,10 +348,8 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
 
         const employee = employeeMap.get(currentJobData.employeeId);
         const hourlyRate = employee?.hourlyRate || 0;
-        // The completedAt timestamp might not be set yet when this transaction runs
-        // so we need to be careful. Let's use the current server time as the completion time for the calculation.
         if (currentJobData.startedAt && hourlyRate > 0) {
-            const completedAt = new Date(); // Use current time for calculation
+            const completedAt = new Date();
             let activeSeconds = (completedAt.getTime() - currentJobData.startedAt.toDate().getTime()) / 1000;
             if (currentJobData.totalPausedMilliseconds) {
                 activeSeconds -= Math.floor(currentJobData.totalPausedMilliseconds / 1000);
@@ -370,8 +367,8 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
     
     transaction.update(jobRef, dataToUpdate);
 
-    if (isApproved && currentJobData.consumables && currentJobData.consumables.length > 0) {
-      for (const consumable of currentJobData.consumables) {
+    if (isApproved && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
+      for (const consumable of currentJobData.processedConsumables) {
         const inventoryItem = inventoryMap.get(consumable.id);
         if (!inventoryItem) continue;
 
@@ -401,4 +398,40 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
       }
     }
   });
+};
+
+// --- GENERIC DOCUMENT API ---
+export const getDocumentsPaginated = async (collectionName, pageSize, lastVisible = null) => {
+    try {
+        const collectionRef = collection(db, collectionName);
+        let q;
+
+        if (lastVisible) {
+            q = query(collectionRef, limit(pageSize), startAfter(lastVisible));
+        } else {
+            q = query(collectionRef, limit(pageSize));
+        }
+
+        const snapshot = await getDocs(q);
+        const docs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const newLastVisible = snapshot.docs[snapshot.docs.length - 1];
+
+        return { docs, lastVisible: newLastVisible };
+    } catch (error) {
+        console.error("Error fetching documents: ", error);
+        throw error;
+    }
+};
+
+export const updateDocument = async (collectionName, docId, data) => {
+    const docRef = doc(db, collectionName, docId);
+    const dataToSave = { ...data };
+    delete dataToSave.id;
+    return updateDoc(docRef, dataToSave);
+};
+
+// --- NEW FUNCTION TO ADD ---
+export const deleteDocument = async (collectionName, docId) => {
+    const docRef = doc(db, collectionName, docId);
+    return deleteDoc(docRef);
 };
