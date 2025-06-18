@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { listenToJobCards } from '../../../api/firestore';
+import JobDetailsModal from './JobDetailsModal'; // <-- 1. IMPORT THE NEW MODAL
 
+// ... (Keep the LiveTimer, StatusBadge, and EfficiencyBadge components as they are) ...
 const LiveTimer = ({ job }) => {
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
     useEffect(() => {
         const calculateActiveTime = () => {
             if (!job.startedAt) return 0;
@@ -20,19 +21,14 @@ const LiveTimer = ({ job }) => {
     }, [job.startedAt, job.totalPausedMilliseconds]);
 
     if (!job.startedAt) return null;
-
     const estimatedSeconds = (job.estimatedTime || 0) * 60;
     const isOverTime = estimatedSeconds > 0 && elapsedSeconds > estimatedSeconds;
     const timerColor = isOverTime ? 'text-red-400' : 'text-green-400';
-
     const minutes = Math.floor(elapsedSeconds / 60);
     const seconds = elapsedSeconds % 60;
     const formattedTime = `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
-
     return <span className={`font-semibold ${timerColor}`}>{formattedTime}</span>;
 };
-
-
 const StatusBadge = ({ status }) => {
   const statusColors = {
     'Pending': 'bg-yellow-500/20 text-yellow-300',
@@ -44,7 +40,6 @@ const StatusBadge = ({ status }) => {
   };
   return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusColors[status] || 'bg-gray-500/20 text-gray-300'}`}>{status}</span>;
 };
-
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     if (!actualMinutes || !estimatedMinutes) return <span className="text-xs text-gray-500">N/A</span>;
     const efficiency = (estimatedMinutes / actualMinutes) * 100;
@@ -54,9 +49,11 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{Math.round(efficiency)}%</span>
 };
 
+
 const LiveTrackingTable = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedJob, setSelectedJob] = useState(null); // <-- 2. ADD STATE FOR THE MODAL
 
   useEffect(() => {
     setLoading(true);
@@ -87,46 +84,53 @@ const LiveTrackingTable = () => {
   if (loading) return <p className="text-center text-gray-400">Loading jobs...</p>;
 
   return (
-    <div className="bg-gray-800 p-2 sm:p-6 rounded-xl border border-gray-700 shadow-lg">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left">
-          <thead>
-            <tr className="border-b border-gray-600">
-              <th className="p-3 text-sm font-semibold text-gray-400">Created</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Status</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Active / Actual Time</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Efficiency</th>
-              {/* --- NEW COLUMN --- */}
-              <th className="p-3 text-sm font-semibold text-gray-400 text-right">Job Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(jobs || []).map(job => {
-                const finalDuration = formatFinalDuration(job);
-                return (
-                    <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                        <td className="p-3 text-gray-300 text-sm">{formatDate(job.createdAt)}</td>
-                        <td className="p-3 text-gray-300">{job.partName}</td>
-                        <td className="p-3 text-gray-300">{job.employeeName}</td>
-                        <td className="p-3"><StatusBadge status={job.status} /></td>
-                        <td className="p-3 text-gray-300 text-sm">
-                            {job.status === 'In Progress' ? (<LiveTimer job={job} />) : (finalDuration ? finalDuration.text : 'N/A')}
-                        </td>
-                        <td className="p-3"><EfficiencyBadge actualMinutes={finalDuration?.totalMinutes} estimatedMinutes={job.estimatedTime} /></td>
-                        {/* --- NEW CELL --- */}
-                        <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">
-                            {job.totalCost ? `R ${job.totalCost.toFixed(2)}` : 'N/A'}
-                        </td>
-                    </tr>
-                )
-            })}
-          </tbody>
-        </table>
-        {jobs.length === 0 && !loading && <p className="text-center p-8 text-gray-400">No jobs found.</p>}
-      </div>
-    </div>
+    // <-- Use a React Fragment to wrap the table and the modal
+    <>
+        <div className="bg-gray-800 p-2 sm:p-6 rounded-xl border border-gray-700 shadow-lg">
+        <div className="overflow-x-auto">
+            <table className="w-full text-left">
+            <thead>
+                <tr className="border-b border-gray-600">
+                <th className="p-3 text-sm font-semibold text-gray-400">Created</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Status</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Active / Actual Time</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Efficiency</th>
+                <th className="p-3 text-sm font-semibold text-gray-400 text-right">Job Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                {(jobs || []).map(job => {
+                    const finalDuration = formatFinalDuration(job);
+                    return (
+                        // <-- 3. ADD ONCLICK TO THE TABLE ROW
+                        <tr key={job.id} onClick={() => setSelectedJob(job)} className="border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer">
+                            <td className="p-3 text-gray-300 text-sm">{formatDate(job.createdAt)}</td>
+                            <td className="p-3 text-gray-300">{job.partName}</td>
+                            <td className="p-3 text-gray-300">{job.employeeName}</td>
+                            <td className="p-3"><StatusBadge status={job.status} /></td>
+                            <td className="p-3 text-gray-300 text-sm">
+                                {job.status === 'In Progress' ? (<LiveTimer job={job} />) : (finalDuration ? finalDuration.text : 'N/A')}
+                            </td>
+                            <td className="p-3"><EfficiencyBadge actualMinutes={finalDuration?.totalMinutes} estimatedMinutes={job.estimatedTime} /></td>
+                            <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">
+                                {job.totalCost ? `R ${job.totalCost.toFixed(2)}` : 'N/A'}
+                            </td>
+                        </tr>
+                    )
+                })}
+            </tbody>
+            </table>
+            {jobs.length === 0 && !loading && <p className="text-center p-8 text-gray-400">No jobs found.</p>}
+        </div>
+        </div>
+
+        {/* --- 4. RENDER THE MODAL IF A JOB IS SELECTED --- */}
+        {selectedJob && (
+            <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
+        )}
+    </>
   );
 };
 
