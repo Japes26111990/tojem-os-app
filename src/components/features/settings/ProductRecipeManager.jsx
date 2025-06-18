@@ -12,7 +12,7 @@ import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
-import { FilePlus, Edit, Trash2 } from 'lucide-react';
+import { FilePlus } from 'lucide-react';
 
 // This is the editor pane that appears when a part is selected
 const PartEditor = ({ part, departments, tools, toolAccessories, consumables, allJobSteps, onSaveRecipe, onPartUpdate }) => {
@@ -30,17 +30,19 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
   // Part details state
   const [partName, setPartName] = useState(part.name);
   const [partPhotoUrl, setPartPhotoUrl] = useState(part.photoUrl || '');
+
+  // State for the consumable inputs (This is the corrected part)
+  const [consumableToAdd, setConsumableToAdd] = useState('');
+  const [quantityToAdd, setQuantityToAdd] = useState('');
   
   useEffect(() => {
-    // When the selected part changes, update the editor's state
     setPartName(part.name);
     setPartPhotoUrl(part.photoUrl || '');
     setActiveTab('details');
-    setSelectedDepartmentId(''); // Reset department selection
+    setSelectedDepartmentId('');
   }, [part]);
 
   useEffect(() => {
-    // When a department is selected, load its recipe
     if (selectedDepartmentId) {
       const existingStep = allJobSteps.find(step => step.partId === part.id && step.departmentId === selectedDepartmentId);
       if (existingStep) {
@@ -73,7 +75,6 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
     onSaveRecipe(part.id, selectedDepartmentId, recipeData);
   };
   
-  // All the handlers for tools, accessories, consumables can be copied from the old JobStepManager
   const handleToolToggle = (toolId) => {
     const newTools = new Set(selectedTools);
     if (newTools.has(toolId)) {
@@ -94,13 +95,14 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
       setSelectedAccessories(newAccessories);
   };
 
+  // This function now correctly uses state
   const handleAddConsumable = () => {
-    const consumableId = document.getElementById('consumable-select').value;
-    const quantity = document.getElementById('consumable-qty').value;
-    if (!consumableId || !quantity) return;
-    const consumable = consumables.find(c => c.id === consumableId);
-    if (consumable && !selectedConsumables.find(c => c.id === consumableId)) {
-        setSelectedConsumables([...selectedConsumables, { id: consumable.id, name: consumable.name, quantity: Number(quantity) }]);
+    if (!consumableToAdd || !quantityToAdd) return;
+    const consumable = consumables.find(c => c.id === consumableToAdd);
+    if (consumable && !selectedConsumables.find(c => c.id === consumableToAdd)) {
+        setSelectedConsumables([...selectedConsumables, { id: consumable.id, name: consumable.name, quantity: Number(quantityToAdd) }]);
+        setConsumableToAdd('');
+        setQuantityToAdd('');
     }
   };
 
@@ -113,13 +115,11 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h3 className="text-2xl font-bold text-white mb-4">Dossier: <span className="text-blue-400">{part.name}</span></h3>
         
-        {/* Internal Tabs */}
         <div className="flex border-b border-gray-600 mb-6">
             <button onClick={() => setActiveTab('details')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'details' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Part Details</button>
             <button onClick={() => setActiveTab('recipe')} className={`px-4 py-2 text-sm font-medium ${activeTab === 'recipe' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Recipe Book</button>
         </div>
 
-        {/* Part Details Tab Content */}
         {activeTab === 'details' && (
             <div className="space-y-4 animate-fade-in">
                 <Input label="Part Name" value={partName} onChange={e => setPartName(e.target.value)} />
@@ -128,7 +128,6 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
             </div>
         )}
 
-        {/* Recipe Book Tab Content */}
         {activeTab === 'recipe' && (
             <div className="space-y-6 animate-fade-in">
                 <Dropdown label="Select a Department to Define its Recipe" value={selectedDepartmentId} onChange={e => setSelectedDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
@@ -167,8 +166,12 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
                                 <h4 className="font-semibold mb-2">Required Consumables</h4>
                                 <div className="p-4 bg-gray-900/50 rounded-lg">
                                 <div className="flex items-end gap-2 mb-4">
-                                    <div className="flex-grow"><Dropdown label="Consumable" id="consumable-select" options={consumables} placeholder="Select item..."/></div>
-                                    <div className="w-24"><Input label="Qty" id="consumable-qty" type="number" placeholder="1" /></div>
+                                    <div className="flex-grow">
+                                        <Dropdown label="Consumable" value={consumableToAdd} onChange={e => setConsumableToAdd(e.target.value)} options={consumables} placeholder="Select item..."/>
+                                    </div>
+                                    <div className="w-24">
+                                        <Input label="Qty" type="number" value={quantityToAdd} onChange={e => setQuantityToAdd(e.target.value)} placeholder="1" />
+                                    </div>
                                     <Button type="button" onClick={handleAddConsumable}>Add</Button>
                                 </div>
                                 <ul className="space-y-2 max-h-40 overflow-y-auto">
@@ -189,7 +192,6 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
 };
 
 
-// This is the main component that replaces ProductCatalogManager and JobStepManager
 const ProductRecipeManager = () => {
     // Data states
     const [manufacturers, setManufacturers] = useState([]);
@@ -212,7 +214,10 @@ const ProductRecipeManager = () => {
         const [man, mak, mod, par, dep, t, ta, inv, steps] = await Promise.all([
             getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getTools(), getToolAccessories(), getAllInventoryItems(), getJobStepDetails()
         ]);
-        setManufacturers(man); setMakes(mak); setModels(mod); setParts(par); setDepartments(dep); setTools(t); setToolAccessories(ta); setConsumables(inv); setAllJobSteps(steps);
+        setManufacturers(man); setMakes(mak); setModels(mod); setParts(par); setDepartments(dep); setTools(t); setToolAccessories(ta); 
+        const inventoryItems = inv.map(item => ({ id: item.id, name: item.name }));
+        setConsumables(inventoryItems); 
+        setAllJobSteps(steps);
     };
 
     useEffect(() => { fetchData(); }, []);
@@ -254,7 +259,7 @@ const ProductRecipeManager = () => {
         try {
             await setJobStepDetail(partId, departmentId, recipeData);
             alert("Recipe saved successfully!");
-            const steps = await getJobStepDetails(); // re-fetch to update editor state
+            const steps = await getJobStepDetails();
             setAllJobSteps(steps);
         } catch (error) {
             console.error("Error saving recipe:", error);
@@ -290,7 +295,6 @@ const ProductRecipeManager = () => {
     
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Pane: Navigator */}
             <div className="lg:col-span-1 bg-gray-800 p-4 rounded-xl border border-gray-700 space-y-4">
                 <div>
                     <div className="flex justify-between items-center mb-2"><h4 className="font-bold text-lg text-white">Catalog</h4><Button onClick={() => handleAdd('manufacturer')} className="py-1 px-2 text-xs"><FilePlus size={14} className="mr-1"/>Manufacturer</Button></div>
@@ -316,7 +320,6 @@ const ProductRecipeManager = () => {
                 )}
             </div>
 
-            {/* Right Pane: Editor */}
             <div className="lg:col-span-2">
                 {selectedPartId ? (
                     <PartEditor 

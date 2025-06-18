@@ -3,7 +3,6 @@ import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmp
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 
-// Updated JobCardPreview to include accessories
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -43,7 +42,6 @@ const JobCardPreview = ({ details }) => {
                                 {details.tools && details.tools.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No specific tools required.</li>}
                             </ul>
                         </div>
-                        {/* --- NEW: Display Accessories --- */}
                         <div>
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Accessories</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
@@ -70,7 +68,6 @@ const JobCardPreview = ({ details }) => {
 };
 
 const JobCardCreator = () => {
-    // Added toolAccessories to the state
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
@@ -79,11 +76,9 @@ const JobCardCreator = () => {
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
-            // Added getToolAccessories to the fetch
             const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
                 getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
             ]);
-            // Added toolAccessories to the data object
             setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv });
             setLoading(false);
         };
@@ -121,13 +116,14 @@ const JobCardCreator = () => {
                   partName: part.name,
                   photoUrl: part.photoUrl || '',
                   departmentName: department.name,
+                  // --- UPDATED: Save both ID and Name ---
+                  employeeId: employee.id,
                   employeeName: employee.name,
                   status: 'Pending',
                   description: recipe?.description || 'N/A',
                   estimatedTime: recipe?.estimatedTime || 0,
                   steps: recipe?.steps || [],
                   tools: (recipe?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
-                  // --- NEW: Map accessory IDs to full accessory objects ---
                   accessories: (recipe?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
                   consumables: (recipe?.consumables || []),
               });

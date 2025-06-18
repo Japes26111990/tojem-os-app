@@ -7,8 +7,8 @@ import Dropdown from '../../ui/Dropdown';
 const EmployeesManager = () => {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [newEmployeeName, setNewEmployeeName] = useState('');
-  const [selectedDeptId, setSelectedDeptId] = useState('');
+  // --- UPDATED: State is now an object for the whole form ---
+  const [newEmployee, setNewEmployee] = useState({ name: '', departmentId: '', hourlyRate: '' });
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -22,20 +22,28 @@ const EmployeesManager = () => {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
+
+  // --- UPDATED: Handle multiple inputs ---
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setNewEmployee(prev => ({ ...prev, [name]: value }));
+  };
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    if (!newEmployeeName.trim() || !selectedDeptId) {
+    if (!newEmployee.name.trim() || !newEmployee.departmentId) {
       alert("Please enter an employee name and select a department.");
       return;
     }
     try {
-      await addEmployee({ name: newEmployeeName, departmentId: selectedDeptId });
-      setNewEmployeeName('');
-      setSelectedDeptId('');
+      // Pass the whole object, converting rate to a number
+      await addEmployee({ 
+          ...newEmployee, 
+          hourlyRate: Number(newEmployee.hourlyRate) || 0 
+      });
+      // Reset the form state
+      setNewEmployee({ name: '', departmentId: '', hourlyRate: '' });
       fetchData();
     } catch (error) {
       console.error("Error adding employee:", error);
@@ -44,55 +52,54 @@ const EmployeesManager = () => {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this employee?")) {
-      try {
-        await deleteEmployee(id);
-        fetchData();
-      } catch (error) {
-        console.error("Error deleting employee:", error);
-        alert("Failed to delete employee.");
-      }
+    if (window.confirm("Are you sure?")) {
+      await deleteEmployee(id);
+      fetchData();
     }
   };
 
-  const getDepartmentName = (deptId) => {
-    const dept = departments.find(d => d.id === deptId);
-    return dept ? dept.name : 'Unknown';
-  };
+  const getDepartmentName = (deptId) => departments.find(d => d.id === deptId)?.name || 'Unknown';
 
   return (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
       <h3 className="text-xl font-bold text-white mb-4">Manage Employees</h3>
-      <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
+      {/* --- UPDATED: Form now includes Hourly Rate --- */}
+      <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6">
         <Input
           label="Employee Name"
-          name="newEmployee"
-          value={newEmployeeName}
-          onChange={(e) => setNewEmployeeName(e.target.value)}
+          name="name"
+          value={newEmployee.name}
+          onChange={handleInputChange}
           placeholder="New employee name..."
         />
-        {/* --- FIX APPLIED TO DROPDOWN --- */}
         <Dropdown
           label="Department"
-          name="department"
-          value={selectedDeptId}
-          onChange={(e) => setSelectedDeptId(e.target.value)}
+          name="departmentId"
+          value={newEmployee.departmentId}
+          onChange={handleInputChange}
           options={departments || []}
           placeholder="Select a department..."
+        />
+        <Input
+          label="Hourly Rate (R)"
+          name="hourlyRate"
+          type="number"
+          value={newEmployee.hourlyRate}
+          onChange={handleInputChange}
+          placeholder="e.g., 150.50"
         />
         <Button type="submit" variant="primary">Add Employee</Button>
       </form>
 
       <div className="space-y-3">
-        {/* --- FIX APPLIED TO THE LIST MAP --- */}
         {loading ? <p>Loading...</p> : (employees || []).map(emp => (
           <div key={emp.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
             <p className="text-gray-200">
               {emp.name} - <span className="text-gray-400 text-sm">{getDepartmentName(emp.departmentId)}</span>
+              {/* --- UPDATED: Display the rate --- */}
+              <span className="text-blue-400 font-mono text-sm ml-4">R{(emp.hourlyRate || 0).toFixed(2)}/hr</span>
             </p>
-            <Button onClick={() => handleDelete(emp.id)} variant="danger" className="py-1 px-3 text-xs">
-              Delete
-            </Button>
+            <Button onClick={() => handleDelete(emp.id)} variant="danger" className="py-1 px-3 text-xs">Delete</Button>
           </div>
         ))}
       </div>

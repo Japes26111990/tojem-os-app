@@ -36,7 +36,6 @@ export const getToolAccessories = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addToolAccessory = (accessoryData) => {
-    // accessoryData should be an object like { name: 'Drill Bit', toolId: '...' }
     return addDoc(toolAccessoriesCollection, accessoryData);
 };
 export const deleteToolAccessory = (accessoryId) => {
@@ -281,32 +280,123 @@ export const getJobByJobId = async (jobId) => {
   const jobDoc = querySnapshot.docs[0];
   return { id: jobDoc.id, ...jobDoc.data() };
 };
-export const updateJobStatus = (docId, newStatus) => {
-  const jobDocRef = doc(db, 'createdJobCards', docId);
-  return updateDoc(jobDocRef, { status: newStatus });
+export const updateJobStatus = async (docId, newStatus) => {
+    const jobDocRef = doc(db, 'createdJobCards', docId);
+    
+    const jobDoc = await getDoc(jobDocRef);
+    if (!jobDoc.exists()) {
+        throw new Error("Job not found!");
+    }
+    const currentData = jobDoc.data();
+
+    const dataToUpdate = {
+        status: newStatus,
+    };
+
+    if (newStatus === 'In Progress') {
+        if (!currentData.startedAt) {
+            dataToUpdate.startedAt = serverTimestamp();
+        }
+        else if (currentData.status === 'Paused' && currentData.pausedAt) {
+            const pauseDuration = new Date().getTime() - currentData.pausedAt.toDate().getTime();
+            dataToUpdate.totalPausedMilliseconds = increment(pauseDuration);
+        }
+    } 
+    else if (newStatus === 'Paused') {
+        dataToUpdate.pausedAt = serverTimestamp();
+    }
+    else if (newStatus === 'Awaiting QC') {
+        dataToUpdate.completedAt = serverTimestamp();
+    }
+
+    return updateDoc(jobDocRef, dataToUpdate);
 };
+
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
+  // Get all necessary lookup data before starting the transaction
+  const allInventory = await getAllInventoryItems();
+  const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
+  const allEmployees = await getEmployees();
+  const employeeMap = new Map(allEmployees.map(emp => [emp.id, emp]));
+
   return runTransaction(db, async (transaction) => {
     const jobRef = doc(db, 'createdJobCards', job.id);
-    if (isApproved) {
-      transaction.update(jobRef, { status: 'Complete' });
-    } else {
-      transaction.update(jobRef, { status: 'Issue', issueReason: rejectionReason });
+    // You MUST read from the document inside the transaction before you write to it.
+    const jobDoc = await transaction.get(jobRef);
+    if (!jobDoc.exists()) {
+        throw "Job document does not exist!";
     }
-    if (job.consumables && job.consumables.length > 0) {
-      const allInventory = await getAllInventoryItems();
-      const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
-      for (const consumable of job.consumables) {
+    const currentJobData = jobDoc.data();
+
+
+    const dataToUpdate = {};
+
+    if (isApproved) {
+        dataToUpdate.status = 'Complete';
+
+        let materialCost = 0;
+        let laborCost = 0;
+
+        if (currentJobData.consumables && currentJobData.consumables.length > 0) {
+            for (const consumable of currentJobData.consumables) {
+                const inventoryItem = inventoryMap.get(consumable.id);
+                if (inventoryItem && inventoryItem.price) {
+                    materialCost += (inventoryItem.price * consumable.quantity);
+                }
+            }
+        }
+        dataToUpdate.materialCost = materialCost;
+
+        const employee = employeeMap.get(currentJobData.employeeId);
+        const hourlyRate = employee?.hourlyRate || 0;
+        // The completedAt timestamp might not be set yet when this transaction runs
+        // so we need to be careful. Let's use the current server time as the completion time for the calculation.
+        if (currentJobData.startedAt && hourlyRate > 0) {
+            const completedAt = new Date(); // Use current time for calculation
+            let activeSeconds = (completedAt.getTime() - currentJobData.startedAt.toDate().getTime()) / 1000;
+            if (currentJobData.totalPausedMilliseconds) {
+                activeSeconds -= Math.floor(currentJobData.totalPausedMilliseconds / 1000);
+            }
+            const activeHours = activeSeconds > 0 ? activeSeconds / 3600 : 0;
+            laborCost = activeHours * hourlyRate;
+        }
+        dataToUpdate.laborCost = laborCost;
+        dataToUpdate.totalCost = materialCost + laborCost;
+
+    } else {
+      dataToUpdate.status = 'Issue';
+      dataToUpdate.issueReason = rejectionReason;
+    }
+    
+    transaction.update(jobRef, dataToUpdate);
+
+    if (isApproved && currentJobData.consumables && currentJobData.consumables.length > 0) {
+      for (const consumable of currentJobData.consumables) {
         const inventoryItem = inventoryMap.get(consumable.id);
-        if (inventoryItem) {
-          let collectionName = '';
-          if (inventoryItem.category === 'Component') collectionName = 'components';
-          else if (inventoryItem.category === 'Raw Material') collectionName = 'rawMaterials';
-          else if (inventoryItem.category === 'Workshop Supply') collectionName = 'workshopSupplies';
-          if (collectionName) {
+        if (!inventoryItem) continue;
+
+        let collectionName = '';
+        if (inventoryItem.category === 'Component') collectionName = 'components';
+        else if (inventoryItem.category === 'Raw Material') collectionName = 'rawMaterials';
+        else if (inventoryItem.category === 'Workshop Supply') collectionName = 'workshopSupplies';
+        
+        if (collectionName) {
             const itemRef = doc(db, collectionName, consumable.id);
             transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
-          }
+
+            const currentStock = Number(inventoryItem.currentStock);
+            const reorderLevel = Number(inventoryItem.reorderLevel);
+            const newStockLevel = currentStock - consumable.quantity;
+
+            if (reorderLevel > 0 && currentStock >= reorderLevel && newStockLevel < reorderLevel) {
+                const newQueueDocRef = doc(collection(db, 'purchaseQueue'));
+                transaction.set(newQueueDocRef, {
+                    itemId: inventoryItem.id, itemName: inventoryItem.name, supplierId: inventoryItem.supplierId,
+                    itemCode: inventoryItem.itemCode || '', category: inventoryItem.category, currentStock: newStockLevel,
+                    reorderLevel: reorderLevel, standardStockLevel: inventoryItem.standardStockLevel, price: inventoryItem.price,
+                    unit: inventoryItem.unit, status: 'pending', queuedAt: serverTimestamp()
+                });
+            }
         }
       }
     }
