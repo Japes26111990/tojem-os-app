@@ -156,18 +156,24 @@ const JobCardCreator = () => {
 
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
-        if (partId && departmentId && employeeId && currentTemp !== null) {
+        
+        // ** CHANGE **: Now only require partId and departmentId to generate a preview
+        if (partId && departmentId && currentTemp !== null) {
             const part = allData.parts.find(p => p.id === partId);
             const department = allData.departments.find(d => d.id === departmentId);
-            const employee = allData.employees.find(e => e.id === employeeId);
+            const employee = allData.employees.find(e => e.id === employeeId); // This can be undefined, which is okay
             const recipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
 
-            if (part && department && employee) {
+            if (part && department) {
               const processedConsumables = processRecipeConsumables(recipe?.consumables, allData.allConsumables, currentTemp);
               
               setJobDetails({
                   jobId: `JOB-${Date.now()}`,
-                  partName: part.name, photoUrl: part.photoUrl || '', departmentName: department.name, employeeId: employee.id, employeeName: employee.name, status: 'Pending',
+                  partName: part.name, photoUrl: part.photoUrl || '', departmentName: department.name, 
+                  // ** CHANGE **: Handle the optional employee
+                  employeeId: employee ? employee.id : '', 
+                  employeeName: employee ? employee.name : 'Unassigned', 
+                  status: 'Pending',
                   description: recipe?.description || 'N/A', estimatedTime: recipe?.estimatedTime || 0, steps: recipe?.steps || [],
                   tools: (recipe?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
                   accessories: (recipe?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
@@ -207,8 +213,10 @@ const JobCardCreator = () => {
                     <Dropdown label="3. Model" name="modelId" value={selection.modelId} onChange={handleSelection} options={filteredModels} placeholder="Select Model" disabled={!selection.makeId} />
                     <Dropdown label="4. Part" name="partId" value={selection.partId} onChange={handleSelection} options={filteredParts} placeholder="Select Part" disabled={!selection.modelId} />
                     <Dropdown label="5. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department" />
-                    <Dropdown label="6. Employee" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee" disabled={!selection.departmentId} />
+                    {/* ** CHANGE **: Update label to show it's optional */}
+                    <Dropdown label="6. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
                 </div>
+                {/* ** CHANGE **: The button now appears as long as jobDetails is not null */}
                 {jobDetails && (
                     <div className="mt-8 text-center">
                         <Button onClick={handlePrintAndCreate} variant="primary">Print & Create Job</Button>
