@@ -7,71 +7,66 @@ import SuppliersManager from '../components/features/settings/SuppliersManager';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
 import ProductRecipeManager from '../components/features/settings/ProductRecipeManager';
-import DatabaseEditor from '../components/features/settings/DatabaseEditor'; // <-- 1. IMPORT NEW COMPONENT
+// Removed DatabaseEditor import as it's no longer needed
 
 const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
-  const activeClasses = isDanger ? "bg-red-600 text-white" : "bg-blue-600 text-white";
-  const inactiveClasses = isDanger ? "bg-gray-800 text-red-400 hover:bg-red-500/20" : "bg-gray-800 text-gray-300 hover:bg-gray-700";
+  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
+  const activeClasses = isDanger ? "bg-red-600 text-white" : "bg-blue-600 text-white";
+  const inactiveClasses = isDanger ? "bg-gray-800 text-red-400 hover:bg-red-500/20" : "bg-gray-800 text-gray-300 hover:bg-gray-700";
 
-  return (
-    <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
-      {label}
-    </button>
-  );
+  return (
+    <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
+      {label}
+    </button>
+  );
 };
 
 const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState('products');
+  const [activeTab, setActiveTab] = useState('products');
 
-  const tabs = useMemo(() => ({
-    products: {
-      label: 'Products & Recipes',
-      components: [<ProductRecipeManager key="product-recipe" />]
-    },
-    inventory: {
-      label: 'Inventory & Suppliers',
-      components: [<InventoryManager key="inventory" />, <SuppliersManager key="suppliers" />]
-    },
-    assets: {
-      label: 'Tools & Assets',
-      components: [<ToolsManager key="tools" />, <ToolAccessoriesManager key="tool-accessories" />]
-    },
-    company: {
-      label: 'Company & Staff',
-      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />]
-    },
-    // --- 2. ADD NEW TAB FOR THE EDITOR ---
-    dbEditor: {
-        label: 'DB Editor',
-        isDanger: true, // Optional styling for an "advanced" tab
-        components: [<DatabaseEditor key="db-editor" />]
-    }
-  }), []);
+  const tabs = useMemo(() => ({
+    products: {
+      label: 'Products & Recipes',
+      components: [<ProductRecipeManager key="product-recipe" />]
+    },
+    inventory: {
+      label: 'Inventory & Suppliers',
+      components: [<InventoryManager key="inventory" />, <SuppliersManager key="suppliers" />]
+    },
+    assets: {
+      label: 'Tools & Assets',
+      components: [<ToolsManager key="tools" />, <ToolAccessoriesManager key="tool-accessories" />]
+    },
+    company: {
+      label: 'Company & Staff',
+      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />]
+    },
+    // Removed DB Editor tab as per your request
+  }), []); // No change to dependencies
 
-  return (
-    <MainLayout>
-      <div className="space-y-8">
-        <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
+  return (
+    <MainLayout>
+      <div className="space-y-8">
+        <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
 
-        <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
-          {Object.entries(tabs).map(([tabKey, tabData]) => (
-            <TabButton
-              key={tabKey}
-              label={tabData.label}
-              isActive={activeTab === tabKey}
-              onClick={() => setActiveTab(tabKey)}
-              isDanger={tabData.isDanger}
-            />
-          ))}
-        </div>
+        <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
+          {Object.entries(tabs).map(([tabKey, tabData]) => (
+            <TabButton
+              key={tabKey}
+              label={tabData.label}
+              isActive={activeTab === tabKey}
+              onClick={() => setActiveTab(tabKey)}
+              isDanger={tabData.isDanger}
+            />
+          ))}
+        </div>
 
-        <div className="space-y-8">
-          {tabs[activeTab].components}
-        </div>
-      </div>
-    </MainLayout>
-  );
+        <div className="space-y-8">
+          {tabs[activeTab].components}
+        </div>
+      </div>
+    </MainLayout>
+  );
 };
 
 export default SettingsPage;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, getEmployees } from '../../../api/firestore';
+import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore'; // Added getAllInventoryItems, getTools, getToolAccessories
 import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
@@ -30,11 +30,9 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
     const calculateLiveDuration = (j, cTime) => {
         if (!j.startedAt) return null;
-
         let durationSeconds;
         const startTime = j.startedAt.seconds * 1000;
         const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-
         if (j.status === 'Complete' || j.status === 'Awaiting QC' || j.status === 'Issue' || j.status === 'Archived - Issue') {
             if (!j.completedAt) return null;
             durationSeconds = (j.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
@@ -45,7 +43,6 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
         } else {
             return null;
         }
-
         if (durationSeconds < 0) return null;
         const minutes = Math.floor(durationSeconds / 60);
         const seconds = Math.floor(durationSeconds % 60);
@@ -57,16 +54,12 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
         if (j.totalCost !== undefined && j.totalCost !== null) {
             return `R ${j.totalCost.toFixed(2)}`;
         }
-
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
-
         const hourlyRate = rates[j.employeeId];
         if (hourlyRate === 0) return 'N/A';
-
         let activeSeconds = 0;
         const startTime = j.startedAt ? j.startedAt.seconds * 1000 : null;
         const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-
         if (j.status === 'In Progress') {
             if (startTime) {
                 activeSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
@@ -74,18 +67,14 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
         } else if (j.status === 'Paused' && j.pausedAt && startTime) {
             activeSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
         } else {
-            return 'N/A'; // For 'Pending' or other statuses without active labor
+            return 'N/A';
         }
-
         activeSeconds = Math.max(0, activeSeconds);
         const activeHours = activeSeconds / 3600;
         const liveLaborCost = activeHours * hourlyRate;
         
-        // Material cost is usually set upon QC approval. For live tracking before QC,
-        // we assume it's 0 or based on an earlier calculation if available on the job object.
-        const currentMaterialCost = j.materialCost || 0; 
+        const currentMaterialCost = j.materialCost || 0;
         const totalLiveCost = liveLaborCost + currentMaterialCost;
-
         return `R ${totalLiveCost.toFixed(2)}`;
     };
 
@@ -109,34 +98,55 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
 const LiveTrackingTable = () => {
     const [jobs, setJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
+    const [allInventoryItems, setAllInventoryItems] = useState([]); // State for all inventory items
+    const [allTools, setAllTools] = useState([]); // State for all tools
+    const [allToolAccessories, setAllToolAccessories] = useState([]); // State for all tool accessories
     const [loading, setLoading] = useState(true);
     const [selectedJob, setSelectedJob] = useState(null);
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
 
-    useEffect(() => {
+    const fetchAllRequiredData = async () => { // Renamed from fetchJobsAndEmployees for clarity
         setLoading(true);
-        const unsubscribeJobs = listenToJobCards((fetchedJobs) => {
-            setJobs(fetchedJobs);
-        });
-
-        const fetchEmployeesData = async () => {
-            const fetchedEmployees = await getEmployees();
+        try {
+            const [fetchedEmployees, fetchedInventory, fetchedTools, fetchedToolAccessories] = await Promise.all([
+                getEmployees(),
+                getAllInventoryItems(), // Fetch all inventory items
+                getTools(), // Fetch all tools
+                getToolAccessories(), // Fetch all tool accessories
+            ]);
             setEmployees(fetchedEmployees);
+            setAllInventoryItems(fetchedInventory);
+            setAllTools(fetchedTools);
+            setAllToolAccessories(fetchedToolAccessories);
+            
+            // Use onSnapshot for real-time updates on jobs
+            const unsubscribe = listenToJobCards((fetchedJobs) => {
+                setJobs(fetchedJobs);
+                setLoading(false);
+            });
+            return unsubscribe; // Return unsubscribe to be called on cleanup
+        } catch (error) {
+            console.error("Failed to fetch initial data for tracking table:", error);
             setLoading(false);
-        };
-        
-        fetchEmployeesData();
+        }
+    };
 
+    useEffect(() => {
+        let unsubscribeJobs;
+        (async () => {
+            unsubscribeJobs = await fetchAllRequiredData();
+        })();
+        
         const intervalId = setInterval(() => {
             setCurrentTime(Date.now());
         }, 1000);
 
         return () => {
-            unsubscribeJobs();
+            if (unsubscribeJobs) unsubscribeJobs();
             clearInterval(intervalId);
         };
-    }, []);
+    }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
 
     const employeeHourlyRates = useMemo(() => {
         return employees.reduce((acc, emp) => {
@@ -153,21 +163,43 @@ const LiveTrackingTable = () => {
             .sort((a, b) => {
                 const statusCompare = statusOrder[a.status] - statusOrder[b.status];
                 if (statusCompare !== 0) return statusCompare;
-
-                const timeA = a.status === 'In Progress' || a.status === 'Paused' ? a.startedAt : a.createdAt;
+                const timeA = a.status === 'In Progress' 
+                || a.status === 'Paused' ? a.startedAt : a.createdAt;
                 const timeB = b.status === 'In Progress' || b.status === 'Paused' ? b.startedAt : b.createdAt;
-
                 if (timeA && timeB) {
                     return timeB.seconds - timeA.seconds;
                 }
                 return 0;
             });
-
         const completed = jobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
-        return { activeJobs: active, completedAndArchivedJobs: completed };
+        return { activeJobs: active, completedAndArchivedJobs: completed 
+        };
     }, [jobs]);
 
+    // Handler for updating a job from the modal
+    const handleUpdateJob = async (jobId, updatedData) => {
+        try {
+            await updateDocument('createdJobCards', jobId, updatedData);
+            // The listenToJobCards will automatically update the state, no need for manual setJobs
+        } catch (error) {
+            console.error("Error updating job from modal:", error);
+            throw error; // Re-throw to be caught by the modal's save handler
+        }
+    };
+
+    // Handler for deleting a job from the modal
+    const handleDeleteJob = async (jobId) => {
+        try {
+            await deleteDocument('createdJobCards', jobId);
+            // The listenToJobCards will automatically update the state
+        } catch (error) {
+            console.error("Error deleting job from modal:", error);
+            throw error; // Re-throw to be caught by the modal's delete handler
+        }
+    };
+
     if (loading) return <p className="text-center text-gray-400">Loading jobs...</p>;
+
     return (
         <>
             <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden">
@@ -196,14 +228,14 @@ const LiveTrackingTable = () => {
                             ))}
                         </tbody>
                     </table>
-
                     <div className="border-t border-gray-700">
                         <button
                             onClick={() => setShowCompleted(!showCompleted)}
                             className="w-full flex items-center justify-between p-3 text-left text-sm font-semibold text-gray-300 bg-gray-900/30 hover:bg-gray-700/50 transition-colors"
                         >
                             <span>Completed & Archived Jobs ({completedAndArchivedJobs.length})</span>
-                            {showCompleted ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                            {showCompleted ?
+                            <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </button>
                         {showCompleted && (
                             <table className="w-full text-left">
@@ -229,15 +261,21 @@ const LiveTrackingTable = () => {
                         )}
                     </div>
                 </div>
+                {selectedJob && (
+                    <JobDetailsModal
+                        job={selectedJob}
+                        onClose={() => setSelectedJob(null)}
+                        currentTime={currentTime}
+                        employeeHourlyRates={employeeHourlyRates}
+                        allEmployees={employees} // Pass allEmployees for dropdown in edit mode
+                        onUpdateJob={handleUpdateJob} // Pass update handler
+                        onDeleteJob={handleDeleteJob} // Pass delete handler
+                        allInventoryItems={allInventoryItems} // Pass all inventory items for consumable editor
+                        allTools={allTools} // Pass all tools for tool/accessory selection
+                        allToolAccessories={allToolAccessories} // Pass all tool accessories for selection
+                    />
+                )}
             </div>
-            {selectedJob && (
-                <JobDetailsModal
-                    job={selectedJob}
-                    onClose={() => setSelectedJob(null)}
-                    currentTime={currentTime}
-                    employeeHourlyRates={employeeHourlyRates}
-                />
-            )}
         </>
     );
 };
