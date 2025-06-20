@@ -7,7 +7,9 @@ import SuppliersManager from '../components/features/settings/SuppliersManager';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
 import ProductRecipeManager from '../components/features/settings/ProductRecipeManager';
-// Removed DatabaseEditor import as it's no longer needed
+// Corrected import path: 'feutures' -> 'features'
+import OverheadsManager from '../components/features/settings/OverheadsManager'; 
+
 
 const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -41,8 +43,11 @@ const SettingsPage = () => {
       label: 'Company & Staff',
       components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />]
     },
-    // Removed DB Editor tab as per your request
-  }), []); // No change to dependencies
+    financials: { // NEW TAB FOR FINANCIALS
+      label: 'Financials',
+      components: [<OverheadsManager key="overheads" />]
+    }
+  }), []); 
 
   return (
     <MainLayout>
