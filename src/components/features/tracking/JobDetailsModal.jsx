@@ -2,8 +2,9 @@ import React from 'react';
 import Button from '../../ui/Button';
 import { X, CheckCircle2, DollarSign, Clock, Zap } from 'lucide-react';
 
+// A small component to make the layout cleaner
 const DetailRow = ({ label, value, className = 'text-gray-300' }) => (
-    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+    <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
         <p className="text-sm text-gray-400">{label}</p>
         <p className={`text-sm font-semibold ${className}`}>{value}</p>
     </div>
@@ -74,7 +75,7 @@ const JobDetailsModal = ({ job, onClose }) => {
 
                     {/* Performance & Cost */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="bg-gray-900/50 p-4 rounded-lg text-center"><Clock size={20} className="mx-auto mb-2 text-blue-400" /><p className="text-xs text-gray-400">Est. Time</p><p className="font-bold">{job.estimatedTime} min</p></div>
+                        <div className="bg-gray-900/50 p-4 rounded-lg text-center"><Clock size={20} className="mx-auto mb-2 text-blue-400" /><p className="text-xs text-gray-400">Est. Time</p><p className="font-bold">{job.estimatedTime || 'N/A'} min</p></div>
                         <div className="bg-gray-900/50 p-4 rounded-lg text-center"><CheckCircle2 size={20} className="mx-auto mb-2 text-green-400" /><p className="text-xs text-gray-400">Actual Time</p><p className="font-bold">{formatDuration(job)}</p></div>
                         <div className="bg-gray-900/50 p-4 rounded-lg text-center"><Zap size={20} className="mx-auto mb-2 text-purple-400" /><p className="text-xs text-gray-400">Efficiency</p><p className="font-bold">{formatEfficiency(job)}</p></div>
                     </div>
@@ -88,7 +89,7 @@ const JobDetailsModal = ({ job, onClose }) => {
                     <div>
                         <h4 className="font-semibold text-gray-200 mb-2">Consumables Used</h4>
                         <ul className="text-sm text-gray-400 list-disc list-inside bg-gray-900/50 p-4 rounded-lg">
-                            {job.consumables?.length > 0 ? job.consumables.map((c, i) => <li key={i}>{c.name} (Qty: {c.quantity})</li>) : <li>None</li>}
+                            {job.processedConsumables?.length > 0 ? job.processedConsumables.map((c, i) => <li key={i}>{c.name} (Qty: {c.quantity.toFixed(3)} {c.unit || ''})</li>) : <li>None</li>}
                         </ul>
                     </div>
                 </div>

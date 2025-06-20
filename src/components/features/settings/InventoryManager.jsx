@@ -4,7 +4,7 @@ import { useInventoryManager } from '../../../hooks/useInventoryManager';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Search } from 'lucide-react';
+import { Search, Scale, Hash } from 'lucide-react'; // Import new icons
 
 const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
     const stock = Number(currentStock);
@@ -64,36 +64,49 @@ const InventoryManager = () => {
       </div>
       <p className="text-sm text-gray-400 mb-6">{categoryInfo[category].desc}</p>
       
-      <form onSubmit={manager.handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end mb-6">
-        <div className="lg:col-span-2"><Input label="Item Name" name="name" value={manager.newItem.name} onChange={manager.handleInputChange} placeholder={categoryInfo[category].placeholder} /></div>
-        <div className="lg:col-span-2"><Dropdown label="Supplier" name="supplierId" value={manager.newItem.supplierId} onChange={manager.handleInputChange} options={suppliers} placeholder="Select..." /></div>
-        <Input label="Item Code" name="itemCode" value={manager.newItem.itemCode} onChange={manager.handleInputChange} placeholder="Optional" />
-        <Input label="Price" name="price" type="number" value={manager.newItem.price} onChange={manager.handleInputChange} placeholder="e.g., 12.50" />
-        <Input label="Unit" name="unit" value={manager.newItem.unit} onChange={manager.handleInputChange} placeholder="e.g., each, kg" />
-        <div className="grid grid-cols-3 gap-2">
-            <Input label="In Stock" name="currentStock" type="number" value={manager.newItem.currentStock} onChange={manager.handleInputChange} placeholder="50" />
-            <Input label="Reorder" name="reorderLevel" type="number" value={manager.newItem.reorderLevel} onChange={manager.handleInputChange} placeholder="20" />
-            <Input label="Standard" name="standardStockLevel" type="number" value={manager.newItem.standardStockLevel} onChange={manager.handleInputChange} placeholder="200" />
-        </div>
-        
-        {category === 'rawMaterials' && (
-            <div className="flex items-center justify-center h-full pt-6">
-                <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
-                    <input 
-                        type="checkbox" 
-                        name="requiresCatalyst"
-                        checked={manager.newItem.requiresCatalyst || false}
-                        onChange={manager.handleInputChange}
-                        className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
-                    />
-                    Requires Catalyst
-                </label>
+      <form onSubmit={manager.handleSubmit} className="space-y-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div className="lg:col-span-2"><Input label="Item Name" name="name" value={manager.newItem.name} onChange={manager.handleInputChange} placeholder={categoryInfo[category].placeholder} /></div>
+            <div className="lg:col-span-2"><Dropdown label="Supplier" name="supplierId" value={manager.newItem.supplierId} onChange={manager.handleInputChange} options={suppliers} placeholder="Select..." /></div>
+            <Input label="Item Code" name="itemCode" value={manager.newItem.itemCode} onChange={manager.handleInputChange} placeholder="Optional" />
+            <Input label="Price" name="price" type="number" value={manager.newItem.price} onChange={manager.handleInputChange} placeholder="e.g., 12.50" />
+            <Input label="Unit" name="unit" value={manager.newItem.unit} onChange={manager.handleInputChange} placeholder="e.g., each, kg" />
+            <div className="grid grid-cols-3 gap-2">
+                <Input label="In Stock" name="currentStock" type="number" value={manager.newItem.currentStock} onChange={manager.handleInputChange} placeholder="50" />
+                <Input label="Reorder" name="reorderLevel" type="number" value={manager.newItem.reorderLevel} onChange={manager.handleInputChange} placeholder="20" />
+                <Input label="Standard" name="standardStockLevel" type="number" value={manager.newItem.standardStockLevel} onChange={manager.handleInputChange} placeholder="200" />
             </div>
-        )}
-        
-        <div className="flex space-x-2 lg:col-start-4">
-          <Button type="submit" variant="primary" className="w-full">{manager.editingItemId ? 'Update' : 'Add'}</Button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end p-4 bg-gray-900/50 rounded-lg">
+            <div className="lg:col-span-1">
+                <label className="block text-sm font-medium text-gray-400 mb-1">Stock Take Method</label>
+                <select name="stockTakeMethod" value={manager.newItem.stockTakeMethod || 'quantity'} onChange={manager.handleInputChange} className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white">
+                    <option value="quantity">By Quantity</option>
+                    <option value="weight">By Weight</option>
+                </select>
+            </div>
+            
+            {manager.newItem.stockTakeMethod === 'weight' && (
+                <>
+                    <Input label="Weight per Unit (g)" name="unitWeight" type="number" step="0.01" value={manager.newItem.unitWeight} onChange={manager.handleInputChange} placeholder="e.g., 2.5" />
+                    <Input label="Container Tare Weight (g)" name="tareWeight" type="number" step="0.1" value={manager.newItem.tareWeight} onChange={manager.handleInputChange} placeholder="e.g., 36" />
+                </>
+            )}
+
+            {category === 'rawMaterials' && (
+                <div className="flex items-center justify-center h-full pt-6">
+                    <label className="flex items-center gap-2 text-sm font-medium text-gray-300">
+                        <input type="checkbox" name="requiresCatalyst" checked={manager.newItem.requiresCatalyst || false} onChange={manager.handleInputChange} className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
+                        Requires Catalyst
+                    </label>
+                </div>
+            )}
+        </div>
+
+        <div className="flex justify-end gap-2">
           {manager.editingItemId && <Button type="button" variant="secondary" onClick={manager.cancelEdit}>Cancel</Button>}
+          <Button type="submit" variant="primary">{manager.editingItemId ? 'Update Item' : 'Add Item'}</Button>
         </div>
       </form>
 
@@ -125,9 +138,10 @@ const InventoryManager = () => {
       <div className="space-y-3 mt-2">
         {manager.loading ? <p className="text-center p-4">Loading...</p> : (manager.displayedItems || []).map(item => (
           <div key={item.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center bg-gray-700 p-3 rounded-lg">
-            <p className="font-semibold col-span-2 flex items-center">
+            <p className="font-semibold col-span-2 flex items-center gap-2">
+                {item.stockTakeMethod === 'weight' ? <Scale size={14} className="text-gray-400" title="Counted by Weight"/> : <Hash size={14} className="text-gray-400" title="Counted by Quantity"/>}
                 {item.name}
-                {item.requiresCatalyst && <span className="ml-2 text-xs bg-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full" title="Requires Catalyst">C</span>}
+                {item.requiresCatalyst && <span className="text-xs bg-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full" title="Requires Catalyst">C</span>}
             </p>
             <p>{manager.getSupplierName(item.supplierId)}</p>
             <div className="col-span-2"><StockLevelIndicator {...item} /></div>

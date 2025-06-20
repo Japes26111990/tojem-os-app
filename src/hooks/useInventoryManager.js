@@ -3,7 +3,13 @@ import { addToPurchaseQueue } from '../api/firestore';
 
 export const useInventoryManager = (api, suppliers) => {
   const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', requiresCatalyst: false });
+  // --- ADD new lastCountedInSessionId field to the initial state ---
+  const [newItem, setNewItem] = useState({ 
+    name: '', itemCode: '', price: '', unit: '', supplierId: '', 
+    currentStock: '', reorderLevel: '', standardStockLevel: '', 
+    requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
+    lastCountedInSessionId: '' // New field to track stock take status
+  });
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -57,6 +63,7 @@ export const useInventoryManager = (api, suppliers) => {
     e.preventDefault();
     if (!newItem.name.trim() || !newItem.supplierId) return alert("Item name and supplier are required.");
     
+    // --- ADD new lastCountedInSessionId field to the data being saved ---
     const dataToSave = {
       name: newItem.name,
       itemCode: newItem.itemCode || '',
@@ -67,6 +74,10 @@ export const useInventoryManager = (api, suppliers) => {
       reorderLevel: parseInt(newItem.reorderLevel, 10) || 0,
       standardStockLevel: parseInt(newItem.standardStockLevel, 10) || 0,
       requiresCatalyst: newItem.requiresCatalyst || false,
+      stockTakeMethod: newItem.stockTakeMethod || 'quantity',
+      unitWeight: parseFloat(newItem.unitWeight) || 0,
+      tareWeight: parseFloat(newItem.tareWeight) || 0,
+      lastCountedInSessionId: newItem.lastCountedInSessionId || '', // Ensure it saves
     };
 
     try {
@@ -97,7 +108,8 @@ export const useInventoryManager = (api, suppliers) => {
   };
 
   const handleEdit = (item) => { setEditingItemId(item.id); setNewItem(item); };
-  const cancelEdit = () => { setEditingItemId(null); setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', requiresCatalyst: false }); };
+  // --- UPDATE cancelEdit to reset the new field ---
+  const cancelEdit = () => { setEditingItemId(null); setNewItem({ name: '', itemCode: '', price: '', unit: '', supplierId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '', lastCountedInSessionId: '' }); };
   const handleDelete = async (id) => { if (window.confirm("Are you sure?")) { await api.delete(id); fetchData(); } };
 
   return {
