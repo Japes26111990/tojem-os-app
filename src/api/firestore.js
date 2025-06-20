@@ -1,18 +1,18 @@
 import { db } from './firebase';
 import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment, limit, startAfter } from 'firebase/firestore';
 
-// --- [All of your other API functions (getDepartments, getTools, etc.) remain exactly the same] ---
-// --- [The code is too long to repeat, but ensure all previous functions are here] ---
-
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
+
 export const getDepartments = async () => {
   const snapshot = await getDocs(departmentsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addDepartment = (departmentName) => {
   return addDoc(departmentsCollection, { name: departmentName });
 };
+
 export const deleteDepartment = (departmentId) => {
   const departmentDoc = doc(db, 'departments', departmentId);
   return deleteDoc(departmentDoc);
@@ -20,13 +20,16 @@ export const deleteDepartment = (departmentId) => {
 
 // --- TOOLS API ---
 const toolsCollection = collection(db, 'tools');
+
 export const getTools = async () => {
   const snapshot = await getDocs(toolsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addTool = (toolName) => {
   return addDoc(toolsCollection, { name: toolName });
 };
+
 export const deleteTool = (toolId) => {
   const toolDoc = doc(db, 'tools', toolId);
   return deleteDoc(toolDoc);
@@ -34,13 +37,16 @@ export const deleteTool = (toolId) => {
 
 // --- TOOL ACCESSORIES API ---
 const toolAccessoriesCollection = collection(db, 'toolAccessories');
+
 export const getToolAccessories = async () => {
     const snapshot = await getDocs(toolAccessoriesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addToolAccessory = (accessoryData) => {
     return addDoc(toolAccessoriesCollection, accessoryData);
 };
+
 export const deleteToolAccessory = (accessoryId) => {
     const accessoryDoc = doc(db, 'toolAccessories', accessoryId);
     return deleteDoc(accessoryDoc);
@@ -48,13 +54,16 @@ export const deleteToolAccessory = (accessoryId) => {
 
 // --- EMPLOYEES API ---
 const employeesCollection = collection(db, 'employees');
+
 export const getEmployees = async () => {
   const snapshot = await getDocs(employeesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addEmployee = (employeeData) => {
   return addDoc(employeesCollection, employeeData);
 };
+
 export const deleteEmployee = (employeeId) => {
   const employeeDoc = doc(db, 'employees', employeeId);
   return deleteDoc(employeeDoc);
@@ -62,17 +71,21 @@ export const deleteEmployee = (employeeId) => {
 
 // --- SUPPLIERS API ---
 const suppliersCollection = collection(db, 'suppliers');
+
 export const getSuppliers = async () => {
   const snapshot = await getDocs(suppliersCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addSupplier = (supplierData) => {
   return addDoc(suppliersCollection, supplierData);
 };
+
 export const deleteSupplier = (supplierId) => {
   const supplierDoc = doc(db, 'suppliers', supplierId);
   return deleteDoc(supplierDoc);
 };
+
 export const updateSupplier = (supplierId, updatedData) => {
     const supplierDoc = doc(db, 'suppliers', supplierId);
     return updateDoc(supplierDoc, updatedData);
@@ -80,17 +93,21 @@ export const updateSupplier = (supplierId, updatedData) => {
 
 // --- WORKSHOP SUPPLIES API ---
 const workshopSuppliesCollection = collection(db, 'workshopSupplies');
+
 export const getWorkshopSupplies = async () => {
   const snapshot = await getDocs(workshopSuppliesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addWorkshopSupply = (supplyData) => {
   return addDoc(workshopSuppliesCollection, supplyData);
 };
+
 export const deleteWorkshopSupply = (supplyId) => {
   const supplyDoc = doc(db, 'workshopSupplies', supplyId);
   return deleteDoc(supplyDoc);
 };
+
 export const updateWorkshopSupply = (supplyId, updatedData) => {
     const supplyDoc = doc(db, 'workshopSupplies', supplyId);
     return updateDoc(supplyDoc, updatedData);
@@ -98,17 +115,21 @@ export const updateWorkshopSupply = (supplyId, updatedData) => {
 
 // --- COMPONENTS API ---
 const componentsCollection = collection(db, 'components');
+
 export const getComponents = async () => {
   const snapshot = await getDocs(componentsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addComponent = (componentData) => {
   return addDoc(componentsCollection, componentData);
 };
+
 export const deleteComponent = (componentId) => {
   const componentDoc = doc(db, 'components', componentId);
   return deleteDoc(componentDoc);
 };
+
 export const updateComponent = (componentId, updatedData) => {
     const componentDoc = doc(db, 'components', componentId);
     return updateDoc(componentDoc, updatedData);
@@ -116,17 +137,21 @@ export const updateComponent = (componentId, updatedData) => {
 
 // --- RAW MATERIALS API ---
 const rawMaterialsCollection = collection(db, 'rawMaterials');
+
 export const getRawMaterials = async () => {
   const snapshot = await getDocs(rawMaterialsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addRawMaterial = (materialData) => {
   return addDoc(rawMaterialsCollection, materialData);
 };
+
 export const deleteRawMaterial = (materialId) => {
   const materialDoc = doc(db, 'rawMaterials', materialId);
   return deleteDoc(materialDoc);
 };
+
 export const updateRawMaterial = (materialId, updatedData) => {
     const materialDoc = doc(db, 'rawMaterials', materialId);
     return updateDoc(materialDoc, updatedData);
@@ -134,13 +159,16 @@ export const updateRawMaterial = (materialId, updatedData) => {
 
 // --- PURCHASE QUEUE API ---
 const purchaseQueueCollection = collection(db, 'purchaseQueue');
+
 export const getPurchaseQueue = async () => {
   const snapshot = await getDocs(purchaseQueueCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addToPurchaseQueue = (itemData) => {
   return addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
 };
+
 export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities) => {
   if (!itemsToOrder || itemsToOrder.length === 0) return;
   const batch = writeBatch(db);
@@ -152,7 +180,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
     const docRef = doc(db, 'purchaseQueue', item.id);
     const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
     const orderQty = orderQuantities[item.id] || recommendedQty;
-    batch.update(docRef, { 
+    batch.update(docRef, {
       status: 'ordered',
       orderDate: orderDate,
       expectedArrivalDate: expectedArrivalDate,
@@ -161,6 +189,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
   });
   return batch.commit();
 };
+
 export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceived) => {
     if (!queuedItem || !quantityReceived || quantityReceived <= 0) {
         throw new Error("Invalid item or quantity received.");
@@ -172,26 +201,34 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
     else if (itemCategory === 'Raw Material') inventoryCollectionName = 'rawMaterials';
     else if (itemCategory === 'Workshop Supply') inventoryCollectionName = 'workshopSupplies';
     else throw new Error(`Unknown inventory category: ${itemCategory}`);
+
     const inventoryDocRef = doc(db, inventoryCollectionName, inventoryItemId);
     const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
     const batch = writeBatch(db);
+
     const inventoryDoc = await getDoc(inventoryDocRef);
     if (!inventoryDoc.exists()) throw new Error("Original inventory item not found.");
+
     const currentStock = inventoryDoc.data().currentStock || 0;
     const newStockLevel = Number(currentStock) + Number(quantityReceived);
+
     batch.update(inventoryDocRef, { currentStock: newStockLevel });
     batch.update(purchaseQueueDocRef, { status: 'completed' });
+
     return batch.commit();
 };
+
 export const requeueOrDeleteItem = async (queuedItem) => {
     const itemCategory = queuedItem.category.replace(' ', '');
     const inventoryCollectionName = `${itemCategory.charAt(0).toLowerCase() + itemCategory.slice(1)}s`;
     const inventoryDocRef = doc(db, inventoryCollectionName, queuedItem.itemId);
     const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
+
     const inventoryDoc = await getDoc(inventoryDocRef);
     if (!inventoryDoc.exists()) {
         return deleteDoc(purchaseQueueDocRef);
     }
+
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
         return updateDoc(purchaseQueueDocRef, { status: 'pending' });
@@ -207,6 +244,7 @@ export const getAllInventoryItems = async () => {
         getRawMaterials(),
         getWorkshopSupplies()
     ]);
+
     const allItems = [
         ...components.map(item => ({ ...item, category: 'Component' })),
         ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
@@ -217,55 +255,97 @@ export const getAllInventoryItems = async () => {
 
 // --- JOB STEP DETAILS API ---
 const jobStepDetailsCollection = collection(db, 'jobStepDetails');
+
 export const getJobStepDetails = async () => {
     const snapshot = await getDocs(jobStepDetailsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const setJobStepDetail = (partId, departmentId, data) => {
     const docRef = doc(db, 'jobStepDetails', `${partId}_${departmentId}`);
     return setDoc(docRef, { ...data, partId, departmentId });
 };
-
 
 // --- PRODUCT CATALOG API ---
 const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
 const modelsCollection = collection(db, 'models');
 const partsCollection = collection(db, 'parts');
+
 export const getManufacturers = async () => {
   const snapshot = await getDocs(manufacturersCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addManufacturer = (name) => addDoc(manufacturersCollection, { name });
+
 export const getMakes = async () => {
   const snapshot = await getDocs(makesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addMake = (data) => addDoc(makesCollection, data);
+
 export const getModels = async () => {
   const snapshot = await getDocs(modelsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addModel = (data) => addDoc(modelsCollection, data);
+
 export const getParts = async () => {
   const snapshot = await getDocs(partsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
 export const addPart = (data) => addDoc(partsCollection, data);
+
 export const updatePart = (partId, updatedData) => {
   const partDoc = doc(db, 'parts', partId);
   return updateDoc(partDoc, updatedData);
 };
 
-
 // --- JOB CARDS API ---
 const jobCardsCollection = collection(db, 'createdJobCards');
+
+export const searchPreviousJobs = async (searchText) => {
+    if (!searchText) return [];
+
+    // Firestore doesn't support case-insensitive "contains" or "like" queries natively.
+    // This is a common workaround for "starts with" searches.
+    const q = query(
+        jobCardsCollection,
+        where('partName', '>=', searchText),
+        where('partName', '<=', searchText + '\uf8ff'),
+        orderBy('partName'),
+        orderBy('createdAt', 'desc'), // Also sort by date to get the most recent ones first
+        limit(10) // Limit to 10 results for performance
+    );
+
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const checkExistingJobRecipe = async (partId, departmentId) => {
+  if (!partId || !departmentId) {
+    return false;
+  }
+  const q = query(
+    jobCardsCollection,
+    where('partId', '==', partId),
+    where('departmentId', '==', departmentId)
+  );
+  const snapshot = await getDocs(q);
+  return !snapshot.empty; // Returns true if a recipe with the same part and department exists
+};
+
 export const addJobCard = (jobCardData) => {
   return addDoc(jobCardsCollection, {
     ...jobCardData,
-    createdAt: serverTimestamp() 
+    createdAt: serverTimestamp()
   });
 };
+
 export const listenToJobCards = (callback) => {
   const q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
   const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -274,6 +354,7 @@ export const listenToJobCards = (callback) => {
   });
   return unsubscribe;
 };
+
 export const getJobByJobId = async (jobId) => {
   const q = query(jobCardsCollection, where("jobId", "==", jobId));
   const querySnapshot = await getDocs(q);
@@ -283,9 +364,10 @@ export const getJobByJobId = async (jobId) => {
   const jobDoc = querySnapshot.docs[0];
   return { id: jobDoc.id, ...jobDoc.data() };
 };
+
 export const updateJobStatus = async (docId, newStatus) => {
     const jobDocRef = doc(db, 'createdJobCards', docId);
-    
+
     const jobDoc = await getDoc(jobDocRef);
     if (!jobDoc.exists()) {
         throw new Error("Job not found!");
@@ -304,7 +386,7 @@ export const updateJobStatus = async (docId, newStatus) => {
             const pauseDuration = new Date().getTime() - currentData.pausedAt.toDate().getTime();
             dataToUpdate.totalPausedMilliseconds = increment(pauseDuration);
         }
-    } 
+    }
     else if (newStatus === 'Paused') {
         dataToUpdate.pausedAt = serverTimestamp();
     }
@@ -314,6 +396,7 @@ export const updateJobStatus = async (docId, newStatus) => {
 
     return updateDoc(jobDocRef, dataToUpdate);
 };
+
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
   const allInventory = await getAllInventoryItems();
   const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
@@ -332,6 +415,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
 
     if (isApproved) {
         dataToUpdate.status = 'Complete';
+        dataToUpdate.completedAt = serverTimestamp(); // Set completion time on approval
 
         let materialCost = 0;
         let laborCost = 0;
@@ -349,8 +433,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
         const employee = employeeMap.get(currentJobData.employeeId);
         const hourlyRate = employee?.hourlyRate || 0;
         if (currentJobData.startedAt && hourlyRate > 0) {
-            const completedAt = new Date();
-            let activeSeconds = (completedAt.getTime() - currentJobData.startedAt.toDate().getTime()) / 1000;
+            let activeSeconds = (new Date().getTime() - currentJobData.startedAt.toDate().getTime()) / 1000;
             if (currentJobData.totalPausedMilliseconds) {
                 activeSeconds -= Math.floor(currentJobData.totalPausedMilliseconds / 1000);
             }
@@ -364,7 +447,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
       dataToUpdate.status = 'Issue';
       dataToUpdate.issueReason = rejectionReason;
     }
-    
+
     transaction.update(jobRef, dataToUpdate);
 
     if (isApproved && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
@@ -376,7 +459,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
         if (inventoryItem.category === 'Component') collectionName = 'components';
         else if (inventoryItem.category === 'Raw Material') collectionName = 'rawMaterials';
         else if (inventoryItem.category === 'Workshop Supply') collectionName = 'workshopSupplies';
-        
+
         if (collectionName) {
             const itemRef = doc(db, collectionName, consumable.id);
             transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
@@ -430,7 +513,6 @@ export const updateDocument = async (collectionName, docId, data) => {
     return updateDoc(docRef, dataToSave);
 };
 
-// --- NEW FUNCTION TO ADD ---
 export const deleteDocument = async (collectionName, docId) => {
     const docRef = doc(db, collectionName, docId);
     return deleteDoc(docRef);

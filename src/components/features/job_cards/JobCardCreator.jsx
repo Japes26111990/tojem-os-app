@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems } from '../../../api/firestore';
+import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, checkExistingJobRecipe } from '../../../api/firestore';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 
@@ -65,7 +65,7 @@ const JobCardPreview = ({ details }) => {
     )
 };
 
-const JobCardCreator = () => {
+const JobCardCreator = ({ jobToClone = null }) => {
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
@@ -83,13 +83,12 @@ const JobCardCreator = () => {
                 const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
                     getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
                 ]);
-                
-                setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv });
 
+                setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv });
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 alert("Error fetching page data. Please check the console and refresh.");
-                if (currentTemp === null) setCurrentTemp(20); 
+                if (currentTemp === null) setCurrentTemp(20);
             } finally {
                 setLoading(false);
             }
@@ -98,24 +97,34 @@ const JobCardCreator = () => {
         fetchAllData();
     }, []);
 
+    useEffect(() => {
+        if (jobToClone && allData.parts.length > 0) {
+            const part = allData.parts.find(p => p.id === jobToClone.partId);
+            const model = part ? allData.models.find(m => m.id === part.modelId) : null;
+            const make = model ? allData.makes.find(m => m.id === model.makeId) : null;
+
+            setSelection({
+                manufacturerId: make ? make.manufacturerId : '',
+                makeId: model ? model.makeId : '',
+                modelId: part ? part.modelId : '',
+                partId: jobToClone.partId || '',
+                departmentId: jobToClone.departmentId || '',
+                employeeId: '',
+            });
+        }
+    }, [jobToClone, allData.parts, allData.models, allData.makes]);
+
+
     const processRecipeConsumables = (consumablesFromRecipe, allConsumablesList, temp) => {
         if (!consumablesFromRecipe) return [];
-        
         const processedList = [];
-        const CATALYST_RULES = [
-            { temp_max: 18, percentage: 3.0 },
-            { temp_max: 28, percentage: 2.0 },
-            { temp_max: 100, percentage: 1.0 }
-        ];
+        const CATALYST_RULES = [{ temp_max: 18, percentage: 3.0 }, { temp_max: 28, percentage: 2.0 }, { temp_max: 100, percentage: 1.0 }];
         const catalystItem = allConsumablesList.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
-
         for (const consumable of consumablesFromRecipe) {
             const masterItem = allConsumablesList.find(c => c.id === consumable.itemId);
             if (!masterItem) continue;
-
             if (consumable.type === 'fixed') {
                 processedList.push({ ...masterItem, quantity: consumable.quantity, notes: '' });
-                
                 if (masterItem.requiresCatalyst && catalystItem) {
                     let percentage = 0;
                     for(const rule of CATALYST_RULES) {
@@ -129,7 +138,7 @@ const JobCardCreator = () => {
                         processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temp}°C)` });
                     }
                 }
-            } 
+            }
             else if (consumable.type === 'dimensional') {
                 processedList.push({ ...masterItem, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
             }
@@ -156,23 +165,23 @@ const JobCardCreator = () => {
 
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
-        
-        // ** CHANGE **: Now only require partId and departmentId to generate a preview
         if (partId && departmentId && currentTemp !== null) {
             const part = allData.parts.find(p => p.id === partId);
             const department = allData.departments.find(d => d.id === departmentId);
-            const employee = allData.employees.find(e => e.id === employeeId); // This can be undefined, which is okay
+            const employee = allData.employees.find(e => e.id === employeeId);
             const recipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
 
             if (part && department) {
               const processedConsumables = processRecipeConsumables(recipe?.consumables, allData.allConsumables, currentTemp);
-              
               setJobDetails({
                   jobId: `JOB-${Date.now()}`,
-                  partName: part.name, photoUrl: part.photoUrl || '', departmentName: department.name, 
-                  // ** CHANGE **: Handle the optional employee
-                  employeeId: employee ? employee.id : '', 
-                  employeeName: employee ? employee.name : 'Unassigned', 
+                  partName: part.name,
+                  partId: part.id,
+                  photoUrl: part.photoUrl || '',
+                  departmentId: department.id,
+                  departmentName: department.name,
+                  employeeId: employee ? employee.id : '',
+                  employeeName: employee ? employee.name : 'Unassigned',
                   status: 'Pending',
                   description: recipe?.description || 'N/A', estimatedTime: recipe?.estimatedTime || 0, steps: recipe?.steps || [],
                   tools: (recipe?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
@@ -188,6 +197,17 @@ const JobCardCreator = () => {
 
     const handlePrintAndCreate = async () => {
         if (!jobDetails) return;
+
+        const recipeExists = await checkExistingJobRecipe(jobDetails.partId, jobDetails.departmentId);
+
+        if (recipeExists) {
+            const shouldCreateDuplicate = window.confirm("A job recipe with the same part and department already exists. Are you sure you want to create a new one?");
+            if (!shouldCreateDuplicate) {
+                alert("Job card creation cancelled.");
+                return;
+            }
+        }
+
         try {
             await addJobCard(jobDetails);
             alert(`Job Card ${jobDetails.jobId} created successfully!`);
@@ -206,17 +226,16 @@ const JobCardCreator = () => {
 
     return (
         <>
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 shadow-lg mt-8">
+                <h3 className="text-lg font-semibold text-white mb-6 text-center">{jobToClone ? `Cloning Job for: ${jobToClone.partName}` : "Create New Job from Catalog"}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Dropdown label="1. Manufacturer" name="manufacturerId" value={selection.manufacturerId} onChange={handleSelection} options={allData.manufacturers} placeholder="Select Manufacturer" />
                     <Dropdown label="2. Make" name="makeId" value={selection.makeId} onChange={handleSelection} options={filteredMakes} placeholder="Select Make" disabled={!selection.manufacturerId} />
                     <Dropdown label="3. Model" name="modelId" value={selection.modelId} onChange={handleSelection} options={filteredModels} placeholder="Select Model" disabled={!selection.makeId} />
                     <Dropdown label="4. Part" name="partId" value={selection.partId} onChange={handleSelection} options={filteredParts} placeholder="Select Part" disabled={!selection.modelId} />
                     <Dropdown label="5. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department" />
-                    {/* ** CHANGE **: Update label to show it's optional */}
                     <Dropdown label="6. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
                 </div>
-                {/* ** CHANGE **: The button now appears as long as jobDetails is not null */}
                 {jobDetails && (
                     <div className="mt-8 text-center">
                         <Button onClick={handlePrintAndCreate} variant="primary">Print & Create Job</Button>
