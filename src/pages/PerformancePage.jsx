@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import MainLayout from '../components/layout/MainLayout';
-// Import all necessary Firestore API functions
-import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses } from '../../../api/firestore'; 
+// Corrected import path for firestore.js: '../../../api/firestore' -> '../api/firestore'
+import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses } from '../api/firestore'; 
 import Dropdown from '../components/ui/Dropdown';
 import Button from '../components/ui/Button';
 import { CheckCircle2, AlertCircle, BarChart2, Clock, DollarSign, Zap } from 'lucide-react';
 
-// A local KPI Card component for this page (no changes)
+// A local KPI Card component for this page
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-center space-x-4">
         <div className={`p-3 rounded-full ${color}`}>
@@ -20,9 +20,9 @@ const KpiCard = ({ icon, title, value, color }) => (
 );
 
 const PerformancePage = () => {
+    // Component states
     const [employees, setEmployees] = useState([]);
     const [jobs, setJobs] = useState([]);
-    // States for overhead data
     const [overheadCategories, setOverheadCategories] = useState([]); 
     const [allOverheadExpenses, setAllOverheadExpenses] = useState([]); 
 
@@ -31,17 +31,22 @@ const PerformancePage = () => {
     const [activeRange, setActiveRange] = useState('all'); // '7d', '30d', 'all'
 
     // Static constant for Total Company Productive Hours per Month (Temporary for this step)
-    // You'd set this based on your company's full capacity (e.g., 2 employees * 160 hrs/month = 320 hrs)
-    const TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH = 320; // Example: Assuming 2 full-time employees, 160 productive hours each. Adjust as needed.
+    const TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH = 320; 
+
+    // State for current time, updated every second, used for live tracking calculations
+    const [currentTime, setCurrentTime] = useState(Date.now());
 
 
+    // Effect hook for data fetching and real-time listeners
     useEffect(() => {
-        let unsubscribeFromJobs; // Declare outside the async IIFE to ensure it's in scope for cleanup
+        let unsubscribeJobs = () => {}; // Initialize as a no-op function
+        let intervalId = null; // Initialize intervalId outside to ensure cleanup works
 
-        const fetchInitialAndSetupListeners = async () => {
-            setLoading(true);
+        const fetchAllDataAndSetupListeners = async () => {
+            setLoading(true); // Start loading
+
             try {
-                // Fetch static/less frequent data first (employees, overhead categories)
+                // 1. Fetch static/less frequently changing data first (employees, overhead categories)
                 const [fetchedEmployees, fetchedCategories] = await Promise.all([
                     getEmployees(),
                     getOverheadCategories(),
@@ -49,40 +54,49 @@ const PerformancePage = () => {
                 setEmployees(fetchedEmployees);
                 setOverheadCategories(fetchedCategories);
 
-                // Fetch all individual overhead expenses for calculation
-                let allExpenses = [];
-                for (const category of fetchedCategories) {
-                    const expenses = await getOverheadExpenses(category.id);
-                    allExpenses = [...allExpenses, ...expenses];
-                }
-                setAllOverheadExpenses(allExpenses);
-
-                // Set up the real-time listener for jobs
-                unsubscribeFromJobs = listenToJobCards((fetchedJobs) => {
-                    setJobs(fetchedJobs);
-                    // setLoading(false); // Only set loading false after all initial data (including jobs) is here
+                // 2. Fetch all individual overhead expenses for total calculation
+                let collectedExpenses = [];
+                // Use Promise.all for fetching expenses from all categories concurrently
+                const expensePromises = fetchedCategories.map(category => getOverheadExpenses(category.id));
+                const results = await Promise.all(expensePromises);
+                results.forEach(expensesArray => {
+                    collectedExpenses = [...collectedExpenses, ...expensesArray];
                 });
-                setLoading(false); // All initial data loading is complete here, jobs will update via listener
+                setAllOverheadExpenses(collectedExpenses);
+
+                // 3. Set up the real-time listener for jobs
+                // This will update 'jobs' state whenever a change occurs in Firestore
+                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
+                    setJobs(fetchedJobs);
+                    // Setting loading=false here can be tricky if jobs come in slightly after others.
+                    // Let's set it after initial data and ensure calculations can handle empty 'jobs' briefly.
+                });
+
+                // Set initial current time and interval for live calculations
+                setCurrentTime(Date.now()); // Set initial value
+                intervalId = setInterval(() => { // Start interval
+                    setCurrentTime(Date.now());
+                }, 1000);
+
+                setLoading(false); // All initial data loading is complete or subscribed to
+
             } catch (error) {
                 console.error("Failed to fetch all data for performance page:", error);
                 alert("Error loading performance data. Please check console.");
-                setLoading(false);
+                setLoading(false); // Ensure loading is off even on error
             }
         };
 
-        fetchInitialAndSetupListeners(); // Call the async function
-
-        // Set up the interval for current time update
-        const intervalId = setInterval(() => {
-            setCurrentTime(Date.now());
-        }, 1000);
-
+        fetchAllDataAndSetupListeners(); // Call the main async function
+        
         // Cleanup function for useEffect
         return () => {
-            if (unsubscribeFromJobs) {
-                unsubscribeFromJobs(); // Unsubscribe from Firestore listener
+            if (unsubscribeJobs) {
+                unsubscribeJobs(); // Unsubscribe from Firestore listener
             }
-            clearInterval(intervalId); // Clear the time interval
+            if (intervalId) { 
+                clearInterval(intervalId); // Clear the time interval
+            }
         };
 
     }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
@@ -90,18 +104,37 @@ const PerformancePage = () => {
 
     // The main calculation engine for the page (memoized for performance)
     const performanceData = useMemo(() => {
+            // Ensure all critical data is available before performing complex calculations
+            if (loading && jobs.length === 0 && employees.length === 0 && allOverheadExpenses.length === 0) {
+                return {
+                    jobList: [],
+                    kpis: {
+                        jobsCompleted: 0,
+                        totalWorkHours: "0.0",
+                        avgEfficiency: "0%",
+                        totalJobValue: "R 0.00",
+                        totalMonthlyOverheads: "R 0.00",
+                        overheadCostPerProductiveHour: "R 0.00",
+                    },
+                    burdenedHourlyRates: []
+                };
+            }
+
         // 1. Filter jobs by Date Range and Employee (existing logic)
-        const now = new Date();
+        const now = new Date(currentTime); // Use currentTime for date filtering base
         let startDate = null;
         if (activeRange === '7d') {
             startDate = new Date(now.setDate(now.getDate() - 7));
         } else if (activeRange === '30d') {
             startDate = new Date(now.setDate(now.getDate() - 30));
         }
-        const dateFilteredJobs = jobs.filter(job => {
+        // Ensure jobs array is not null/undefined before filtering
+        const dateFilteredJobs = (jobs || []).filter(job => {
             if (job.status !== 'Complete' || !job.completedAt) return false;
+            const completedDate = job.completedAt?.toDate(); // Safely access toDate
+            if (!completedDate) return false; // Ensure completedDate exists
             if (!startDate) return true; 
-            return job.completedAt.toDate() >= startDate;
+            return completedDate >= startDate;
         });
         const employeeFilteredJobs = selectedEmployeeId
             ? dateFilteredJobs.filter(job => job.employeeId === selectedEmployeeId)
@@ -110,40 +143,49 @@ const PerformancePage = () => {
         // 2. Calculate Job-related KPIs (existing logic)
         const jobsCompleted = employeeFilteredJobs.length;
         let totalWorkMinutes = 0;
-        let totalEfficiencySum = 0; 
+        let totalEfficiencyRatioSum = 0; // Renamed for clarity: sum of individual job efficiency ratios
         let totalJobValue = 0;
 
         employeeFilteredJobs.forEach(job => {
             if (job.startedAt && job.completedAt) {
-                let durationSeconds = job.completedAt.seconds - job.startedAt.seconds;
-                if (job.totalPausedMilliseconds) {
-                    durationSeconds -= Math.floor(job.totalPausedMilliseconds / 1000);
-                }
+                const startedAtTime = job.startedAt.toDate().getTime(); // Ensure conversion to time
+                const completedAtTime = job.completedAt.toDate().getTime(); // Ensure conversion to time
+                const pausedMs = job.totalPausedMilliseconds || 0;
+
+                let durationSeconds = (completedAtTime - startedAtTime - pausedMs) / 1000;
+                durationSeconds = Math.max(0, durationSeconds); // Ensure non-negative duration
+
                 if (durationSeconds > 0) {
                     totalWorkMinutes += durationSeconds / 60;
                 }
             }
-            if (job.estimatedTime && job.estimatedTime > 0 && job.startedAt && job.completedAt) {
-                const actualMinutes = totalWorkMinutes / jobsCompleted; 
-                if(actualMinutes > 0){
-                   totalEfficiencySum += (job.estimatedTime / actualMinutes) * 100;
-                }
-            }
-            if(job.totalCost) {
+            // Corrected efficiency calculation: average of individual efficiencies
+            if (job.estimatedTime && job.estimatedTime > 0 && job.startedAt && job.completedAt) {
+                const startedAtTime = job.startedAt?.toDate()?.getTime();
+                const completedAtTime = job.completedAt?.toDate()?.getTime();
+                const pausedMs = job.totalPausedMilliseconds || 0;
+                const actualSeconds = Math.max(0, (completedAtTime - startedAtTime - pausedMs) / 1000);
+                
+                if (actualSeconds > 0) {
+                    totalEfficiencyRatioSum += (job.estimatedTime * 60) / actualSeconds; // Sum (estimated_seconds / actual_seconds)
+                }
+            }
+            if(typeof job.totalCost === 'number') { // Robustly check if totalCost is a number
                 totalJobValue += job.totalCost;
             }
         });
-        const avgEfficiency = jobsCompleted > 0 ? totalEfficiencySum / jobsCompleted : 0; 
+        // Final average efficiency calculation
+        const avgEfficiency = jobsCompleted > 0 ? (totalEfficiencyRatioSum / jobsCompleted) * 100 : 0; 
 
         // --- NEW: Calculate Burdened Labor Rate ---
-        const totalMonthlyOverheads = allOverheadExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
         
         let overheadCostPerProductiveHour = 0;
         if (TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH > 0) {
             overheadCostPerProductiveHour = totalMonthlyOverheads / TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH;
         }
 
-        const burdenedHourlyRates = employees.map(emp => ({
+        const burdenedHourlyRates = (employees || []).map(emp => ({
             ...emp,
             burdenedRate: (emp.hourlyRate || 0) + overheadCostPerProductiveHour
         }));
@@ -158,23 +200,26 @@ const PerformancePage = () => {
                 totalMonthlyOverheads: `R ${totalMonthlyOverheads.toFixed(2)}`,
                 overheadCostPerProductiveHour: `R ${overheadCostPerProductiveHour.toFixed(2)}`,
             },
-            burdenedHourlyRates: burdenedHourlyRates // Pass this for display
+            burdenedHourlyRates: burdenedHourlyRates 
         };
-    }, [jobs, selectedEmployeeId, activeRange, employees, allOverheadExpenses, TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH]); // Added dependency
+    }, [jobs, selectedEmployeeId, activeRange, employees, allOverheadExpenses, TOTAL_COMPANY_PRODUCTIVE_HOURS_PER_MONTH, currentTime]); 
+
 
     const handleDateRangeSelect = (range) => {
         setActiveRange(range);
     };
 
-    const getEmployeeName = (id) => employees.find(e => e.id === id)?.name || 'N/A';
+    const getEmployeeName = (id) => (employees || []).find(e => e.id === id)?.name || 'N/A';
 
     // Helper to format the final duration for the table
     const formatFinalDuration = (job) => {
         if (!job.startedAt || !job.completedAt) return 'N/A';
-        let durationSeconds = job.completedAt.seconds - job.startedAt.seconds;
-        if (job.totalPausedMilliseconds) {
-            durationSeconds -= Math.floor(job.totalPausedMilliseconds / 1000);
-        }
+        const startedAtTime = job.startedAt?.toDate()?.getTime();
+        const completedAtTime = job.completedAt?.toDate()?.getTime();
+
+        if (typeof startedAtTime !== 'number' || typeof completedAtTime !== 'number') return 'N/A'; // Check for valid timestamps
+
+        let durationSeconds = (completedAtTime - startedAtTime - (job.totalPausedMilliseconds || 0)) / 1000;
         if (durationSeconds < 0) return 'N/A';
         const minutes = Math.floor(durationSeconds / 60);
         const seconds = Math.floor(durationSeconds % 60);
@@ -229,16 +274,18 @@ const PerformancePage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {(performanceData.burdenedHourlyRates || []).map(emp => (
-                                    <tr key={emp.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                        <td className="p-3 text-gray-200">{emp.name}</td>
-                                        <td className="p-3 text-gray-400 text-right">R{(emp.hourlyRate || 0).toFixed(2)}</td>
-                                        <td className="p-3 text-blue-400 font-mono text-right">R{(emp.burdenedRate || 0).toFixed(2)}</td> {/* Ensure burdenedRate exists */}
-                                    </tr>
-                                ))}
-                                {employees.length === 0 && !loading && (
+                                {/* Check if burdenedHourlyRates is populated before mapping */}
+                                {performanceData.burdenedHourlyRates && performanceData.burdenedHourlyRates.length > 0 ? (
+                                    performanceData.burdenedHourlyRates.map(emp => (
+                                        <tr key={emp.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                            <td className="p-3 text-gray-200">{emp.name}</td>
+                                            <td className="p-3 text-gray-400 text-right">R{(emp.hourlyRate || 0).toFixed(2)}</td>
+                                            <td className="p-3 text-blue-400 font-mono text-right">R{(emp.burdenedRate || 0).toFixed(2)}</td>
+                                        </tr>
+                                    ))
+                                ) : ( // Fallback if no employees or rates
                                     <tr>
-                                        <td colSpan="3" className="text-center p-4 text-gray-500">No employees found.</td>
+                                        <td colSpan="3" className="text-center p-4 text-gray-500">No employee data to display burdened rates.</td>
                                     </tr>
                                 )}
                             </tbody>
@@ -266,7 +313,7 @@ const PerformancePage = () => {
                                     <tr><td colSpan="5" className="text-center p-8 text-gray-400">Loading data...</td></tr>
                                 ) : performanceData.jobList.length === 0 ?
                                 (
-                                    <tr><td colSpan="5" className="text-center p-8 text-gray-400">No completed jobs found for the selected criteria.</td></tr>
+                                    <tr><td colSpan="5" className="text-center p-8 text-gray-500">No completed jobs found for the selected criteria.</td></tr>
                                 ) : (
                                     performanceData.jobList.map(job => (
                                         <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
