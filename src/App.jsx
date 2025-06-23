@@ -14,7 +14,8 @@ import QcPage from './pages/QcPage';
 import StockControlPage from './pages/StockControlPage';
 import DashboardPage from './pages/DashboardPage';
 import PerformancePage from './pages/PerformancePage';
-import IssuesPage from './pages/IssuesPage'; // <-- 1. IMPORT THE NEW PAGE
+import IssuesPage from './pages/IssuesPage';
+import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage'; // 1. IMPORT THE NEW HUB PAGE
 
 function App() {
   const { user } = useAuth();
@@ -37,9 +38,13 @@ function App() {
                 <Route path="/tracking" element={<LiveTrackingPage />} />
                 <Route path="/scan" element={<ScannerPage />} />
                 <Route path="/qc" element={<QcPage />} />
-                <Route path="/issues" element={<IssuesPage />} /> {/* <-- 2. ADD THE NEW ROUTE */}
+                <Route path="/issues" element={<IssuesPage />} />
                 <Route path="/performance" element={<PerformancePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
+
+                {/* 2. ADD THE NEW ROUTE WITH A DYNAMIC ID */}
+                <Route path="/employee/:employeeId" element={<EmployeeIntelligencePage />} />
+                
               </Routes>
             </ProtectedRoute>
           }

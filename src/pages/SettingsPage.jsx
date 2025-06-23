@@ -7,8 +7,8 @@ import SuppliersManager from '../components/features/settings/SuppliersManager';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
 import ProductRecipeManager from '../components/features/settings/ProductRecipeManager';
-// Corrected import path: 'feutures' -> 'features'
 import OverheadsManager from '../components/features/settings/OverheadsManager'; 
+import SkillsManager from '../components/features/settings/SkillsManager'; // 1. IMPORT THE NEW COMPONENT
 
 
 const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
@@ -41,7 +41,8 @@ const SettingsPage = () => {
     },
     company: {
       label: 'Company & Staff',
-      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />]
+      // 2. ADD THE SKILLSMANAGER COMPONENT TO THIS TAB'S ARRAY
+      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />]
     },
     financials: { // NEW TAB FOR FINANCIALS
       label: 'Financials',

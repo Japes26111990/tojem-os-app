@@ -15,6 +15,33 @@ export const deleteDepartment = (departmentId) => {
   return deleteDoc(departmentDoc); 
 };
 
+// --- SKILLS API ---
+const skillsCollection = collection(db, 'skills');
+const skillHistoryCollection = collection(db, 'skillHistory');
+
+export const getSkills = async () => {
+    const snapshot = await getDocs(query(skillsCollection, orderBy('name')));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+export const addSkill = (skillName) => {
+    return addDoc(skillsCollection, { name: skillName });
+};
+export const updateSkill = (skillId, updatedData) => {
+    const skillDoc = doc(db, 'skills', skillId);
+    return updateDoc(skillDoc, updatedData);
+};
+export const deleteSkill = (skillId) => {
+    const skillDoc = doc(db, 'skills', skillId);
+    return deleteDoc(skillDoc);
+};
+export const getSkillHistoryForEmployee = async (employeeId) => {
+    // MODIFIED: Removed the orderBy clause to bypass the index issue.
+    const q = query(skillHistoryCollection, where('employeeId', '==', employeeId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+
 // --- TOOLS API ---
 const toolsCollection = collection(db, 'tools'); 
 export const getTools = async () => { 
@@ -56,8 +83,44 @@ export const deleteEmployee = (employeeId) => {
   const employeeDoc = doc(db, 'employees', employeeId); 
   return deleteDoc(employeeDoc); 
 };
+export const getEmployeeSkills = async (employeeId) => {
+    const employeeDocRef = doc(db, 'employees', employeeId);
+    const employeeDoc = await getDoc(employeeDocRef);
+    if (employeeDoc.exists()) {
+        return employeeDoc.data().skills || {};
+    }
+    return {};
+};
+export const updateEmployeeSkillsAndLogHistory = async (employee, skillsData, allSkills) => {
+    const employeeDocRef = doc(db, 'employees', employee.id);
+    const batch = writeBatch(db);
+
+    batch.update(employeeDocRef, { skills: skillsData });
+
+    const allSkillsMap = new Map(allSkills.map(s => [s.id, s.name]));
+
+    for (const skillId in skillsData) {
+        const proficiency = skillsData[skillId];
+        const newHistoryRef = doc(skillHistoryCollection); 
+        
+        const historyRecord = {
+            employeeId: employee.id,
+            employeeName: employee.name,
+            skillId: skillId,
+            skillName: allSkillsMap.get(skillId) || 'Unknown Skill',
+            proficiency: proficiency,
+            assessmentDate: serverTimestamp()
+        };
+        
+        batch.set(newHistoryRef, historyRecord);
+    }
+
+    return batch.commit();
+};
+
 
 // --- SUPPLIERS API ---
+// ... (rest of the APIs remain the same)
 const suppliersCollection = collection(db, 'suppliers'); 
 export const getSuppliers = async () => { 
   const snapshot = await getDocs(suppliersCollection); 
@@ -122,7 +185,7 @@ export const addRawMaterial = (materialData) => {
 };
 export const deleteRawMaterial = (materialId) => { 
   const materialDoc = doc(db, 'rawMaterials', materialId); 
-  return deleteDoc(materialDoc); // FIXED: Ensure this uses materialDoc, not materialId
+  return deleteDoc(materialDoc);
 };
 export const updateRawMaterial = (materialId, updatedData) => { 
     const materialDoc = doc(db, 'rawMaterials', materialId); 
@@ -130,54 +193,46 @@ export const updateRawMaterial = (materialId, updatedData) => {
 };
 
 // --- OVERHEADS API (UPDATED FOR CATEGORIES AND EXPENSES) ---
-const overheadsCategoriesCollection = collection(db, 'overheadsCategories'); // Top-level collection for categories
+const overheadsCategoriesCollection = collection(db, 'overheadsCategories');
 export const getOverheadCategories = async () => {
-    const snapshot = await getDocs(overheadsCategoriesCollection);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await getDocs(overheadsCategoriesCollection);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
-export const addOverheadCategory = (categoryData) => { // Changed param name to categoryData for consistency
-    return addDoc(overheadsCategoriesCollection, categoryData); // Pass the full object
+export const addOverheadCategory = (categoryData) => {
+    return addDoc(overheadsCategoriesCollection, categoryData);
 };
-
 export const updateOverheadCategory = (categoryId, updatedData) => {
-    const categoryDoc = doc(db, 'overheadsCategories', categoryId);
-    return updateDoc(categoryDoc, updatedData);
+    const categoryDoc = doc(db, 'overheadsCategories', categoryId);
+    return updateDoc(categoryDoc, updatedData);
 };
-
 export const deleteOverheadCategory = async (categoryId) => {
-    const categoryDocRef = doc(db, 'overheadsCategories', categoryId);
-    // IMPORTANT: When deleting a category, you typically want to delete its sub-expenses too.
-    // This requires fetching and deleting all documents within the subcollection first.
-    const expensesSnapshot = await getDocs(collection(categoryDocRef, 'expenses'));
-    const batch = writeBatch(db);
-    expensesSnapshot.docs.forEach(expDoc => {
-        batch.delete(expDoc.ref);
-    });
-    batch.delete(categoryDocRef); // Then delete the category document itself
-    return batch.commit();
+    const categoryDocRef = doc(db, 'overheadsCategories', categoryId);
+    const expensesSnapshot = await getDocs(collection(categoryDocRef, 'expenses'));
+    const batch = writeBatch(db);
+    expensesSnapshot.docs.forEach(expDoc => {
+        batch.delete(expDoc.ref);
+    });
+    batch.delete(categoryDocRef);
+    return batch.commit();
 };
 
 // Sub-collection expenses API
 export const getOverheadExpenses = async (categoryId) => {
-    const expensesCollectionRef = collection(db, 'overheadsCategories', categoryId, 'expenses');
-    const snapshot = await getDocs(expensesCollectionRef);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const expensesCollectionRef = collection(db, 'overheadsCategories', categoryId, 'expenses');
+    const snapshot = await getDocs(expensesCollectionRef);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 export const addOverheadExpense = (categoryId, expenseData) => {
-    const expensesCollectionRef = collection(db, 'overheadsCategories', categoryId, 'expenses');
-    return addDoc(expensesCollectionRef, expenseData);
+    const expensesCollectionRef = collection(db, 'overheadsCategories', categoryId, 'expenses');
+    return addDoc(expensesCollectionRef, expenseData);
 };
-
 export const updateOverheadExpense = (categoryId, expenseId, updatedData) => {
-    const expenseDocRef = doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId);
-    return updateDoc(expenseDocRef, updatedData);
+    const expenseDocRef = doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId);
+    return updateDoc(expenseDocRef, updatedData);
 };
-
 export const deleteOverheadExpense = (categoryId, expenseId) => {
-    const expenseDocRef = doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId);
-    return deleteDoc(expenseDocRef);
+    const expenseDocRef = doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId);
+    return deleteDoc(expenseDocRef);
 };
 
 
@@ -271,7 +326,7 @@ export const getJobStepDetails = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); 
 };
 export const setJobStepDetail = (partId, departmentId, data) => { 
-    const docRef = doc(db, 'jobStepDetails', `<span class="math-inline">\{partId\}\_</span>{departmentId}`); 
+    const docRef = doc(db, 'jobStepDetails', `${partId}_${departmentId}`); 
     return setDoc(docRef, { ...data, partId, departmentId }); 
 };
 
@@ -309,8 +364,6 @@ export const updatePart = (partId, updatedData) => {
 const jobCardsCollection = collection(db, 'createdJobCards'); 
 export const searchPreviousJobs = async (searchText) => { 
     if (!searchText) return []; 
-    // Firestore doesn't support case-insensitive "contains" or "like" queries natively.
-    // This is a common workaround for "starts with" searches.
     const q = query( 
         jobCardsCollection, 
         where('partName', '>=', searchText), 
@@ -326,13 +379,11 @@ export const checkExistingJobRecipe = async (partId, departmentId) => {
   if (!partId || !departmentId) { 
     return false; 
   }
-  // This check is specifically for existing job *cards* that link to a specific partId and departmentId
-  // It implies a recipe has been used before for this combo.
   const q = query( 
     jobCardsCollection, 
     where('partId', '==', partId), 
     where('departmentId', '==', departmentId),
-    limit(1) // We only need to know if one exists
+    limit(1)
   );
   const snapshot = await getDocs(q); 
   return !snapshot.empty; 
@@ -377,7 +428,6 @@ export const updateJobStatus = async (docId, newStatus) => {
         else if (currentData.status === 'Paused' && currentData.pausedAt) { 
             const pauseDuration = new Date().getTime() - currentData.pausedAt.toDate().getTime(); 
             dataToUpdate.totalPausedMilliseconds = increment(pauseDuration); 
-            // We also clear pausedAt when resuming from Paused to In Progress
             dataToUpdate.pausedAt = null; 
         }
     }
@@ -404,16 +454,15 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
     const dataToUpdate = {}; 
     if (isApproved) { 
         dataToUpdate.status = 'Complete'; 
-        dataToUpdate.completedAt = serverTimestamp(); // Set completion time on approval
+        dataToUpdate.completedAt = serverTimestamp();
         let materialCost = 0; 
         let laborCost = 0; 
-        // Processed consumables might already be on the job if it was a custom job or a cloned job without a standard recipe
         if (currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) { 
             for (const consumable of currentJobData.processedConsumables) { 
-                const inventoryItem = inventoryMap.get(consumable.id); // Try to get from inventory based on ID
-                if (inventoryItem && inventoryItem.price !== undefined) { // If it's a known inventory item and has a price
+                const inventoryItem = inventoryMap.get(consumable.id);
+                if (inventoryItem && inventoryItem.price !== undefined) {
                     materialCost += (inventoryItem.price * consumable.quantity); 
-                } else if (consumable.price !== undefined) { // If the custom consumable itself has a price defined directly
+                } else if (consumable.price !== undefined) {
                     materialCost += (consumable.price * consumable.quantity);
                 }
             }
@@ -436,12 +485,10 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
       dataToUpdate.issueReason = rejectionReason; 
     }
     transaction.update(jobRef, dataToUpdate); 
-    
-    // Only deduct stock if job is approved AND processedConsumables are linked to actual inventory items
     if (isApproved && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) { 
         for (const consumable of currentJobData.processedConsumables) { 
-            const inventoryItem = inventoryMap.get(consumable.id); // Check if it's a real inventory item by ID
-            if (!inventoryItem) continue; // Skip deduction if not a recognized inventory item (e.g., free-text custom consumable without linked ID)
+            const inventoryItem = inventoryMap.get(consumable.id);
+            if (!inventoryItem) continue;
 
             let collectionName = ''; 
             if (inventoryItem.category === 'Component') collectionName = 'components'; 

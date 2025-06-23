@@ -1,21 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { getEmployees, addEmployee, deleteEmployee, getDepartments, updateDocument } from '../../../api/firestore'; // updateDocument imported
+// updateDocument is already imported which is great
+import { getEmployees, addEmployee, deleteEmployee, getDepartments, updateDocument } from '../../../api/firestore'; 
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
+import { Award } from 'lucide-react'; // 1. Import an icon for the new button
+
+// 2. Import the (soon to be created) modal component
+import EmployeeSkillsModal from './EmployeeSkillsModal'; 
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
     const [departments, setDepartments] = useState([]);
     const [newEmployee, setNewEmployee] = useState({ name: '', departmentId: '', hourlyRate: '' });
     const [loading, setLoading] = useState(true);
-    const [editingEmployeeId, setEditingEmployeeId] = useState(null); // State to track which employee is being edited
+    const [editingEmployeeId, setEditingEmployeeId] = useState(null);
+
+    // 3. Add state for the skills modal
+    const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
+    const [selectedEmployee, setSelectedEmployee] = useState(null);
 
     const fetchData = async () => {
         setLoading(true);
         const [fetchedEmployees, fetchedDepartments] = await Promise.all([
-            getEmployees(), // Fetches employees 
-            getDepartments() // Fetches departments 
+            getEmployees(),
+            getDepartments()
         ]);
         setEmployees(fetchedEmployees);
         setDepartments(fetchedDepartments);
@@ -29,7 +38,7 @@ const EmployeesManager = () => {
         setNewEmployee(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleAddOrUpdate = async (e) => { // Universal handler for add/update
+    const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newEmployee.name.trim() || !newEmployee.departmentId) {
             alert("Please enter an employee name and select a department.");
@@ -43,48 +52,52 @@ const EmployeesManager = () => {
             };
 
             if (editingEmployeeId) {
-                // If editingEmployeeId is set, update the existing employee
-                await updateDocument('employees', editingEmployeeId, dataToSave); // Uses updateDocument for generic update 
+                await updateDocument('employees', editingEmployeeId, dataToSave);
                 alert("Employee updated successfully!");
             } else {
-                // Otherwise, add a new employee
-                await addEmployee(dataToSave); // Adds new employee 
+                await addEmployee(dataToSave);
                 alert("Employee added successfully!");
             }
-            setNewEmployee({ name: '', departmentId: '', hourlyRate: '' }); // Reset form
-            setEditingEmployeeId(null); // Exit editing mode
-            fetchData(); // Refresh the list
+            setNewEmployee({ name: '', departmentId: '', hourlyRate: '' });
+            setEditingEmployeeId(null);
+            fetchData();
         } catch (error) {
             console.error("Error saving employee:", error);
             alert(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`);
         }
     };
 
-    const handleEdit = (employee) => { // Handler for edit button click
+    const handleEdit = (employee) => {
         setNewEmployee({ 
             name: employee.name, 
             departmentId: employee.departmentId, 
-            hourlyRate: employee.hourlyRate || '' // Ensure hourlyRate is a string for input value
+            hourlyRate: employee.hourlyRate || ''
         });
-        setEditingEmployeeId(employee.id); // Set the ID of the employee being edited
+        setEditingEmployeeId(employee.id);
     };
 
-    const handleCancelEdit = () => { // Handler to cancel editing
+    const handleCancelEdit = () => {
         setNewEmployee({ name: '', departmentId: '', hourlyRate: '' });
         setEditingEmployeeId(null);
     };
 
     const handleDelete = async (id) => {
         if (window.confirm("Are you sure?")) {
-            await deleteEmployee(id); // Deletes employee 
-            fetchData(); // Refresh the list
+            await deleteEmployee(id);
+            fetchData();
         }
     };
 
-    const getDepartmentName = (deptId) => departments.find(d => d.id === deptId)?.name || 'Unknown'; // Helper to get department name for display
+    // 4. Create a handler to open the skills modal
+    const handleManageSkillsClick = (employee) => {
+        setSelectedEmployee(employee);
+        setIsSkillsModalOpen(true);
+    };
+
+    const getDepartmentName = (deptId) => departments.find(d => d.id === deptId)?.name || 'Unknown';
 
     return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-4">Manage Employees</h3>
             <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-6">
                 <Input
@@ -92,7 +105,7 @@ const EmployeesManager = () => {
                     name="name"
                     value={newEmployee.name}
                     onChange={handleInputChange}
-                    placeholder={editingEmployeeId ? "Edit employee name..." : "New employee name..."} // Dynamic placeholder
+                    placeholder={editingEmployeeId ? "Edit employee name..." : "New employee name..."}
                 />
                 <Dropdown
                     label="Department"
@@ -110,33 +123,50 @@ const EmployeesManager = () => {
                     onChange={handleInputChange}
                     placeholder="e.g., 150.50"
                 />
-                {editingEmployeeId && ( // Show Cancel button only when in editing mode
-                    <Button type="button" variant="secondary" onClick={handleCancelEdit}>
-                        Cancel
+                <div className="flex items-center gap-2">
+                    {editingEmployeeId && (
+                        <Button type="button" variant="secondary" onClick={handleCancelEdit}>
+                            Cancel
+                        </Button>
+                    )}
+                    <Button type="submit" variant="primary" className="flex-grow">
+                        {editingEmployeeId ? "Update Employee" : "Add Employee"}
                     </Button>
-                )}
-                <Button type="submit" variant="primary">
-                    {editingEmployeeId ? "Update Employee" : "Add Employee"} {/* Dynamic button text */}
-                </Button>
+                </div>
             </form>
+
             <div className="space-y-3">
                 {loading ? (
-                    <p>Loading...</p>
+                    <p className="text-gray-400">Loading...</p>
                 ) : (employees || []).map(emp => (
-                    <div key={emp.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
-                        <p className="text-gray-200">
-                            {emp.name} - <span className="text-gray-400 text-sm">{getDepartmentName(emp.departmentId)}</span>
-                            <span className="text-blue-400 font-mono text-sm ml-4">R{(emp.hourlyRate || 0).toFixed(2)}/hr</span>
-                        </p>
-                        <div className="flex space-x-2"> {/* Container for action buttons */}
-                            <Button onClick={() => handleEdit(emp)} variant="secondary" className="py-1 px-3 text-xs">
+                    <div key={emp.id} className="flex items-center justify-between bg-gray-900/50 p-3 rounded-md">
+                        <div>
+                            <p className="text-gray-200">
+                                {emp.name} - <span className="text-gray-400 text-sm">{getDepartmentName(emp.departmentId)}</span>
+                                <span className="text-blue-400 font-mono text-sm ml-4">R{(emp.hourlyRate || 0).toFixed(2)}/hr</span>
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {/* 5. Add the new "Manage Skills" button */}
+                            <Button onClick={() => handleManageSkillsClick(emp)} variant="secondary" size="sm">
+                                <Award size={16} className="mr-1" /> Manage Skills
+                            </Button>
+                            <Button onClick={() => handleEdit(emp)} variant="secondary" size="sm">
                                 Edit
                             </Button>
-                            <Button onClick={() => handleDelete(emp.id)} variant="danger" className="py-1 px-3 text-xs">Delete</Button>
+                            <Button onClick={() => handleDelete(emp.id)} variant="danger" size="sm">Delete</Button>
                         </div>
                     </div>
                 ))}
             </div>
+
+            {/* 6. Add the modal component, which will only appear when isSkillsModalOpen is true */}
+            {isSkillsModalOpen && selectedEmployee && (
+                <EmployeeSkillsModal
+                    employee={selectedEmployee}
+                    onClose={() => setIsSkillsModalOpen(false)}
+                />
+            )}
         </div>
     );
 };
