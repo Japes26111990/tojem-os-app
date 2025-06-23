@@ -1,52 +1,145 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import MainLayout from '../components/layout/MainLayout';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../api/firebase';
-import { ChevronsLeft } from 'lucide-react';
+import { getCompletedJobsForEmployee, getOverheadCategories, getOverheadExpenses, getEmployees, listenToJobCards } from '../api/firestore';
+import { ChevronsLeft, Zap, DollarSign, AlertCircle, CheckCircle2, Users } from 'lucide-react';
+import EfficiencyChart from '../components/intelligence/EfficiencyChart';
+import PerformanceSnapshot from '../components/intelligence/PerformanceSnapshot';
+import ValueWasteAnalysis from '../components/intelligence/ValueWasteAnalysis'; // <-- IMPORT NEW COMPONENT
 
-// Import both widgets
-import SkillProgressionWidget from '../components/intelligence/SkillProgressionWidget';
-import JobCompletionAnalysisWidget from '../components/intelligence/JobCompletionAnalysisWidget'; // 1. IMPORT THE NEW WIDGET
+const KpiCard = ({ icon, title, value, teamAverage, color }) => (
+    <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
+        <div className={`p-3 rounded-full ${color}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-gray-400 text-sm">{title}</p>
+            <p className="text-2xl font-bold text-white">{value}</p>
+            {teamAverage && (
+                 <div className="flex items-center text-xs text-gray-500 mt-1">
+                    <Users size={12} className="mr-1"/>
+                    <span>Team Avg: {teamAverage}</span>
+                </div>
+            )}
+        </div>
+    </div>
+);
 
 const EmployeeIntelligencePage = () => {
-    const { employeeId } = useParams(); // Gets the employee ID from the URL
+    const { employeeId } = useParams();
     const [employee, setEmployee] = useState(null);
+    const [allEmployees, setAllEmployees] = useState([]);
+    const [jobs, setJobs] = useState([]);
+    const [allJobs, setAllJobs] = useState([]);
+    const [overheads, setOverheads] = useState(0);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const fetchEmployeeData = async () => {
+        let unsubscribe = () => {};
+        const fetchAllData = async () => {
+            if (!employeeId) return;
             setLoading(true);
             try {
                 const employeeDocRef = doc(db, 'employees', employeeId);
-                const employeeDoc = await getDoc(employeeDocRef);
+                const [employeeDoc, completedJobs, overheadCategories, allEmps] = await Promise.all([
+                    getDoc(employeeDocRef),
+                    getCompletedJobsForEmployee(employeeId),
+                    getOverheadCategories(),
+                    getEmployees(),
+                ]);
 
-                if (employeeDoc.exists()) {
-                    setEmployee({ id: employeeDoc.id, ...employeeDoc.data() });
-                } else {
-                    console.error("No such employee found!");
-                }
-            } catch (error) {
-                console.error("Error fetching employee data:", error);
-            }
+                if (employeeDoc.exists()) setEmployee({ id: employeeDoc.id, ...employeeDoc.data() });
+                setJobs(completedJobs);
+                setAllEmployees(allEmps);
+                unsubscribe = listenToJobCards(j => setAllJobs(j));
+
+                let totalOverheads = 0;
+                const expensePromises = overheadCategories.map(cat => getOverheadExpenses(cat.id));
+                const expenseResults = await Promise.all(expensePromises);
+                expenseResults.flat().forEach(exp => { totalOverheads += exp.amount || 0; });
+                setOverheads(totalOverheads);
+
+            } catch (error) { console.error("Error fetching employee data:", error); }
             setLoading(false);
         };
 
-        fetchEmployeeData();
+        fetchAllData();
+        return () => unsubscribe();
     }, [employeeId]);
 
-    if (loading) {
-        return <MainLayout><p className="text-white text-center">Loading Employee Data...</p></MainLayout>;
-    }
+    const performanceMetrics = useMemo(() => {
+        const metrics = {
+            individual: { efficiency: 0, netValueAdded: 0, reworkRate: 0, jobsCompleted: 0 },
+            team: { efficiency: 0, netValueAdded: 0, reworkRate: 0 }
+        };
+        if (!employee || allEmployees.length === 0) return metrics;
 
-    if (!employee) {
-        return <MainLayout><p className="text-red-500 text-center">Employee not found.</p></MainLayout>;
-    }
+        const overheadCostPerHour = overheads / 173.2;
+
+        // Calculate Individual Metrics
+        const issueJobsCount = jobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
+        const completedJobs = jobs.filter(j => j.status === 'Complete');
+        let individualTotalWorkMinutes = 0;
+        let individualTotalEfficiencyRatioSum = 0;
+        let individualTotalJobValue = 0;
+
+        completedJobs.forEach(job => {
+            if (job.startedAt && job.completedAt) {
+                const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
+                if(durationSeconds > 0) {
+                    individualTotalWorkMinutes += durationSeconds / 60;
+                    if (job.estimatedTime > 0) {
+                        individualTotalEfficiencyRatioSum += (job.estimatedTime * 60) / durationSeconds;
+                    }
+                }
+            }
+            individualTotalJobValue += job.totalCost || 0;
+        });
+
+        const individualLaborCost = (individualTotalWorkMinutes / 60) * ((employee.hourlyRate || 0) + overheadCostPerHour);
+        metrics.individual = {
+            efficiency: completedJobs.length > 0 ? (individualTotalEfficiencyRatioSum / completedJobs.length) * 100 : 0,
+            netValueAdded: individualTotalJobValue - individualLaborCost,
+            reworkRate: jobs.length > 0 ? (issueJobsCount / jobs.length) * 100 : 0,
+            jobsCompleted: jobs.length
+        };
+
+        // Calculate Team Averages
+        const departmentEmployees = allEmployees.filter(e => e.departmentId === employee.departmentId);
+        const departmentEmployeeIds = new Set(departmentEmployees.map(e => e.id));
+        const departmentJobs = allJobs.filter(j => j.completedAt && departmentEmployeeIds.has(j.employeeId));
+        const teamIssueJobsCount = departmentJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
+        const teamCompletedJobs = departmentJobs.filter(j => j.status === 'Complete');
+
+        let teamTotalEfficiencyRatioSum = 0, teamTotalValue = 0, teamTotalLaborCost = 0;
+        teamCompletedJobs.forEach(job => {
+            if (job.estimatedTime > 0 && job.startedAt && job.completedAt) {
+                const actualSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
+                if(actualSeconds > 0) teamTotalEfficiencyRatioSum += (job.estimatedTime * 60) / actualSeconds;
+            }
+            const jobWorkMinutes = ((job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000) / 60;
+            const employeeForJob = allEmployees.find(e => e.id === job.employeeId);
+            if(employeeForJob) teamTotalLaborCost += (jobWorkMinutes / 60) * ((employeeForJob.hourlyRate || 0) + overheadCostPerHour);
+            teamTotalValue += job.totalCost || 0;
+        });
+        
+        metrics.team = {
+            efficiency: teamCompletedJobs.length > 0 ? (teamTotalEfficiencyRatioSum / teamCompletedJobs.length) * 100 : 0,
+            netValueAdded: departmentEmployees.length > 0 ? (teamTotalValue - teamTotalLaborCost) / departmentEmployees.length : 0,
+            reworkRate: departmentJobs.length > 0 ? (teamIssueJobsCount / departmentJobs.length) * 100 : 0
+        };
+
+        return metrics;
+    }, [employee, jobs, allEmployees, allJobs, overheads]);
+
+    if (loading) return <MainLayout><p className="text-white text-center">Loading Performance & Value Engine...</p></MainLayout>;
+    if (!employee) return <MainLayout><p className="text-red-500 text-center">Employee not found.</p></MainLayout>;
 
     return (
         <MainLayout>
             <div className="space-y-8">
-                {/* Header */}
                 <div>
                     <Link to="/performance" className="flex items-center text-blue-400 hover:text-blue-300 mb-4">
                         <ChevronsLeft size={20} className="mr-1" />
@@ -54,29 +147,26 @@ const EmployeeIntelligencePage = () => {
                     </Link>
                     <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
                         <h2 className="text-3xl font-bold text-white">{employee.name}</h2>
-                        <p className="text-gray-400">Intelligence Hub</p>
+                        <p className="text-gray-400">Performance & Value Engine</p>
                     </div>
                 </div>
-                
-                {/* Grid for Widgets */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Main column */}
-                    <div className="lg:col-span-2 space-y-6">
-                        
-                        <SkillProgressionWidget employeeId={employeeId} />
 
-                        {/* 2. REPLACE THE PLACEHOLDER with the actual widget component */}
-                        <JobCompletionAnalysisWidget employeeId={employeeId} />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <KpiCard icon={<Zap size={24} />} title="Overall Efficiency" value={`${performanceMetrics.individual.efficiency.toFixed(0)}%`} teamAverage={`${performanceMetrics.team.efficiency.toFixed(0)}%`} color="bg-purple-500/20 text-purple-400" />
+                    <KpiCard icon={<DollarSign size={24} />} title="Net Value Added (Period)" value={`R ${performanceMetrics.individual.netValueAdded.toFixed(2)}`} teamAverage={`R ${performanceMetrics.team.netValueAdded.toFixed(2)}`} color="bg-green-500/20 text-green-400" />
+                    <KpiCard icon={<AlertCircle size={24} />} title="Rework / Issue Rate" value={`${performanceMetrics.individual.reworkRate.toFixed(1)}%`} teamAverage={`${performanceMetrics.team.reworkRate.toFixed(1)}%`} color="bg-red-500/20 text-red-400" />
+                    <KpiCard icon={<CheckCircle2 size={24} />} title="Jobs Completed" value={performanceMetrics.individual.jobsCompleted} color="bg-blue-500/20 text-blue-400" />
+                </div>
 
+                <PerformanceSnapshot metrics={performanceMetrics} />
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
+                        <h3 className="text-xl font-bold text-white mb-4">Efficiency Over Time</h3>
+                        <EfficiencyChart jobs={jobs} />
                     </div>
-                    
-                    {/* Sidebar column */}
-                    <div className="lg:col-span-1 space-y-6">
-                        <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700 min-h-[200px]">
-                           <h3 className="text-xl font-bold text-white mb-4">Real-Time Value Engine</h3>
-                           <p className="text-gray-400">Placeholder for profitability ratio...</p>
-                        </div>
-                    </div>
+                     {/* RENDER THE NEW COMPONENT */}
+                    <ValueWasteAnalysis jobs={jobs} />
                 </div>
             </div>
         </MainLayout>
