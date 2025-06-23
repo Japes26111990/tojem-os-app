@@ -1,3 +1,5 @@
+// src/components/features/settings/UnifiedProductManager.jsx (Fixed & Expanded)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     getProducts, addProduct, updateProduct, deleteProduct,
@@ -21,7 +23,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     const [dimId, setDimId] = useState('');
     const [cuts, setCuts] = useState([]);
     const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-    
+
     const handleAddConsumable = () => {
         let newConsumable;
         switch (consumableType) {
@@ -46,7 +48,6 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     };
 
     const getConsumableName = (id) => consumables.find(c => c.id === id)?.name || 'Unknown Item';
-
     return (
         <div>
             <h4 className="font-semibold mb-2 text-white">Required Consumables</h4>
@@ -58,7 +59,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
 
                 {consumableType === 'fixed' && (
                     <div className="flex items-end gap-2 animate-fade-in">
-                        <div className="flex-grow"><Dropdown label="Item" value={fixedId} onChange={e => setFixedId(e.target.value)} options={consumables} placeholder="Select..."/></div>
+                         <div className="flex-grow"><Dropdown label="Item" value={fixedId} onChange={e => setFixedId(e.target.value)} options={consumables} placeholder="Select..."/></div>
                         <div className="w-24"><Input label="Qty" type="number" value={fixedQty} onChange={e => setFixedQty(e.target.value)} placeholder="e.g., 5"/></div>
                         <Button type="button" onClick={handleAddConsumable}>Add</Button>
                     </div>
@@ -72,11 +73,11 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
                             <div className="flex items-end gap-2">
                                 <Input label="Dimensions" value={cutRule.dimensions} onChange={e => setCutRule({...cutRule, dimensions: e.target.value})} />
                                 <Input label="Notes" value={cutRule.notes} onChange={e => setCutRule({...cutRule, notes: e.target.value})} />
-                                <Button type="button" onClick={() => { if(cutRule.dimensions) { setCuts([...cuts, cutRule]); setCutRule({ dimensions: '', notes: '' }); }}}>Add Cut</Button>
+                                 <Button type="button" onClick={() => { if(cutRule.dimensions) { setCuts([...cuts, cutRule]); setCutRule({ dimensions: '', notes: '' }); }}}>Add Cut</Button>
                             </div>
                             <ul className="text-xs mt-2 space-y-1">{cuts.map((c, i) => <li key={i}>{c.dimensions} ({c.notes})</li>)}</ul>
                         </div>
-                        <Button type="button" onClick={handleAddConsumable} className="w-full">Add Dimensional Consumable</Button>
+                         <Button type="button" onClick={handleAddConsumable} className="w-full">Add Dimensional Consumable</Button>
                     </div>
                 )}
 
@@ -85,7 +86,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
                     {selectedConsumables.map((c, i) => (
                         <li key={i} className="flex justify-between items-center bg-gray-700 p-2 rounded text-sm text-gray-200">
                             <div>
-                                <p className="font-semibold">{getConsumableName(c.itemId)}</p>
+                                 <p className="font-semibold">{getConsumableName(c.itemId)}</p>
                                 {c.type === 'fixed' && <p className="text-xs text-gray-400">Qty: {c.quantity}</p>}
                                 {c.type === 'dimensional' && <p className="text-xs text-gray-400">{c.cuts.length} cut(s) required</p>}
                             </div>
@@ -117,18 +118,15 @@ const UnifiedProductManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('details');
     const [expandedCategories, setExpandedCategories] = useState({});
-
     // Form states
     const [newProduct, setNewProduct] = useState({ name: '', partNumber: '', sellingPrice: '', categoryId: '' });
     const [newCategoryName, setNewCategoryName] = useState('');
     const [editProductData, setEditProductData] = useState(null);
-
     // Fitment states
     const [fitmentLinks, setFitmentLinks] = useState([]);
     const [mfgToLink, setMfgToLink] = useState('');
     const [makeToLink, setMakeToLink] = useState('');
     const [modelToLink, setModelToLink] = useState('');
-    
     // Recipe Editor states
     const [recipeDepartmentId, setRecipeDepartmentId] = useState('');
     const [recipeData, setRecipeData] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
@@ -155,7 +153,6 @@ const UnifiedProductManager = () => {
         }
         setLoading(false);
     };
-
     useEffect(() => { fetchData(); }, []);
 
     useEffect(() => {
@@ -170,7 +167,7 @@ const UnifiedProductManager = () => {
             setEditProductData(null);
         }
     }, [selectedProductId, products]);
-    
+
     useEffect(() => {
         if (selectedProductId && recipeDepartmentId) {
             const recipeId = `${selectedProductId}_${recipeDepartmentId}`;
@@ -204,7 +201,6 @@ const UnifiedProductManager = () => {
 
         return categorized;
     }, [products, categories, searchTerm]);
-
     const handleAddNewCategory = async () => {
         if (!newCategoryName.trim()) return;
         await addProductCategory(newCategoryName);
@@ -275,6 +271,23 @@ const UnifiedProductManager = () => {
         };
         try {
             await setJobStepDetail(selectedProductId, recipeDepartmentId, dataToSave);
+
+            const product = products.find(p => p.id === selectedProductId);
+            const department = departments.find(d => d.id === recipeDepartmentId);
+            
+            const existingLinks = await getLinkedRecipesForProduct(selectedProductId);
+            const linkExists = existingLinks.some(link => link.departmentId === recipeDepartmentId);
+
+            if (!linkExists && product && department) {
+                await linkRecipeToProduct({
+                    productId: selectedProductId,
+                    productName: product.name,
+                    jobStepDetailId: `${selectedProductId}_${recipeDepartmentId}`,
+                    departmentId: recipeDepartmentId,
+                    departmentName: department.name
+                });
+            }
+
             alert('Recipe saved successfully!');
             fetchData();
         } catch (error) {
@@ -296,153 +309,151 @@ const UnifiedProductManager = () => {
     };
     const handleAddConsumable = (c) => setRecipeData({...recipeData, consumables: [...recipeData.consumables, c]});
     const handleRemoveConsumable = (itemId) => setRecipeData({...recipeData, consumables: recipeData.consumables.filter(c => c.itemId !== itemId)});
-    
     const filteredMakes = useMemo(() => makes.filter(m => m.manufacturerId === mfgToLink), [mfgToLink, makes]);
     const filteredModels = useMemo(() => models.filter(m => m.makeId === makeToLink), [makeToLink, models]);
     
     if (loading) return <p className="text-gray-400">Loading Product Catalog...</p>;
-
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-6">Unified Product Catalog</h3>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Panel */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div>
+                     <div>
                         <Input placeholder="Search all products..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="mb-4" />
                         <div className="space-y-1 max-h-[30rem] overflow-y-auto pr-2">
                             {categories.map(category => (
-                                <div key={category.id}>
+                                 <div key={category.id}>
                                     <div onClick={() => setExpandedCategories(p => ({...p, [category.id]: !p[category.id]}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600">
-                                        <span className="font-semibold text-white">{category.name}</span>
+                                     <span className="font-semibold text-white">{category.name}</span>
                                         {expandedCategories[category.id] ? <ChevronDown/> : <ChevronRight/>}
                                     </div>
                                     {expandedCategories[category.id] && (
-                                        <div className="pl-4 mt-1 space-y-1">
+                                         <div className="pl-4 mt-1 space-y-1">
                                             {(productsByCategory[category.id] || []).length > 0 ? (
-                                                (productsByCategory[category.id] || []).map(p => (
+                                                 (productsByCategory[category.id] || []).map(p => (
                                                     <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
-                                                        <p className="font-semibold">{p.name}</p>
-                                                        <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
+                                                         <p className="font-semibold">{p.name}</p>
+                                                         <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
                                                     </div>
-                                                ))
+                                                 ))
                                             ) : (
                                                 <p className="text-xs text-gray-500 p-2 italic">No products in this category.</p>
                                             )}
                                         </div>
-                                    )}
+                                     )}
                                 </div>
                             ))}
-                             {(productsByCategory['uncategorized']?.length > 0) && (
+                              {(productsByCategory['uncategorized']?.length > 0) && (
                                  <div key="uncategorized">
                                     <div onClick={() => setExpandedCategories(p => ({...p, uncategorized: !p.uncategorized}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600 mt-4">
                                         <span className="font-semibold text-white italic">Uncategorized</span>
                                         {expandedCategories['uncategorized'] ? <ChevronDown/> : <ChevronRight/>}
                                     </div>
                                     {expandedCategories['uncategorized'] && (
-                                        <div className="pl-4 mt-1 space-y-1">
+                                         <div className="pl-4 mt-1 space-y-1">
                                             {productsByCategory['uncategorized'].map(p => (
-                                                <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
+                                                 <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
                                                     <p className="font-semibold">{p.name}</p>
-                                                    <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
+                                                     <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
                                                 </div>
-                                            ))}
+                                             ))}
                                         </div>
-                                    )}
+                                     )}
                                 </div>
                             )}
                         </div>
-                    </div>
+                     </div>
                     <div className="space-y-4 border-t border-gray-700 pt-6">
                         <h4 className="font-bold text-lg text-white">Add New Category</h4>
                         <div className="flex gap-2">
-                            <Input placeholder="e.g., Fiberglass Panels" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
+                             <Input placeholder="e.g., Fiberglass Panels" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
                             <Button onClick={handleAddNewCategory}><FolderPlus size={16} /></Button>
                         </div>
                     </div>
-                    <form onSubmit={handleAddNewProduct} className="space-y-4 border-t border-gray-700 pt-6">
+                     <form onSubmit={handleAddNewProduct} className="space-y-4 border-t border-gray-700 pt-6">
                          <h4 className="font-bold text-lg text-white">Add New Product</h4>
                          <Dropdown label="Category" value={newProduct.categoryId} onChange={e => setNewProduct({...newProduct, categoryId: e.target.value})} options={categories} required/>
-                         <Input label="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
+                          <Input label="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
                          <Input label="Part Number" value={newProduct.partNumber} onChange={e => setNewProduct({...newProduct, partNumber: e.target.value})} required/>
                          <Input label="Selling Price (R)" type="number" value={newProduct.sellingPrice} onChange={e => setNewProduct({...newProduct, sellingPrice: e.target.value})} />
-                         <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
+                          <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
                     </form>
                 </div>
 
                 {/* Right Panel */}
                 <div className="lg:col-span-2">
-                    {!selectedProductId ? (
+                     {!selectedProductId ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
                             <p>Select a product from the list to view its details.</p>
                         </div>
-                    ) : (
+                     ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
                              <div className="flex justify-between items-center">
-                               <div className="flex border-b border-gray-600">
+                                <div className="flex border-b border-gray-600">
                                     <button onClick={() => setActiveTab('details')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'details' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Package size={16}/> Details</button>
-                                    <button onClick={() => setActiveTab('fitment')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'fitment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Settings2 size={16}/> Fitment</button>
+                                     <button onClick={() => setActiveTab('fitment')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'fitment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Settings2 size={16}/> Fitment</button>
                                     <button onClick={() => setActiveTab('recipe')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'recipe' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Wrench size={16}/> Recipe</button>
                                 </div>
                                 <Button onClick={() => handleDeleteProduct(selectedProductId)} variant="danger" size="sm" className="p-2"><Trash2 size={16}/></Button>
-                            </div>
+                             </div>
                             <div className="pt-6">
                                 {activeTab === 'details' && (
-                                    <div className="space-y-4 animate-fade-in">
+                                     <div className="space-y-4 animate-fade-in">
                                         <Dropdown label="Category" value={editProductData?.categoryId || ''} onChange={e => setEditProductData({...editProductData, categoryId: e.target.value})} options={categories} placeholder="Choose a category..."/>
-                                        <Input label="Product Name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
+                                         <Input label="Product Name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
                                         <Input label="Part Number" value={editProductData?.partNumber || ''} disabled />
                                         <Input label="Selling Price (R)" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
                                         <Input label="Photo URL" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste Dropbox link here..."/>
                                         {editProductData?.photoUrl && <img src={editProductData.photoUrl.replace("www.dropbox.com", "dl.dropboxusercontent.com")} alt="Product Preview" className="w-48 h-48 rounded-lg object-cover border-2 border-gray-600" />}
-                                        <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
+                                         <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
                                     </div>
                                 )}
-                                {activeTab === 'fitment' && (
+                                 {activeTab === 'fitment' && (
                                     <div className="space-y-4 animate-fade-in">
                                          <h4 className="font-semibold text-white">Linked Models ({fitmentLinks.length})</h4>
-                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                           <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                             {fitmentLinks.map(link => (
-                                                <div key={link.id} className="flex justify-between items-center bg-gray-700 p-2 rounded">
+                                                 <div key={link.id} className="flex justify-between items-center bg-gray-700 p-2 rounded">
                                                     <p className="text-sm text-gray-300">{link.manufacturerName} &gt; {link.makeName} &gt; {link.modelName}</p>
                                                     <Button onClick={() => handleRemoveFitment(link.id)} variant="danger" className="p-1 h-6 w-6"><X size={14}/></Button>
-                                                </div>
+                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="border-t border-gray-600 pt-4 space-y-3">
+                                           <div className="border-t border-gray-600 pt-4 space-y-3">
                                             <h5 className="font-semibold text-white">Add New Fitment</h5>
-                                            <Dropdown label="Manufacturer" value={mfgToLink} onChange={e => setMfgToLink(e.target.value)} options={manufacturers} placeholder="Select..."/>
+                                               <Dropdown label="Manufacturer" value={mfgToLink} onChange={e => setMfgToLink(e.target.value)} options={manufacturers} placeholder="Select..."/>
                                             <Dropdown label="Make" value={makeToLink} onChange={e => setMakeToLink(e.target.value)} options={filteredMakes} placeholder="Select..." disabled={!mfgToLink}/>
-                                            <Dropdown label="Model" value={modelToLink} onChange={e => setModelToLink(e.target.value)} options={filteredModels} placeholder="Select..." disabled={!makeToLink}/>
+                                             <Dropdown label="Model" value={modelToLink} onChange={e => setModelToLink(e.target.value)} options={filteredModels} placeholder="Select..." disabled={!makeToLink}/>
                                             <Button onClick={handleAddFitment} className="w-full"><LinkIcon size={16} className="mr-2"/> Link to Model</Button>
-                                        </div>
+                                         </div>
                                     </div>
-                                )}
+                                 )}
                                 {activeTab === 'recipe' && (
                                     <div className="space-y-6 animate-fade-in">
-                                        <Dropdown label="Select a Department to Define its Recipe" value={recipeDepartmentId} onChange={e => setRecipeDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
+                                         <Dropdown label="Select a Department to Define its Recipe" value={recipeDepartmentId} onChange={e => setRecipeDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
                                         {recipeDepartmentId && (
-                                            <div className="space-y-6 border-t border-gray-700 pt-6">
+                                             <div className="space-y-6 border-t border-gray-700 pt-6">
                                                 <Input label="Description" name="description" value={recipeData.description} onChange={handleRecipeInputChange} />
-                                                <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={recipeData.estimatedTime} onChange={handleRecipeInputChange} />
+                                                     <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={recipeData.estimatedTime} onChange={handleRecipeInputChange} />
                                                 <Textarea label="Steps (one per line)" name="steps" value={recipeData.steps} onChange={handleRecipeInputChange} rows={5} />
-                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                     <div>
-                                                        <h4 className="font-semibold mb-2 text-white">Required Tools & Accessories</h4>
-                                                        <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-800 rounded-lg">
+                                                             <h4 className="font-semibold mb-2 text-white">Required Tools & Accessories</h4>
+                                                         <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-800 rounded-lg">
                                                             {(tools || []).map(tool => ( <div key={tool.id}> <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200"> <input type="checkbox" checked={recipeData.tools.has(tool.id)} onChange={() => handleToolToggle(tool.id)} /> <span>{tool.name}</span> </label> {recipeData.tools.has(tool.id) && ( <div className="pl-6 mt-2 space-y-2 border-l-2 border-gray-700"> {(toolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => ( <label key={accessory.id} className="flex items-center space-x-2 text-sm text-gray-300"> <input type="checkbox" checked={recipeData.accessories.has(accessory.id)} onChange={() => handleAccessoryToggle(accessory.id)} /> <span>{accessory.name}</span> </label> ))} </div> )} </div> ))}
-                                                        </div>
+                                                         </div>
                                                     </div>
-                                                    <ConsumableEditor consumables={consumables} selectedConsumables={recipeData.consumables} onAdd={handleAddConsumable} onRemove={handleRemoveConsumable} />
+                                                     <ConsumableEditor consumables={consumables} selectedConsumables={recipeData.consumables} onAdd={handleAddConsumable} onRemove={handleRemoveConsumable} />
                                                 </div>
-                                                <div className="text-right">
+                                                 <div className="text-right">
                                                     <Button onClick={handleSaveRecipe} variant="primary" className="bg-green-600 hover:bg-green-700"><Save size={16} className="mr-2"/>Save Recipe for this Department</Button>
-                                                </div>
+                                                 </div>
                                             </div>
-                                        )}
+                                         )}
                                     </div>
                                 )}
-                            </div>
+                             </div>
                         </div>
                     )}
                 </div>
