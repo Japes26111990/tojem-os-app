@@ -1,10 +1,12 @@
+// src/components/features/settings/ProductRecipeManager.jsx (Fully Updated)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { getManufacturers, addManufacturer, getMakes, addMake, getModels, addModel, getParts, addPart, updatePart, getDepartments, getTools, getToolAccessories, getAllInventoryItems, getJobStepDetails, setJobStepDetail } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
-import { FilePlus } from 'lucide-react';
+import { FilePlus, Copy } from 'lucide-react';
 
 const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
@@ -13,7 +15,6 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     const [dimId, setDimId] = useState('');
     const [cuts, setCuts] = useState([]);
     const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-
     const handleAddConsumable = () => {
         let newConsumable;
         switch (consumableType) {
@@ -38,7 +39,6 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     };
 
     const getConsumableName = (id) => consumables.find(c => c.id === id)?.name || 'Unknown Item';
-
     return (
         <div>
             <h4 className="font-semibold mb-2">Required Consumables</h4>
@@ -90,7 +90,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     );
 };
 
-const PartEditor = ({ part, departments, tools, toolAccessories, consumables, allJobSteps, onSaveRecipe, onPartUpdate }) => {
+const PartEditor = ({ part, departments, tools, toolAccessories, consumables, allJobSteps, onSaveRecipe, onPartUpdate, recipeToClone, onCloneComplete }) => {
   const [activeTab, setActiveTab] = useState('details');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [description, setDescription] = useState('');
@@ -101,7 +101,7 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
   const [selectedConsumables, setSelectedConsumables] = useState([]);
   const [partName, setPartName] = useState(part.name);
   const [partPhotoUrl, setPartPhotoUrl] = useState(part.photoUrl || '');
-  
+
   useEffect(() => {
     setPartName(part.name);
     setPartPhotoUrl(part.photoUrl || '');
@@ -111,23 +111,34 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
 
   useEffect(() => {
     if (selectedDepartmentId) {
-      const existingStep = allJobSteps.find(step => step.partId === part.id && step.departmentId === selectedDepartmentId);
-      if (existingStep) {
-        setDescription(existingStep.description || '');
-        setEstimatedTime(existingStep.estimatedTime || '');
-        setSteps((existingStep.steps || []).join('\n'));
-        setSelectedTools(new Set(existingStep.tools || []));
-        setSelectedAccessories(new Set(existingStep.accessories || []));
-        setSelectedConsumables(existingStep.consumables || []);
+      // If a recipe is being cloned, use its data to pre-fill the form
+      if (recipeToClone) {
+        setDescription(recipeToClone.description || '');
+        setEstimatedTime(recipeToClone.estimatedTime || '');
+        setSteps((recipeToClone.steps || []).join('\n'));
+        setSelectedTools(new Set(recipeToClone.tools || []));
+        setSelectedAccessories(new Set(recipeToClone.accessories || []));
+        setSelectedConsumables(recipeToClone.consumables || []);
+        onCloneComplete(); // Important: signal that the clone data has been used
       } else {
-        setDescription(''); setEstimatedTime(''); setSteps('');
-        setSelectedTools(new Set()); setSelectedAccessories(new Set()); setSelectedConsumables([]);
+        // Otherwise, load existing recipe for the selected part and department
+        const existingStep = allJobSteps.find(step => step.partId === part.id && step.departmentId === selectedDepartmentId);
+        if (existingStep) {
+            setDescription(existingStep.description || '');
+            setEstimatedTime(existingStep.estimatedTime || '');
+            setSteps((existingStep.steps || []).join('\n'));
+            setSelectedTools(new Set(existingStep.tools || []));
+            setSelectedAccessories(new Set(existingStep.accessories || []));
+            setSelectedConsumables(existingStep.consumables || []);
+        } else {
+            setDescription(''); setEstimatedTime(''); setSteps('');
+            setSelectedTools(new Set()); setSelectedAccessories(new Set()); setSelectedConsumables([]);
+        }
       }
     }
-  }, [selectedDepartmentId, part.id, allJobSteps]);
+  }, [selectedDepartmentId, part.id, allJobSteps, recipeToClone]);
 
   const handleSavePartDetails = () => onPartUpdate(part.id, { name: partName, photoUrl: partPhotoUrl });
-  
   const handleSaveRecipeDetails = () => {
     const recipeData = { description, estimatedTime: Number(estimatedTime), steps: steps.split('\n').filter(s => s.trim() !== ''), tools: Array.from(selectedTools), accessories: Array.from(selectedAccessories), consumables: selectedConsumables };
     onSaveRecipe(part.id, selectedDepartmentId, recipeData);
@@ -166,7 +177,7 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
         {activeTab === 'recipe' && (
             <div className="space-y-6 animate-fade-in">
                 <Dropdown label="Select a Department to Define its Recipe" value={selectedDepartmentId} onChange={e => setSelectedDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
-                {selectedDepartmentId && (
+                 {selectedDepartmentId && (
                      <div className="space-y-6 border-t border-gray-700 pt-6">
                         <Input label="Description" value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g., Final assembly of side skirt" />
                         <Input label="Estimated Time (minutes)" type="number" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} placeholder="e.g., 45" />
@@ -178,11 +189,11 @@ const PartEditor = ({ part, departments, tools, toolAccessories, consumables, al
                                 {(tools || []).map(tool => ( <div key={tool.id}> <label className="flex items-center space-x-2 text-sm font-semibold"> <input type="checkbox" checked={selectedTools.has(tool.id)} onChange={() => handleToolToggle(tool.id)} /> <span>{tool.name}</span> </label> {selectedTools.has(tool.id) && ( <div className="pl-8 mt-2 space-y-2 border-l-2 border-gray-700"> {(toolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => ( <label key={accessory.id} className="flex items-center space-x-2 text-sm text-gray-300"> <input type="checkbox" checked={selectedAccessories.has(accessory.id)} onChange={() => handleAccessoryToggle(accessory.id)} /> <span>{accessory.name}</span> </label> ))} </div> )} </div> ))}
                                 </div>
                             </div>
-                            <ConsumableEditor consumables={consumables} selectedConsumables={selectedConsumables} onAdd={handleAddConsumableToList} onRemove={handleRemoveConsumableFromList} />
+                           <ConsumableEditor consumables={consumables} selectedConsumables={selectedConsumables} onAdd={handleAddConsumableToList} onRemove={handleRemoveConsumableFromList} />
                         </div>
                         <div className="text-right"> <Button onClick={handleSaveRecipeDetails} variant="primary" className="bg-green-600 hover:bg-green-700">Save Recipe for this Department</Button> </div>
                     </div>
-                )}
+                 )}
             </div>
         )}
     </div>
@@ -203,7 +214,8 @@ const ProductRecipeManager = () => {
     const [selectedMakeId, setSelectedMakeId] = useState(null);
     const [selectedModelId, setSelectedModelId] = useState(null);
     const [selectedPartId, setSelectedPartId] = useState(null);
-    
+    const [recipeToClone, setRecipeToClone] = useState(null); // <-- NEW STATE
+
     const fetchData = async () => {
         const [man, mak, mod, par, dep, t, ta, inv, steps] = await Promise.all([ getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getTools(), getToolAccessories(), getAllInventoryItems(), getJobStepDetails() ]);
         setManufacturers(man); setMakes(mak); setModels(mod); setParts(par); setDepartments(dep); setTools(t); setToolAccessories(ta); 
@@ -215,38 +227,36 @@ const ProductRecipeManager = () => {
     useEffect(() => { fetchData(); }, []);
 
     const handleSelect = (level, id) => {
-        if (level === 'manufacturer') {
-            setSelectedManufacturerId(id);
-            setSelectedMakeId(null); setSelectedModelId(null); setSelectedPartId(null);
-        } else if (level === 'make') {
-            setSelectedMakeId(id);
-            setSelectedModelId(null); setSelectedPartId(null);
-        } else if (level === 'model') {
-            setSelectedModelId(id);
-            setSelectedPartId(null);
-        } else if (level === 'part') {
-            setSelectedPartId(id);
-        }
+        if (level === 'manufacturer') { setSelectedManufacturerId(id); setSelectedMakeId(null); setSelectedModelId(null); setSelectedPartId(null); } 
+        else if (level === 'make') { setSelectedMakeId(id); setSelectedModelId(null); setSelectedPartId(null); } 
+        else if (level === 'model') { setSelectedModelId(id); setSelectedPartId(null); } 
+        else if (level === 'part') { setSelectedPartId(id); }
     };
+    
+    // NEW FUNCTION to handle recipe duplication
+    const handleCloneRecipe = (partToCloneId) => {
+        const recipes = allJobSteps.filter(step => step.partId === partToCloneId);
+        if (recipes.length === 0) {
+            alert("This part has no recipes defined to duplicate.");
+            return;
+        }
+        // For simplicity, we'll just clone the first recipe found for the part.
+        // A more advanced version could let the user choose which department's recipe to clone.
+        setRecipeToClone(recipes[0]);
+        setSelectedPartId(null); // Deselect current part to force user to select a new target
+        alert(`Recipe for ${parts.find(p=>p.id === partToCloneId).name} copied! Now select the NEW part you want to paste this recipe onto.`);
+    };
+
 
     const handleAdd = async (level) => {
         let name;
-        if (level === 'manufacturer') {
-            name = prompt("Enter new manufacturer name:");
-            if (name) { await addManufacturer(name); }
-        } else if (level === 'make') {
-            name = prompt(`Enter new make name for ${manufacturers.find(m=>m.id===selectedManufacturerId).name}:`);
-            if (name) { await addMake({ name, manufacturerId: selectedManufacturerId }); }
-        } else if (level === 'model') {
-            name = prompt(`Enter new model name for ${makes.find(m=>m.id===selectedMakeId).name}:`);
-            if (name) { await addModel({ name, makeId: selectedMakeId }); }
-        } else if (level === 'part') {
-            name = prompt(`Enter new part name for ${models.find(m=>m.id===selectedModelId).name}:`);
-            if (name) { await addPart({ name, modelId: selectedModelId, photoUrl: '' }); }
-        }
+        if (level === 'manufacturer') { name = prompt("Enter new manufacturer name:"); if (name) await addManufacturer(name); } 
+        else if (level === 'make') { name = prompt(`Enter new make name for ${manufacturers.find(m=>m.id===selectedManufacturerId).name}:`); if (name) await addMake({ name, manufacturerId: selectedManufacturerId }); } 
+        else if (level === 'model') { name = prompt(`Enter new model name for ${makes.find(m=>m.id===selectedMakeId).name}:`); if (name) await addModel({ name, makeId: selectedMakeId }); } 
+        else if (level === 'part') { name = prompt(`Enter new part name for ${models.find(m=>m.id===selectedModelId).name}:`); if (name) await addPart({ name, modelId: selectedModelId, photoUrl: '' }); }
         fetchData();
     };
-    
+
     const handleSaveRecipe = async (partId, departmentId, recipeData) => {
         try {
             await setJobStepDetail(partId, departmentId, recipeData);
@@ -274,17 +284,23 @@ const ProductRecipeManager = () => {
     const filteredMakes = useMemo(() => manufacturers.length > 0 ? makes.filter(m => m.manufacturerId === selectedManufacturerId) : [], [makes, selectedManufacturerId]);
     const filteredModels = useMemo(() => makes.length > 0 ? models.filter(m => m.makeId === selectedMakeId) : [], [models, selectedMakeId]);
     const filteredParts = useMemo(() => models.length > 0 ? parts.filter(p => p.modelId === selectedModelId) : [], [parts, selectedModelId]);
-
+    
     const renderList = (items, selectedId, type) => (
         <ul className="space-y-1">
             {items.map(item => (
-                <li key={item.id} onClick={() => handleSelect(type, item.id)} className={`p-2 rounded-md cursor-pointer text-sm transition-colors ${selectedId === item.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}>
-                    {item.name}
+                // UPDATE the list item to include the duplicate button
+                <li key={item.id} className={`flex items-center justify-between p-2 rounded-md text-sm transition-colors ${selectedId === item.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-700'}`}>
+                    <span onClick={() => handleSelect(type, item.id)} className="flex-grow cursor-pointer">{item.name}</span>
+                    {type === 'part' && (
+                        <Button onClick={(e) => { e.stopPropagation(); handleCloneRecipe(item.id); }} variant="secondary" className="p-1 h-6 w-6 ml-2" title="Duplicate Recipe">
+                            <Copy size={14} />
+                        </Button>
+                    )}
                 </li>
             ))}
         </ul>
     );
-    
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1 bg-gray-800 p-4 rounded-xl border border-gray-700 self-start space-y-4">
@@ -307,7 +323,7 @@ const ProductRecipeManager = () => {
                  {selectedModelId && (
                     <div className="border-t border-gray-700 pt-4">
                          <div className="flex justify-between items-center mb-2"><h4 className="font-bold text-md text-gray-300">Parts</h4><Button onClick={() => handleAdd('part')} className="py-1 px-2 text-xs"><FilePlus size={14} className="mr-1"/>Part</Button></div>
-                        {renderList(filteredParts, selectedPartId, 'part')}
+                         {renderList(filteredParts, selectedPartId, 'part')}
                     </div>
                 )}
             </div>
@@ -322,10 +338,12 @@ const ProductRecipeManager = () => {
                         allJobSteps={allJobSteps}
                         onSaveRecipe={handleSaveRecipe}
                         onPartUpdate={handlePartUpdate}
+                        recipeToClone={recipeToClone} // Pass the cloned recipe
+                        onCloneComplete={() => setRecipeToClone(null)} // Function to clear the clone state
                     />
                 ) : (
                     <div className="flex items-center justify-center h-full bg-gray-800 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
-                        <p>Select a part from the catalog to view its dossier.</p>
+                         <p>{recipeToClone ? 'Select a new part to paste the recipe to.' : 'Select a part from the catalog to view its dossier.'}</p>
                     </div>
                 )}
             </div>

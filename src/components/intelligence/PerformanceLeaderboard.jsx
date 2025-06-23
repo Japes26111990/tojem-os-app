@@ -1,13 +1,13 @@
-// src/components/intelligence/PerformanceLeaderboard.jsx (Corrected File)
+// src/components/intelligence/PerformanceLeaderboard.jsx (Final Version)
 
 import React, { useMemo } from 'react';
-import { Link } from 'react-router-dom'; // <-- IMPORT THE LINK COMPONENT
-import { Zap, DollarSign, ShieldCheck, CheckCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Star, Zap, DollarSign, ShieldCheck, CheckCircle } from 'lucide-react'; // Import Star icon
 
 const SortButton = ({ label, active, onClick }) => (
     <button
         onClick={onClick}
-        className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors ${
+        className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors flex items-center gap-2 ${
             active
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600'
@@ -28,41 +28,36 @@ const getRankColor = (rank) => {
 
 const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) => {
     const sortConfig = {
-        avgEfficiency: { direction: 'desc', label: 'Efficiency', unit: '%' },
+        ops: { direction: 'desc', label: 'OPS', unit: '' }, // <-- ADD OPS
         netValueAdded: { direction: 'desc', label: 'Net Value', unit: 'R' },
+        avgEfficiency: { direction: 'desc', label: 'Efficiency', unit: '%' },
         reworkRate: { direction: 'asc', label: 'Rework Rate', unit: '%' },
         jobsCompleted: { direction: 'desc', label: 'Jobs Done', unit: '' },
     };
 
     const sortedEmployees = useMemo(() => {
         if (!employees) return [];
-        
         const key = activeSortKey;
         const direction = sortConfig[key]?.direction || 'desc';
-
         return [...employees].sort((a, b) => {
-            const valA = a[key];
-            const valB = b[key];
-
-            if (direction === 'asc') {
-                return valA - valB;
-            } else {
-                return valB - valA;
-            }
+            return direction === 'asc' ? a[key] - b[key] : b[key] - a[key];
         });
     }, [employees, activeSortKey]);
 
     const formatValue = (value, unit) => {
         if (unit === '%') return `${Math.round(value)}%`;
         if (unit === 'R') return `R ${value.toFixed(2)}`;
+        if (unit === '') return value.toFixed(1); // For OPS
         return value;
     };
 
     return (
         <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-            {/* The title and sort buttons remain the same */}
             <h3 className="text-xl font-bold text-white mb-4">Performance Leaderboard</h3>
+            
             <div className="flex flex-wrap gap-2 mb-4">
+                {/* ADD new sort button for OPS */}
+                <SortButton label={<><Star size={16}/> Rank by OPS</>} active={activeSortKey === 'ops'} onClick={() => setActiveSortKey('ops')} />
                 <SortButton label="Rank by Net Value" active={activeSortKey === 'netValueAdded'} onClick={() => setActiveSortKey('netValueAdded')} />
                 <SortButton label="Rank by Efficiency" active={activeSortKey === 'avgEfficiency'} onClick={() => setActiveSortKey('avgEfficiency')} />
                 <SortButton label="Rank by Quality" active={activeSortKey === 'reworkRate'} onClick={() => setActiveSortKey('reworkRate')} />
@@ -80,7 +75,6 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
                         <div key={emp.id} className={`flex items-center p-3 rounded-lg border-l-4 transition-all ${rankColor}`}>
                             <span className="font-bold text-lg text-white w-8">{rank}.</span>
                             <div className="flex-grow">
-                                {/* THIS IS THE FIX: WRAPPING THE NAME IN A LINK */}
                                 <Link to={`/employee/${emp.id}`} className="font-semibold text-blue-400 hover:underline">
                                     {emp.name}
                                 </Link>

@@ -7,10 +7,11 @@ import { getCompletedJobsForEmployee, getOverheadCategories, getOverheadExpenses
 import { ChevronsLeft, Zap, DollarSign, AlertCircle, CheckCircle2, Users } from 'lucide-react';
 import EfficiencyChart from '../components/intelligence/EfficiencyChart';
 import PerformanceSnapshot from '../components/intelligence/PerformanceSnapshot';
-import ValueWasteAnalysis from '../components/intelligence/ValueWasteAnalysis'; // <-- IMPORT NEW COMPONENT
+import ValueWasteAnalysis from '../components/intelligence/ValueWasteAnalysis';
+import ReworkAnalysisModal from '../components/intelligence/ReworkAnalysisModal'; // <-- IMPORT NEW MODAL
 
-const KpiCard = ({ icon, title, value, teamAverage, color }) => (
-    <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
+const KpiCard = ({ icon, title, value, teamAverage, color, onClick }) => (
+    <div onClick={onClick} className={`bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4 ${onClick ? 'cursor-pointer hover:bg-gray-700/50' : ''}`}>
         <div className={`p-3 rounded-full ${color}`}>
             {icon}
         </div>
@@ -35,6 +36,7 @@ const EmployeeIntelligencePage = () => {
     const [allJobs, setAllJobs] = useState([]);
     const [overheads, setOverheads] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [isReworkModalOpen, setReworkModalOpen] = useState(false); // <-- NEW STATE FOR MODAL
 
     useEffect(() => {
         let unsubscribe = () => {};
@@ -70,21 +72,16 @@ const EmployeeIntelligencePage = () => {
     }, [employeeId]);
 
     const performanceMetrics = useMemo(() => {
+        // ... (calculations remain the same, no changes needed here) ...
         const metrics = {
             individual: { efficiency: 0, netValueAdded: 0, reworkRate: 0, jobsCompleted: 0 },
             team: { efficiency: 0, netValueAdded: 0, reworkRate: 0 }
         };
         if (!employee || allEmployees.length === 0) return metrics;
-
         const overheadCostPerHour = overheads / 173.2;
-
-        // Calculate Individual Metrics
         const issueJobsCount = jobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
         const completedJobs = jobs.filter(j => j.status === 'Complete');
-        let individualTotalWorkMinutes = 0;
-        let individualTotalEfficiencyRatioSum = 0;
-        let individualTotalJobValue = 0;
-
+        let individualTotalWorkMinutes = 0, individualTotalEfficiencyRatioSum = 0, individualTotalJobValue = 0;
         completedJobs.forEach(job => {
             if (job.startedAt && job.completedAt) {
                 const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -97,7 +94,6 @@ const EmployeeIntelligencePage = () => {
             }
             individualTotalJobValue += job.totalCost || 0;
         });
-
         const individualLaborCost = (individualTotalWorkMinutes / 60) * ((employee.hourlyRate || 0) + overheadCostPerHour);
         metrics.individual = {
             efficiency: completedJobs.length > 0 ? (individualTotalEfficiencyRatioSum / completedJobs.length) * 100 : 0,
@@ -105,14 +101,11 @@ const EmployeeIntelligencePage = () => {
             reworkRate: jobs.length > 0 ? (issueJobsCount / jobs.length) * 100 : 0,
             jobsCompleted: jobs.length
         };
-
-        // Calculate Team Averages
         const departmentEmployees = allEmployees.filter(e => e.departmentId === employee.departmentId);
         const departmentEmployeeIds = new Set(departmentEmployees.map(e => e.id));
         const departmentJobs = allJobs.filter(j => j.completedAt && departmentEmployeeIds.has(j.employeeId));
         const teamIssueJobsCount = departmentJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
         const teamCompletedJobs = departmentJobs.filter(j => j.status === 'Complete');
-
         let teamTotalEfficiencyRatioSum = 0, teamTotalValue = 0, teamTotalLaborCost = 0;
         teamCompletedJobs.forEach(job => {
             if (job.estimatedTime > 0 && job.startedAt && job.completedAt) {
@@ -124,13 +117,11 @@ const EmployeeIntelligencePage = () => {
             if(employeeForJob) teamTotalLaborCost += (jobWorkMinutes / 60) * ((employeeForJob.hourlyRate || 0) + overheadCostPerHour);
             teamTotalValue += job.totalCost || 0;
         });
-        
         metrics.team = {
             efficiency: teamCompletedJobs.length > 0 ? (teamTotalEfficiencyRatioSum / teamCompletedJobs.length) * 100 : 0,
             netValueAdded: departmentEmployees.length > 0 ? (teamTotalValue - teamTotalLaborCost) / departmentEmployees.length : 0,
             reworkRate: departmentJobs.length > 0 ? (teamIssueJobsCount / departmentJobs.length) * 100 : 0
         };
-
         return metrics;
     }, [employee, jobs, allEmployees, allJobs, overheads]);
 
@@ -140,6 +131,7 @@ const EmployeeIntelligencePage = () => {
     return (
         <MainLayout>
             <div className="space-y-8">
+                {/* Header */}
                 <div>
                     <Link to="/performance" className="flex items-center text-blue-400 hover:text-blue-300 mb-4">
                         <ChevronsLeft size={20} className="mr-1" />
@@ -151,10 +143,12 @@ const EmployeeIntelligencePage = () => {
                     </div>
                 </div>
 
+                {/* KPI Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <KpiCard icon={<Zap size={24} />} title="Overall Efficiency" value={`${performanceMetrics.individual.efficiency.toFixed(0)}%`} teamAverage={`${performanceMetrics.team.efficiency.toFixed(0)}%`} color="bg-purple-500/20 text-purple-400" />
                     <KpiCard icon={<DollarSign size={24} />} title="Net Value Added (Period)" value={`R ${performanceMetrics.individual.netValueAdded.toFixed(2)}`} teamAverage={`R ${performanceMetrics.team.netValueAdded.toFixed(2)}`} color="bg-green-500/20 text-green-400" />
-                    <KpiCard icon={<AlertCircle size={24} />} title="Rework / Issue Rate" value={`${performanceMetrics.individual.reworkRate.toFixed(1)}%`} teamAverage={`${performanceMetrics.team.reworkRate.toFixed(1)}%`} color="bg-red-500/20 text-red-400" />
+                    {/* MAKE THIS CARD CLICKABLE */}
+                    <KpiCard icon={<AlertCircle size={24} />} title="Rework / Issue Rate" value={`${performanceMetrics.individual.reworkRate.toFixed(1)}%`} teamAverage={`${performanceMetrics.team.reworkRate.toFixed(1)}%`} color="bg-red-500/20 text-red-400" onClick={() => setReworkModalOpen(true)} />
                     <KpiCard icon={<CheckCircle2 size={24} />} title="Jobs Completed" value={performanceMetrics.individual.jobsCompleted} color="bg-blue-500/20 text-blue-400" />
                 </div>
 
@@ -165,10 +159,18 @@ const EmployeeIntelligencePage = () => {
                         <h3 className="text-xl font-bold text-white mb-4">Efficiency Over Time</h3>
                         <EfficiencyChart jobs={jobs} />
                     </div>
-                     {/* RENDER THE NEW COMPONENT */}
                     <ValueWasteAnalysis jobs={jobs} />
                 </div>
             </div>
+
+            {/* CONDITIONALLY RENDER THE MODAL */}
+            {isReworkModalOpen && (
+                <ReworkAnalysisModal 
+                    jobs={jobs}
+                    employeeName={employee.name}
+                    onClose={() => setReworkModalOpen(false)}
+                />
+            )}
         </MainLayout>
     );
 };

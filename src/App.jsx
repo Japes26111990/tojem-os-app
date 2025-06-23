@@ -1,8 +1,7 @@
+// src/App.jsx (Updated)
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
-
-// Layouts and Pages
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/layout/ProtectedRoute';
 import LoginPage from './pages/Login';
@@ -15,21 +14,16 @@ import StockControlPage from './pages/StockControlPage';
 import DashboardPage from './pages/DashboardPage';
 import PerformancePage from './pages/PerformancePage';
 import IssuesPage from './pages/IssuesPage';
-import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage'; // 1. IMPORT THE NEW HUB PAGE
+import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage';
+import ProductViabilityPage from './pages/ProductViabilityPage'; // <-- IMPORT NEW PAGE
 
 function App() {
   const { user } = useAuth();
-
   return (
     <Router>
       <Routes>
-        <Route
-          path="/login"
-          element={user ? <Navigate to="/" /> : <LoginPage />}
-        />
-        <Route
-          path="/*"
-          element={
+        <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+        <Route path="/*" element={
             <ProtectedRoute>
               <Routes>
                 <Route path="/" element={<DashboardPage />} />
@@ -41,9 +35,10 @@ function App() {
                 <Route path="/issues" element={<IssuesPage />} />
                 <Route path="/performance" element={<PerformancePage />} />
                 <Route path="/settings" element={<SettingsPage />} />
-
-                {/* 2. ADD THE NEW ROUTE WITH A DYNAMIC ID */}
                 <Route path="/employee/:employeeId" element={<EmployeeIntelligencePage />} />
+                
+                {/* ADD THE NEW ROUTE */}
+                <Route path="/profitability" element={<ProductViabilityPage />} />
                 
               </Routes>
             </ProtectedRoute>

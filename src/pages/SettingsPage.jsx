@@ -6,73 +6,73 @@ import EmployeesManager from '../components/features/settings/EmployeesManager';
 import SuppliersManager from '../components/features/settings/SuppliersManager';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
-import ProductRecipeManager from '../components/features/settings/ProductRecipeManager';
 import OverheadsManager from '../components/features/settings/OverheadsManager'; 
-import SkillsManager from '../components/features/settings/SkillsManager'; // 1. IMPORT THE NEW COMPONENT
-
+import SkillsManager from '../components/features/settings/SkillsManager';
+// REMOVE old managers and IMPORT the new one
+import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
 
 const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
-  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
-  const activeClasses = isDanger ? "bg-red-600 text-white" : "bg-blue-600 text-white";
-  const inactiveClasses = isDanger ? "bg-gray-800 text-red-400 hover:bg-red-500/20" : "bg-gray-800 text-gray-300 hover:bg-gray-700";
+  const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
+  const activeClasses = isDanger ? "bg-red-600 text-white" : "bg-blue-600 text-white";
+  const inactiveClasses = isDanger ? "bg-gray-800 text-red-400 hover:bg-red-500/20" : "bg-gray-800 text-gray-300 hover:bg-gray-700";
 
-  return (
-    <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
-      {label}
-    </button>
-  );
+  return (
+    <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
+      {label}
+    </button>
+  );
 };
 
 const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState('products');
+  const [activeTab, setActiveTab] = useState('products');
 
-  const tabs = useMemo(() => ({
-    products: {
-      label: 'Products & Recipes',
-      components: [<ProductRecipeManager key="product-recipe" />]
-    },
-    inventory: {
-      label: 'Inventory & Suppliers',
-      components: [<InventoryManager key="inventory" />, <SuppliersManager key="suppliers" />]
-    },
-    assets: {
-      label: 'Tools & Assets',
-      components: [<ToolsManager key="tools" />, <ToolAccessoriesManager key="tool-accessories" />]
-    },
-    company: {
-      label: 'Company & Staff',
-      // 2. ADD THE SKILLSMANAGER COMPONENT TO THIS TAB'S ARRAY
-      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />]
-    },
-    financials: { // NEW TAB FOR FINANCIALS
-      label: 'Financials',
-      components: [<OverheadsManager key="overheads" />]
-    }
-  }), []); 
+  const tabs = useMemo(() => ({
+    products: {
+      label: 'Products & Recipes',
+      // REPLACE the old components with our single new one
+      components: [<UnifiedProductManager key="unified-product-manager" />]
+    },
+    inventory: {
+      label: 'Inventory & Suppliers',
+      components: [<InventoryManager key="inventory" />, <SuppliersManager key="suppliers" />]
+    },
+    assets: {
+      label: 'Tools & Assets',
+      components: [<ToolsManager key="tools" />, <ToolAccessoriesManager key="tool-accessories" />]
+    },
+    company: {
+      label: 'Company & Staff',
+      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />]
+    },
+    financials: {
+      label: 'Financials',
+      components: [<OverheadsManager key="overheads" />]
+    }
+  }), []); 
 
-  return (
-    <MainLayout>
-      <div className="space-y-8">
-        <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
+  return (
+    <MainLayout>
+      <div className="space-y-8">
+        <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
 
-        <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
-          {Object.entries(tabs).map(([tabKey, tabData]) => (
-            <TabButton
-              key={tabKey}
-              label={tabData.label}
-              isActive={activeTab === tabKey}
-              onClick={() => setActiveTab(tabKey)}
-              isDanger={tabData.isDanger}
-            />
-          ))}
-        </div>
+        <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
+          {Object.entries(tabs).map(([tabKey, tabData]) => (
+            <TabButton
+              key={tabKey}
+              label={tabData.label}
+              isActive={activeTab === tabKey}
+              onClick={() => setActiveTab(tabKey)}
+              isDanger={tabData.isDanger}
+            />
+          ))}
+        </div>
 
-        <div className="space-y-8">
-          {tabs[activeTab].components}
-        </div>
-      </div>
-    </MainLayout>
-  );
+        <div className="space-y-8">
+          {tabs[activeTab].components}
+        </div>
+      </div>
+    </MainLayout>
+  );
 };
 
 export default SettingsPage;
