@@ -1,4 +1,4 @@
-// src/components/layout/MainLayout.jsx (Updated)
+// src/components/layout/MainLayout.jsx
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,7 +25,7 @@ const MainLayout = ({ children }) => {
             <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-400">Signed in as {user.email}</p>
+            <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p> {/* Added optional chaining */}
             <Button onClick={signOut} variant="secondary" className="mt-1 py-1 px-3 text-xs">
               Sign Out
             </Button>
@@ -41,9 +41,11 @@ const MainLayout = ({ children }) => {
             <NavLink to="/qc" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>QC</NavLink>
             <NavLink to="/issues" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Issues</NavLink>
             <NavLink to="/performance" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Performance</NavLink>
-            
-            {/* ADD THE NEW NAVIGATION LINK */}
             <NavLink to="/profitability" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Profitability</NavLink>
+            
+            {/* NEW NAVIGATION LINKS FOR PAYROLL AND VALUATION */}
+            <NavLink to="/payroll" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Payroll</NavLink>
+            <NavLink to="/valuation" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Valuation</NavLink>
             
             <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Settings</NavLink>
           </div>

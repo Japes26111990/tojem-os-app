@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore'; // Added getAllInventoryItems, getTools, getToolAccessories
+import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { calculateJobDuration } from '../../../utils/jobUtils'; // Import centralized utility
 
 const StatusBadge = ({ status }) => {
     const statusColors = {
@@ -17,7 +18,7 @@ const StatusBadge = ({ status }) => {
 };
 
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
-    if (!actualMinutes || !estimatedMinutes) {
+    if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0) {
         return <span className="text-xs text-gray-500">N/A</span>;
     }
     const efficiency = (estimatedMinutes / actualMinutes) * 100;
@@ -28,59 +29,35 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
 };
 
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
-    const calculateLiveDuration = (j, cTime) => {
-        if (!j.startedAt) return null;
-        let durationSeconds;
-        const startTime = j.startedAt.seconds * 1000;
-        const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-        if (j.status === 'Complete' || j.status === 'Awaiting QC' || j.status === 'Issue' || j.status === 'Archived - Issue') {
-            if (!j.completedAt) return null;
-            durationSeconds = (j.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'In Progress') {
-            durationSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'Paused' && j.pausedAt) {
-            durationSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else {
-            return null;
-        }
-        if (durationSeconds < 0) return null;
-        const minutes = Math.floor(durationSeconds / 60);
-        const seconds = Math.floor(durationSeconds % 60);
-        return { text: `${minutes}m ${seconds}s`, totalMinutes: durationSeconds / 60 };
-    };
+    // Use the centralized utility function for duration
+    const liveDuration = calculateJobDuration(job, currentTime);
 
     const calculateLiveCost = (j, cTime, rates) => {
         // If totalCost is already set (e.g., after QC approval), use that value
-        if (j.totalCost !== undefined && j.totalCost !== null) {
+        if (typeof j.totalCost === 'number' && j.totalCost !== null) {
             return `R ${j.totalCost.toFixed(2)}`;
         }
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
         const hourlyRate = rates[j.employeeId];
         if (hourlyRate === 0) return 'N/A';
-        let activeSeconds = 0;
-        const startTime = j.startedAt ? j.startedAt.seconds * 1000 : null;
-        const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-        if (j.status === 'In Progress') {
-            if (startTime) {
-                activeSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
-            }
-        } else if (j.status === 'Paused' && j.pausedAt && startTime) {
-            activeSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else {
-            return 'N/A';
+        
+        // Use the centralized utility for duration
+        const durationResult = calculateJobDuration(j, cTime);
+        let liveLaborCost = 0;
+        if (durationResult) {
+            liveLaborCost = (durationResult.totalMinutes / 60) * hourlyRate;
         }
-        activeSeconds = Math.max(0, activeSeconds);
-        const activeHours = activeSeconds / 3600;
-        const liveLaborCost = activeHours * hourlyRate;
         
         const currentMaterialCost = j.materialCost || 0;
         const totalLiveCost = liveLaborCost + currentMaterialCost;
         return `R ${totalLiveCost.toFixed(2)}`;
     };
 
-    const liveDuration = calculateLiveDuration(job, currentTime);
     const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates);
-    const formatDate = (timestamp) => new Date(timestamp.seconds * 1000).toLocaleString();
+    const formatDate = (timestamp) => {
+        if (!timestamp) return 'N/A';
+        return new Date(timestamp.seconds * 1000).toLocaleString();
+    };
 
     return (
         <tr onClick={() => onClick(job)} className="border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer">

@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 06/23/2025 17:19:06
+Generated on: 06/24/2025 08:59:19
 
 
 ==================================================
@@ -1072,60 +1072,15 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobCard
 ==================================================
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, checkExistingJobRecipe, setJobStepDetail } from '../../../api/firestore';
+import { processConsumables } from '../../../utils/jobUtils'; // <-- IMPORT THE UTILITY
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
-import { Search } from 'lucide-react'; // Import Search icon
+import { Search } from 'lucide-react';
 
-
-// Utility to process consumables for the job card preview
-const processRecipeConsumables = (consumablesFromRecipe, allConsumablesList, temp) => {
-    if (!consumablesFromRecipe) return [];
-
-    const processedList = [];
-    const CATALYST_RULES = [
-        { temp_max: 18, percentage: 3.0 },
-        { temp_max: 28, percentage: 2.0 },
-        { temp_max: 100, percentage: 1.0 }
-    ];
-
-    // Find a generic catalyst item, assuming 'catalyst' or 'hardener' in its name
-    const catalystItem = allConsumablesList.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
-
-    for (const consumable of consumablesFromRecipe) {
-        const masterItem = allConsumablesList.find(c => c.id === consumable.itemId);
-
-        // If masterItem is found, use its details. Otherwise, use what's on the consumable itself.
-        const itemDetails = masterItem || consumable;
-        if (!itemDetails) continue;
-
-        if (consumable.type === 'fixed') {
-            processedList.push({ ...itemDetails, quantity: consumable.quantity, notes: '' });
-
-            // Apply catalyst if required and catalyst item exists
-            if (itemDetails.requiresCatalyst && catalystItem) {
-                let percentage = 0;
-                for(const rule of CATALYST_RULES) {
-                    if (temp <= rule.temp_max) {
-                        percentage = rule.percentage;
-                        break;
-                    }
-                }
-                if (percentage > 0) {
-                    const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temp}Â°C)` });
-                }
-            }
-        } else if (consumable.type === 'dimensional') {
-            processedList.push({ ...itemDetails, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
-        }
-    }
-    return processedList;
-};
-
-
-// Helper component for Consumable editing within the inline recipe form
+// The RecipeConsumableEditor component remains unchanged.
+// Paste the existing RecipeConsumableEditor component code here.
 const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
     const [selectedFixedItemId, setSelectedFixedItemId] = useState('');
@@ -1133,29 +1088,22 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
     const [selectedDimItemId, setSelectedDimItemId] = useState('');
     const [cuts, setCuts] = useState([]);
     const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-
-    // NEW SEARCH RELATED STATES
     const [fixedSearchTerm, setFixedSearchTerm] = useState('');
     const [filteredFixedOptions, setFilteredFixedOptions] = useState([]);
-    const [selectedFixedItemDetails, setSelectedFixedItemDetails] = useState(null); // To store full item object
-
+    const [selectedFixedItemDetails, setSelectedFixedItemDetails] = useState(null); 
     const [dimSearchTerm, setDimSearchTerm] = useState('');
     const [filteredDimOptions, setFilteredDimOptions] = useState([]);
-    const [selectedDimItemDetails, setSelectedDimItemDetails] = useState(null); // To store full item object
-
+    const [selectedDimItemDetails, setSelectedDimItemDetails] = useState(null);
     const searchRefFixed = useRef(null);
     const searchRefDim = useRef(null);
-    // END NEW SEARCH RELATED STATES
 
-
-    // NEW SEARCH RELATED EFFECTS
     useEffect(() => {
         if (fixedSearchTerm.length > 0) {
             const lowerCaseSearchTerm = fixedSearchTerm.toLowerCase();
             const filtered = consumables.filter(item =>
                 item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
                 (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm))
-            ).slice(0, 10); // Limit results
+            ).slice(0, 10);
             setFilteredFixedOptions(filtered);
         } else {
             setFilteredFixedOptions([]);
@@ -1169,14 +1117,13 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                 (item.name.toLowerCase().includes('mat') || item.category === 'Raw Material') &&
                 (item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
                 (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm)))
-            ).slice(0, 10); // Limit results
+            ).slice(0, 10);
             setFilteredDimOptions(filtered);
         } else {
             setFilteredDimOptions([]);
         }
     }, [dimSearchTerm, consumables]);
 
-    // Click outside handler for fixed quantity search
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchRefFixed.current && !searchRefFixed.current.contains(event.target)) {
@@ -1187,7 +1134,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Click outside handler for dimensional search
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchRefDim.current && !searchRefDim.current.contains(event.target)) {
@@ -1197,12 +1143,9 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-    // END NEW SEARCH RELATED EFFECTS
-
 
     const handleAddConsumable = () => {
         let newConsumable;
-
         switch (consumableType) {
             case 'fixed':
                 if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return alert("Please select an item and enter a valid quantity.");
@@ -1219,18 +1162,15 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
             setFixedSearchTerm('');
             setFixedQty('');
             setSelectedFixedItemDetails(null);
-
             setDimSearchTerm('');
             setCuts([]);
             setCutRule({ dimensions: '', notes: '' });
             setSelectedDimItemDetails(null);
-
         } else {
             alert("This consumable has already been added to the recipe.");
         }
     };
     const getConsumableName = (id) => consumables.find(c => c.id === id)?.name || 'Unknown Item';
-
     return (
         <div>
             <h5 className="font-semibold mb-2 text-gray-200">Required Consumables for Recipe</h5>
@@ -1247,7 +1187,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                 value={fixedSearchTerm}
                                 onChange={e => {
                                     setFixedSearchTerm(e.target.value);
-                                    setSelectedFixedItemDetails(null); // Clear selected item if typing
+                                    setSelectedFixedItemDetails(null);
                                 }}
                                 placeholder="Search by name or code..."
                             />
@@ -1259,10 +1199,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             key={item.id}
                                             className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                             onClick={() => {
-                                                setSelectedFixedItemDetails(item); // Store full item
-                                                setSelectedFixedItemId(item.id); // Store ID for logic
-                                                setFixedSearchTerm(item.name); // Set input text to item name
-                                                setFilteredFixedOptions([]); // Close results
+                                                setSelectedFixedItemDetails(item);
+                                                setSelectedFixedItemId(item.id);
+                                                setFixedSearchTerm(item.name);
+                                                setFilteredFixedOptions([]);
                                             }}
                                         >
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
@@ -1289,7 +1229,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                         </Button>
                     </div>
                 )}
-
                 {consumableType === 'dimensional' && (
                     <div className="space-y-3 animate-fade-in" ref={searchRefDim}>
                          <div className="flex-grow relative">
@@ -1298,7 +1237,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                 value={dimSearchTerm}
                                 onChange={e => {
                                     setDimSearchTerm(e.target.value);
-                                    setSelectedDimItemDetails(null); // Clear selected item if typing
+                                    setSelectedDimItemDetails(null);
                                 }}
                                 placeholder="Search by name or code..."
                             />
@@ -1310,10 +1249,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             key={item.id}
                                             className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                             onClick={() => {
-                                                setSelectedDimItemDetails(item); // Store full item
-                                                setSelectedDimItemId(item.id); // Store ID for logic
-                                                setDimSearchTerm(item.name); // Set input text to item name
-                                                setFilteredDimOptions([]); // Close results
+                                                setSelectedDimItemDetails(item);
+                                                setSelectedDimItemId(item.id);
+                                                setDimSearchTerm(item.name);
+                                                setFilteredDimOptions([]);
                                             }}
                                         >
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
@@ -1341,7 +1280,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                         </Button>
                     </div>
                 )}
-
                 <h6 className="text-sm font-bold pt-2 border-t border-gray-700 text-gray-200">Recipe Consumables</h6>
                 <ul className="space-y-2 max-h-40 overflow-y-auto">
                     {selectedConsumables.map((c, i) => (
@@ -1361,10 +1299,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
 };
 
 
-// JobCardPreview component defined BEFORE JobCardCreator
+// The JobCardPreview component also remains unchanged.
+// Paste the existing JobCardPreview component code here.
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
-
     return (
         <div className="mt-8 p-6 bg-gray-800 rounded-xl border border-gray-700">
             <h2 className="text-2xl font-bold text-white mb-6">Generated Job Card Preview</h2>
@@ -1394,15 +1332,13 @@ const JobCardPreview = ({ details }) => {
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools & Accessories</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
                                 {details.tools?.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No tools required.</li>}
-                                {details.accessories?.length > 0 ?
-                                details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
+                                {details.accessories?.length > 0 ? details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
                             </ul>
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-2 text-sm">
-                                {details.processedConsumables?.length >
-                                0 ? details.processedConsumables.map((c, i) => (
+                                {details.processedConsumables?.length > 0 ? details.processedConsumables.map((c, i) => (
                                     <li key={i}>
                                         <span className="font-semibold">{c.name}</span>
                                         {c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}
@@ -1420,15 +1356,15 @@ const JobCardPreview = ({ details }) => {
                 </div>
                 <div className="mt-6 border-t pt-4">
                     <h3 className="text-lg font-bold text-gray-800 mb-2">Steps</h3>
-                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">{details.steps?.length > 0 ?
-                    details.steps.map((step, i) => <li key={i}>{step}</li>) : <li>No steps defined.</li>}</ol>
+                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">{details.steps?.length > 0 ? details.steps.map((step, i) => <li key={i}>{step}</li>) : <li>No steps defined.</li>}</ol>
                 </div>
             </div>
         </div>
     )
 };
 
-// Main JobCardCreator component
+
+// Main component
 const JobCardCreator = () => {
     // State to hold all master data from Firestore
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
@@ -1442,18 +1378,16 @@ const JobCardCreator = () => {
     // Flags and states for "Define Recipe on Demand"
     const [showDefineRecipeForm, setShowDefineRecipeForm] = useState(false);
     const [tempRecipeDetails, setTempRecipeDetails] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
-    const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false); // To prevent double clicks/indicate saving
+    const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false);
 
     // Fetch all necessary data when the component mounts
     useEffect(() => {
         const fetchAllData = async () => {
             setLoading(true);
             try {
-                // Fetch current temperature from Open-Meteo for Cape Town
                 const weatherResponse = await fetch("https://api.open-meteo.com/v1/forecast?latitude=-33.92&longitude=18.42&current=temperature_2m");
                 const weatherData = await weatherResponse.json();
                 setCurrentTemp(weatherData.current.temperature_2m);
-                // Fetch all data from Firestore concurrently
 
                 const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
                     getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
@@ -1462,8 +1396,7 @@ const JobCardCreator = () => {
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 alert("Error fetching page data. Please check the console and refresh.");
-                if (currentTemp === null) setCurrentTemp(20);
-                // Fallback temperature if API fails
+                if (currentTemp === null) setCurrentTemp(20); // Fallback temperature if API fails
             } finally {
                 setLoading(false);
             }
@@ -1476,15 +1409,12 @@ const JobCardCreator = () => {
         const { name, value } = e.target;
         setSelection(prev => {
             const updated = { ...prev, [name]: value };
-            // Reset lower-level selections when a higher-level selection changes
             if (name === 'manufacturerId') { updated.makeId = ''; updated.modelId = ''; updated.partId = ''; }
             if (name === 'makeId') { updated.modelId = ''; updated.partId = ''; }
             if (name === 'modelId') { updated.partId = ''; }
-            
             if (name === 'departmentId') { updated.employeeId = ''; }
             return updated;
         });
-        // Hide the inline recipe definition form if selections change
         setShowDefineRecipeForm(false);
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
@@ -1498,7 +1428,6 @@ const JobCardCreator = () => {
     // Effect to generate job details whenever selections or data change
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
-        // Only generate if both part and department are selected, and temperature is known
         if (partId && departmentId && currentTemp !== null) {
             const part = allData.parts.find(p => p.id === partId);
             const department = allData.departments.find(d => d.id === departmentId);
@@ -1506,17 +1435,14 @@ const JobCardCreator = () => {
             
             let finalRecipeDetails = null;
             let isRecipeFoundInDb = false;
-            // 1. Try to find a standard recipe for the *current* selection
+
             const standardRecipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
             if (standardRecipe) {
                 finalRecipeDetails = standardRecipe;
                 isRecipeFoundInDb = true;
                 setShowDefineRecipeForm(false);
-                // Hide the define form if a standard recipe exists
             } else {
-                // No standard recipe. Prompt to define.
-                setShowDefineRecipeForm(true); // Show the inline form to define a new recipe
-                // Use tempRecipeDetails for the form, which also acts as the "recipe" for the preview
+                setShowDefineRecipeForm(true);
                 finalRecipeDetails = {
                     description: tempRecipeDetails.description || 'No description.',
                     estimatedTime: tempRecipeDetails.estimatedTime || 0,
@@ -1528,14 +1454,14 @@ const JobCardCreator = () => {
             }
             
             if (part && department) {
-                // Process consumables based on the final determined recipe details and current temperature
-                const processedConsumables = processRecipeConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
-                // Map tool and accessory IDs to their full objects for display
+                // <-- USE THE REFACTORED UTILITY FUNCTION
+                const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
+
                 const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                 const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
                 
                 setJobDetails({
-                    jobId: `JOB-${Date.now()}`, // Generate a unique job ID
+                    jobId: `JOB-${Date.now()}`,
                     partName: part.name,
                     partId: part.id,
                     photoUrl: part.photoUrl || '',
@@ -1543,24 +1469,20 @@ const JobCardCreator = () => {
                     departmentName: department.name,
                     employeeId: employee ? employee.id : '',
                     employeeName: employee ? employee.name : 'Unassigned',
-                    status: 'Pending', // Initial status
+                    status: 'Pending',
                     description: finalRecipeDetails?.description || 'No description.',
                     estimatedTime: finalRecipeDetails?.estimatedTime || 0,
                     steps: finalRecipeDetails?.steps || [],
                     tools: toolsForDisplay,
                     accessories: accessoriesForDisplay,
-                    consumables: finalRecipeDetails?.consumables || [], // Raw consumables (for saving recipe)
-
-                    processedConsumables: processedConsumables, // Consumables with quantities adjusted by rules (for job card display/costing)
-                    // Flags for conditional rendering of buttons
+                    consumables: finalRecipeDetails?.consumables || [],
+                    processedConsumables: processed, // <-- Use the result from the utility function
                     isRecipeFoundInDb: isRecipeFoundInDb,
                 });
             }
         } else {
             setJobDetails(null);
-            // Clear job details if selections are incomplete
             setShowDefineRecipeForm(false);
-            // Hide recipe definition form
         }
     }, [selection, allData, currentTemp, tempRecipeDetails]);
 
@@ -1593,14 +1515,12 @@ const JobCardCreator = () => {
     // Function to save the new recipe and create the job card
     const saveNewRecipeAndCreateJob = async () => {
         if (!jobDetails || !selection.partId || !selection.departmentId) return;
-        // Basic validation for recipe fields
         if (!tempRecipeDetails.description.trim() || !tempRecipeDetails.estimatedTime || !tempRecipeDetails.steps.trim()) {
             alert("Please fill in Description, Estimated Time, and Steps for the new recipe.");
             return;
         }
         
         setIsSavingNewRecipe(true);
-        // Disable button
         try {
             const recipeData = {
                 description: tempRecipeDetails.description.trim(),
@@ -1612,22 +1532,20 @@ const JobCardCreator = () => {
             };
             await setJobStepDetail(selection.partId, selection.departmentId, recipeData);
             alert("New recipe saved successfully!");
-            // Now create the job card based on these new recipe details
+            
             const jobCardDataForCreation = {
-                ...jobDetails, // Use current jobDetails base
+                ...jobDetails,
                 description: recipeData.description,
                 estimatedTime: recipeData.estimatedTime,
                 steps: recipeData.steps,
-                tools: recipeData.tools.map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean), // Full objects
-                accessories: recipeData.accessories.map(accId => allData.toolAccessories.find(a => a.id 
-                === accId)).filter(Boolean), // Full objects
-                consumables: recipeData.consumables, // Raw consumables
-                processedConsumables: processRecipeConsumables(recipeData.consumables, allData.allConsumables, currentTemp), // Processed
+                tools: recipeData.tools.map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
+                accessories: recipeData.accessories.map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
+                consumables: recipeData.consumables,
+                processedConsumables: processConsumables(recipeData.consumables, allData.allConsumables, currentTemp),
             };
             await addJobCard(jobCardDataForCreation);
             alert(`Job Card ${jobDetails.jobId} created successfully from new recipe!`);
             
-            // --- ADDED PRINTING LOGIC HERE ---
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
@@ -1635,23 +1553,20 @@ const JobCardCreator = () => {
             printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
             };
-            // --- END ADDED PRINTING LOGIC ---
 
-            // Refetch job steps to update allData
             const updatedJobSteps = await getJobStepDetails();
             setAllData(prev => ({ ...prev, jobSteps: updatedJobSteps }));
-            // Reset UI
             handleResetFormAndPreview();
         } catch (error) {
             console.error("Error saving new recipe or creating job:", error);
             alert("Failed to save new recipe or create job. Please try again.");
         } finally {
             setIsSavingNewRecipe(false);
-            // Re-enable button
         }
     };
 
-    // Quick-Repeat: Function to generate a new job card from the current previewed details
+    // All other handlers (handleGenerateNewJobCard, handleResetFormAndPreview, handlePrintAndCreate) and the JSX rendering remain the same.
+    // Paste the existing code for those handlers and the return statement here.
     const handleGenerateNewJobCard = async () => {
         if (!jobDetails) {
             alert("No job details to generate. Please select a part and department first.");
@@ -1662,15 +1577,13 @@ const JobCardCreator = () => {
             (jobDetails.employeeName !== 'Unassigned' ? ` It will be assigned to ${jobDetails.employeeName}.` : "")
         );
         if (!confirmGenerate) return;
+
         try {
-            // Create a new job card with updated jobId, but same recipe details
             const newJobCardData = {
                 ...jobDetails,
-                jobId: `JOB-${Date.now()}`, // Generate a NEW unique job ID
-                status: 'Pending', // Ensure status is pending for a new job
-                // Clear any timestamps/costs from previous instance
+                jobId: `JOB-${Date.now()}`,
+                status: 'Pending',
                 startedAt: null,
-                
                 completedAt: null,
                 pausedAt: null,
                 totalPausedMilliseconds: 0,
@@ -1681,28 +1594,22 @@ const JobCardCreator = () => {
             };
             await addJobCard(newJobCardData);
             alert(`New Job Card ${newJobCardData.jobId} created successfully!`);
-            // --- Printing the new job card ---
+            
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
-            // Adding basic inline styles for printability
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
-            printWindow.onload = () => { // Wait for content to load
+            printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
-                // Attempt auto-print
             };
-            // --- End Printing ---
-            // Keep current selections, but clear jobDetails to prepare for next possible generation
-            // This allows user to generate multiple cards without re-selecting
+            
             setJobDetails(prev => ({...prev, jobId: `JOB-${Date.now()}`}));
-            // Update preview with new job ID
         } catch (error) {
             console.error("Error generating new job card:", error);
             alert("Failed to generate new job card.");
         }
     };
 
-    // Common reset function
     const handleResetFormAndPreview = () => {
         setSelection({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
         setJobDetails(null);
@@ -1710,11 +1617,8 @@ const JobCardCreator = () => {
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
 
-    // Handler for printing (for jobs with existing recipes)
     const handlePrintAndCreate = async () => {
         if (!jobDetails) return;
-        // Check for existing job recipe to prevent duplicates (as per your requirement)
-        // This check applies to job cards being created from *catalog recipes*
         const recipeExistsInDb = await checkExistingJobRecipe(jobDetails.partId, jobDetails.departmentId);
         if (recipeExistsInDb) {
             const shouldCreateDuplicate = window.confirm("A job recipe with the same part and department already exists. Are you sure you want to create a new job card from this recipe?");
@@ -1726,35 +1630,27 @@ const JobCardCreator = () => {
         
         try {
             await addJobCard(jobDetails);
-            // Save the job card to Firestore
             alert(`Job Card ${jobDetails.jobId} created successfully!`);
-            // --- Printing the new job card ---
+
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
-            // Adding basic inline styles for printability
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
-            printWindow.onload = () => { // Wait for content to load
+            printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
-                // Attempt auto-print
             };
-            // --- End Printing ---
+
             handleResetFormAndPreview();
-            // Reset form after successful creation and print
         } catch (error) {
             console.error("Error creating job card:", error);
             alert("Failed to create job card.");
         }
     };
 
-    // Display loading message if data is still being fetched
     if (loading) return <p className="text-center text-gray-400">Loading settings data...</p>;
 
-    // Conditional rendering for the print/create button based on recipe existence
     const renderActionButton = () => {
         if (!jobDetails) return null;
-
-        // Scenario: Part and Department selected, but no recipe in DB
         if (showDefineRecipeForm) {
             return (
                 <Button onClick={saveNewRecipeAndCreateJob} variant="primary" disabled={isSavingNewRecipe}>
@@ -1762,7 +1658,6 @@ const JobCardCreator = () => {
                 </Button>
             );
         } else {
-            // Scenario: Recipe exists or cloned details are being used without defining a new recipe
             return (
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <Button onClick={handlePrintAndCreate} variant="primary">Print & Create Job</Button>
@@ -1779,7 +1674,6 @@ const JobCardCreator = () => {
                     Create New Job from Catalog
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Dropdowns for catalog selection */}
                     <Dropdown label="1. Manufacturer" name="manufacturerId" value={selection.manufacturerId} onChange={handleSelection} options={allData.manufacturers} placeholder="Select Manufacturer" />
                     <Dropdown label="2. Make" name="makeId" value={selection.makeId} onChange={handleSelection} options={filteredMakes} placeholder="Select Make" disabled={!selection.manufacturerId} />
                     <Dropdown label="3. Model" name="modelId" value={selection.modelId} onChange={handleSelection} options={filteredModels} placeholder="Select Model" disabled={!selection.makeId} />
@@ -1787,17 +1681,14 @@ const JobCardCreator = () => {
                     <Dropdown label="5. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department" />
                     <Dropdown label="6. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
                 </div>
-                {/* Inline Recipe Definition Form */}
                 {showDefineRecipeForm && selection.partId && selection.departmentId && (
                     <div className="mt-8 p-6 bg-gray-900/50 rounded-lg border border-gray-700 animate-fade-in">
                         <h4 className="text-xl font-bold text-white mb-4">Define Recipe for New Part-Department Combination</h4>
                         <p className="text-gray-400 text-sm mb-4">No standard recipe found. Please define it now to create the first job card and save for future use.</p>
-                        
                         <div className="space-y-4">
                             <Input label="Description" name="description" value={tempRecipeDetails.description} onChange={handleTempRecipeInputChange} placeholder="e.g., Final assembly of side skirt" />
                             <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={tempRecipeDetails.estimatedTime} onChange={handleTempRecipeInputChange} placeholder="e.g., 45" />
                             <Textarea label="Steps (one per line)" name="steps" value={tempRecipeDetails.steps} onChange={handleTempRecipeInputChange} rows={5} placeholder="1. Align panels...&#10;2. Apply adhesive..." />
-                            {/* Tools & Accessories for Recipe Definition */}
                             <div>
                                 <h5 className="font-semibold text-white mb-2">Required Tools & Accessories for Recipe</h5>
                                 <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
@@ -1821,8 +1712,6 @@ const JobCardCreator = () => {
                                     ))}
                                 </div>
                             </div>
-                            
-                            {/* Consumables for Recipe Definition - using the helper editor */}
                             <div>
                                 <RecipeConsumableEditor
                                     consumables={allData.allConsumables}
@@ -1834,15 +1723,12 @@ const JobCardCreator = () => {
                         </div>
                     </div>
                 )}
-                
-                {/* Action Buttons: Define Recipe, Print & Create, Generate New */}
                 {jobDetails && (
                     <div className="mt-8 text-center">
                         {renderActionButton()}
                     </div>
                 )}
             </div>
-            {/* Job Card Preview component, only visible if job details are generated */}
             {jobDetails && <JobCardPreview details={jobDetails} />}
         </>
     );
@@ -4261,6 +4147,8 @@ export default ToolsManager;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\UnifiedProductManager.jsx
 ==================================================
+// src/components/features/settings/UnifiedProductManager.jsx (Fixed & Expanded)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     getProducts, addProduct, updateProduct, deleteProduct,
@@ -4284,7 +4172,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     const [dimId, setDimId] = useState('');
     const [cuts, setCuts] = useState([]);
     const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-    
+
     const handleAddConsumable = () => {
         let newConsumable;
         switch (consumableType) {
@@ -4309,7 +4197,6 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
     };
 
     const getConsumableName = (id) => consumables.find(c => c.id === id)?.name || 'Unknown Item';
-
     return (
         <div>
             <h4 className="font-semibold mb-2 text-white">Required Consumables</h4>
@@ -4321,7 +4208,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
 
                 {consumableType === 'fixed' && (
                     <div className="flex items-end gap-2 animate-fade-in">
-                        <div className="flex-grow"><Dropdown label="Item" value={fixedId} onChange={e => setFixedId(e.target.value)} options={consumables} placeholder="Select..."/></div>
+                         <div className="flex-grow"><Dropdown label="Item" value={fixedId} onChange={e => setFixedId(e.target.value)} options={consumables} placeholder="Select..."/></div>
                         <div className="w-24"><Input label="Qty" type="number" value={fixedQty} onChange={e => setFixedQty(e.target.value)} placeholder="e.g., 5"/></div>
                         <Button type="button" onClick={handleAddConsumable}>Add</Button>
                     </div>
@@ -4335,11 +4222,11 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
                             <div className="flex items-end gap-2">
                                 <Input label="Dimensions" value={cutRule.dimensions} onChange={e => setCutRule({...cutRule, dimensions: e.target.value})} />
                                 <Input label="Notes" value={cutRule.notes} onChange={e => setCutRule({...cutRule, notes: e.target.value})} />
-                                <Button type="button" onClick={() => { if(cutRule.dimensions) { setCuts([...cuts, cutRule]); setCutRule({ dimensions: '', notes: '' }); }}}>Add Cut</Button>
+                                 <Button type="button" onClick={() => { if(cutRule.dimensions) { setCuts([...cuts, cutRule]); setCutRule({ dimensions: '', notes: '' }); }}}>Add Cut</Button>
                             </div>
                             <ul className="text-xs mt-2 space-y-1">{cuts.map((c, i) => <li key={i}>{c.dimensions} ({c.notes})</li>)}</ul>
                         </div>
-                        <Button type="button" onClick={handleAddConsumable} className="w-full">Add Dimensional Consumable</Button>
+                         <Button type="button" onClick={handleAddConsumable} className="w-full">Add Dimensional Consumable</Button>
                     </div>
                 )}
 
@@ -4348,7 +4235,7 @@ const ConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove })
                     {selectedConsumables.map((c, i) => (
                         <li key={i} className="flex justify-between items-center bg-gray-700 p-2 rounded text-sm text-gray-200">
                             <div>
-                                <p className="font-semibold">{getConsumableName(c.itemId)}</p>
+                                 <p className="font-semibold">{getConsumableName(c.itemId)}</p>
                                 {c.type === 'fixed' && <p className="text-xs text-gray-400">Qty: {c.quantity}</p>}
                                 {c.type === 'dimensional' && <p className="text-xs text-gray-400">{c.cuts.length} cut(s) required</p>}
                             </div>
@@ -4380,18 +4267,15 @@ const UnifiedProductManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('details');
     const [expandedCategories, setExpandedCategories] = useState({});
-
     // Form states
     const [newProduct, setNewProduct] = useState({ name: '', partNumber: '', sellingPrice: '', categoryId: '' });
     const [newCategoryName, setNewCategoryName] = useState('');
     const [editProductData, setEditProductData] = useState(null);
-
     // Fitment states
     const [fitmentLinks, setFitmentLinks] = useState([]);
     const [mfgToLink, setMfgToLink] = useState('');
     const [makeToLink, setMakeToLink] = useState('');
     const [modelToLink, setModelToLink] = useState('');
-    
     // Recipe Editor states
     const [recipeDepartmentId, setRecipeDepartmentId] = useState('');
     const [recipeData, setRecipeData] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
@@ -4418,7 +4302,6 @@ const UnifiedProductManager = () => {
         }
         setLoading(false);
     };
-
     useEffect(() => { fetchData(); }, []);
 
     useEffect(() => {
@@ -4433,7 +4316,7 @@ const UnifiedProductManager = () => {
             setEditProductData(null);
         }
     }, [selectedProductId, products]);
-    
+
     useEffect(() => {
         if (selectedProductId && recipeDepartmentId) {
             const recipeId = `${selectedProductId}_${recipeDepartmentId}`;
@@ -4467,7 +4350,6 @@ const UnifiedProductManager = () => {
 
         return categorized;
     }, [products, categories, searchTerm]);
-
     const handleAddNewCategory = async () => {
         if (!newCategoryName.trim()) return;
         await addProductCategory(newCategoryName);
@@ -4538,6 +4420,23 @@ const UnifiedProductManager = () => {
         };
         try {
             await setJobStepDetail(selectedProductId, recipeDepartmentId, dataToSave);
+
+            const product = products.find(p => p.id === selectedProductId);
+            const department = departments.find(d => d.id === recipeDepartmentId);
+            
+            const existingLinks = await getLinkedRecipesForProduct(selectedProductId);
+            const linkExists = existingLinks.some(link => link.departmentId === recipeDepartmentId);
+
+            if (!linkExists && product && department) {
+                await linkRecipeToProduct({
+                    productId: selectedProductId,
+                    productName: product.name,
+                    jobStepDetailId: `${selectedProductId}_${recipeDepartmentId}`,
+                    departmentId: recipeDepartmentId,
+                    departmentName: department.name
+                });
+            }
+
             alert('Recipe saved successfully!');
             fetchData();
         } catch (error) {
@@ -4559,153 +4458,151 @@ const UnifiedProductManager = () => {
     };
     const handleAddConsumable = (c) => setRecipeData({...recipeData, consumables: [...recipeData.consumables, c]});
     const handleRemoveConsumable = (itemId) => setRecipeData({...recipeData, consumables: recipeData.consumables.filter(c => c.itemId !== itemId)});
-    
     const filteredMakes = useMemo(() => makes.filter(m => m.manufacturerId === mfgToLink), [mfgToLink, makes]);
     const filteredModels = useMemo(() => models.filter(m => m.makeId === makeToLink), [makeToLink, models]);
     
     if (loading) return <p className="text-gray-400">Loading Product Catalog...</p>;
-
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-6">Unified Product Catalog</h3>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left Panel */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div>
+                     <div>
                         <Input placeholder="Search all products..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="mb-4" />
                         <div className="space-y-1 max-h-[30rem] overflow-y-auto pr-2">
                             {categories.map(category => (
-                                <div key={category.id}>
+                                 <div key={category.id}>
                                     <div onClick={() => setExpandedCategories(p => ({...p, [category.id]: !p[category.id]}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600">
-                                        <span className="font-semibold text-white">{category.name}</span>
+                                     <span className="font-semibold text-white">{category.name}</span>
                                         {expandedCategories[category.id] ? <ChevronDown/> : <ChevronRight/>}
                                     </div>
                                     {expandedCategories[category.id] && (
-                                        <div className="pl-4 mt-1 space-y-1">
+                                         <div className="pl-4 mt-1 space-y-1">
                                             {(productsByCategory[category.id] || []).length > 0 ? (
-                                                (productsByCategory[category.id] || []).map(p => (
+                                                 (productsByCategory[category.id] || []).map(p => (
                                                     <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
-                                                        <p className="font-semibold">{p.name}</p>
-                                                        <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
+                                                         <p className="font-semibold">{p.name}</p>
+                                                         <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
                                                     </div>
-                                                ))
+                                                 ))
                                             ) : (
                                                 <p className="text-xs text-gray-500 p-2 italic">No products in this category.</p>
                                             )}
                                         </div>
-                                    )}
+                                     )}
                                 </div>
                             ))}
-                             {(productsByCategory['uncategorized']?.length > 0) && (
+                              {(productsByCategory['uncategorized']?.length > 0) && (
                                  <div key="uncategorized">
                                     <div onClick={() => setExpandedCategories(p => ({...p, uncategorized: !p.uncategorized}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600 mt-4">
                                         <span className="font-semibold text-white italic">Uncategorized</span>
                                         {expandedCategories['uncategorized'] ? <ChevronDown/> : <ChevronRight/>}
                                     </div>
                                     {expandedCategories['uncategorized'] && (
-                                        <div className="pl-4 mt-1 space-y-1">
+                                         <div className="pl-4 mt-1 space-y-1">
                                             {productsByCategory['uncategorized'].map(p => (
-                                                <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
+                                                 <div key={p.id} onClick={() => setSelectedProductId(p.id)} className={`p-2 rounded-md cursor-pointer ${selectedProductId === p.id ? 'bg-blue-600 text-white' : 'hover:bg-gray-900/50'}`}>
                                                     <p className="font-semibold">{p.name}</p>
-                                                    <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
+                                                     <p className="text-xs opacity-70">Part #: {p.partNumber}</p>
                                                 </div>
-                                            ))}
+                                             ))}
                                         </div>
-                                    )}
+                                     )}
                                 </div>
                             )}
                         </div>
-                    </div>
+                     </div>
                     <div className="space-y-4 border-t border-gray-700 pt-6">
                         <h4 className="font-bold text-lg text-white">Add New Category</h4>
                         <div className="flex gap-2">
-                            <Input placeholder="e.g., Fiberglass Panels" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
+                             <Input placeholder="e.g., Fiberglass Panels" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} />
                             <Button onClick={handleAddNewCategory}><FolderPlus size={16} /></Button>
                         </div>
                     </div>
-                    <form onSubmit={handleAddNewProduct} className="space-y-4 border-t border-gray-700 pt-6">
+                     <form onSubmit={handleAddNewProduct} className="space-y-4 border-t border-gray-700 pt-6">
                          <h4 className="font-bold text-lg text-white">Add New Product</h4>
                          <Dropdown label="Category" value={newProduct.categoryId} onChange={e => setNewProduct({...newProduct, categoryId: e.target.value})} options={categories} required/>
-                         <Input label="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
+                          <Input label="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
                          <Input label="Part Number" value={newProduct.partNumber} onChange={e => setNewProduct({...newProduct, partNumber: e.target.value})} required/>
                          <Input label="Selling Price (R)" type="number" value={newProduct.sellingPrice} onChange={e => setNewProduct({...newProduct, sellingPrice: e.target.value})} />
-                         <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
+                          <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
                     </form>
                 </div>
 
                 {/* Right Panel */}
                 <div className="lg:col-span-2">
-                    {!selectedProductId ? (
+                     {!selectedProductId ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
                             <p>Select a product from the list to view its details.</p>
                         </div>
-                    ) : (
+                     ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
                              <div className="flex justify-between items-center">
-                               <div className="flex border-b border-gray-600">
+                                <div className="flex border-b border-gray-600">
                                     <button onClick={() => setActiveTab('details')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'details' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Package size={16}/> Details</button>
-                                    <button onClick={() => setActiveTab('fitment')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'fitment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Settings2 size={16}/> Fitment</button>
+                                     <button onClick={() => setActiveTab('fitment')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'fitment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Settings2 size={16}/> Fitment</button>
                                     <button onClick={() => setActiveTab('recipe')} className={`px-4 py-2 flex items-center gap-2 text-sm font-medium ${activeTab === 'recipe' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}><Wrench size={16}/> Recipe</button>
                                 </div>
                                 <Button onClick={() => handleDeleteProduct(selectedProductId)} variant="danger" size="sm" className="p-2"><Trash2 size={16}/></Button>
-                            </div>
+                             </div>
                             <div className="pt-6">
                                 {activeTab === 'details' && (
-                                    <div className="space-y-4 animate-fade-in">
+                                     <div className="space-y-4 animate-fade-in">
                                         <Dropdown label="Category" value={editProductData?.categoryId || ''} onChange={e => setEditProductData({...editProductData, categoryId: e.target.value})} options={categories} placeholder="Choose a category..."/>
-                                        <Input label="Product Name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
+                                         <Input label="Product Name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
                                         <Input label="Part Number" value={editProductData?.partNumber || ''} disabled />
                                         <Input label="Selling Price (R)" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
                                         <Input label="Photo URL" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste Dropbox link here..."/>
                                         {editProductData?.photoUrl && <img src={editProductData.photoUrl.replace("www.dropbox.com", "dl.dropboxusercontent.com")} alt="Product Preview" className="w-48 h-48 rounded-lg object-cover border-2 border-gray-600" />}
-                                        <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
+                                         <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
                                     </div>
                                 )}
-                                {activeTab === 'fitment' && (
+                                 {activeTab === 'fitment' && (
                                     <div className="space-y-4 animate-fade-in">
                                          <h4 className="font-semibold text-white">Linked Models ({fitmentLinks.length})</h4>
-                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                           <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                             {fitmentLinks.map(link => (
-                                                <div key={link.id} className="flex justify-between items-center bg-gray-700 p-2 rounded">
+                                                 <div key={link.id} className="flex justify-between items-center bg-gray-700 p-2 rounded">
                                                     <p className="text-sm text-gray-300">{link.manufacturerName} &gt; {link.makeName} &gt; {link.modelName}</p>
                                                     <Button onClick={() => handleRemoveFitment(link.id)} variant="danger" className="p-1 h-6 w-6"><X size={14}/></Button>
-                                                </div>
+                                                 </div>
                                             ))}
                                         </div>
-                                        <div className="border-t border-gray-600 pt-4 space-y-3">
+                                           <div className="border-t border-gray-600 pt-4 space-y-3">
                                             <h5 className="font-semibold text-white">Add New Fitment</h5>
-                                            <Dropdown label="Manufacturer" value={mfgToLink} onChange={e => setMfgToLink(e.target.value)} options={manufacturers} placeholder="Select..."/>
+                                               <Dropdown label="Manufacturer" value={mfgToLink} onChange={e => setMfgToLink(e.target.value)} options={manufacturers} placeholder="Select..."/>
                                             <Dropdown label="Make" value={makeToLink} onChange={e => setMakeToLink(e.target.value)} options={filteredMakes} placeholder="Select..." disabled={!mfgToLink}/>
-                                            <Dropdown label="Model" value={modelToLink} onChange={e => setModelToLink(e.target.value)} options={filteredModels} placeholder="Select..." disabled={!makeToLink}/>
+                                             <Dropdown label="Model" value={modelToLink} onChange={e => setModelToLink(e.target.value)} options={filteredModels} placeholder="Select..." disabled={!makeToLink}/>
                                             <Button onClick={handleAddFitment} className="w-full"><LinkIcon size={16} className="mr-2"/> Link to Model</Button>
-                                        </div>
+                                         </div>
                                     </div>
-                                )}
+                                 )}
                                 {activeTab === 'recipe' && (
                                     <div className="space-y-6 animate-fade-in">
-                                        <Dropdown label="Select a Department to Define its Recipe" value={recipeDepartmentId} onChange={e => setRecipeDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
+                                         <Dropdown label="Select a Department to Define its Recipe" value={recipeDepartmentId} onChange={e => setRecipeDepartmentId(e.target.value)} options={departments} placeholder="Choose department..."/>
                                         {recipeDepartmentId && (
-                                            <div className="space-y-6 border-t border-gray-700 pt-6">
+                                             <div className="space-y-6 border-t border-gray-700 pt-6">
                                                 <Input label="Description" name="description" value={recipeData.description} onChange={handleRecipeInputChange} />
-                                                <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={recipeData.estimatedTime} onChange={handleRecipeInputChange} />
+                                                     <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={recipeData.estimatedTime} onChange={handleRecipeInputChange} />
                                                 <Textarea label="Steps (one per line)" name="steps" value={recipeData.steps} onChange={handleRecipeInputChange} rows={5} />
-                                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                     <div>
-                                                        <h4 className="font-semibold mb-2 text-white">Required Tools & Accessories</h4>
-                                                        <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-800 rounded-lg">
+                                                             <h4 className="font-semibold mb-2 text-white">Required Tools & Accessories</h4>
+                                                         <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-800 rounded-lg">
                                                             {(tools || []).map(tool => ( <div key={tool.id}> <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200"> <input type="checkbox" checked={recipeData.tools.has(tool.id)} onChange={() => handleToolToggle(tool.id)} /> <span>{tool.name}</span> </label> {recipeData.tools.has(tool.id) && ( <div className="pl-6 mt-2 space-y-2 border-l-2 border-gray-700"> {(toolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => ( <label key={accessory.id} className="flex items-center space-x-2 text-sm text-gray-300"> <input type="checkbox" checked={recipeData.accessories.has(accessory.id)} onChange={() => handleAccessoryToggle(accessory.id)} /> <span>{accessory.name}</span> </label> ))} </div> )} </div> ))}
-                                                        </div>
+                                                         </div>
                                                     </div>
-                                                    <ConsumableEditor consumables={consumables} selectedConsumables={recipeData.consumables} onAdd={handleAddConsumable} onRemove={handleRemoveConsumable} />
+                                                     <ConsumableEditor consumables={consumables} selectedConsumables={recipeData.consumables} onAdd={handleAddConsumable} onRemove={handleRemoveConsumable} />
                                                 </div>
-                                                <div className="text-right">
+                                                 <div className="text-right">
                                                     <Button onClick={handleSaveRecipe} variant="primary" className="bg-green-600 hover:bg-green-700"><Save size={16} className="mr-2"/>Save Recipe for this Department</Button>
-                                                </div>
+                                                 </div>
                                             </div>
-                                        )}
+                                         )}
                                     </div>
                                 )}
-                            </div>
+                             </div>
                         </div>
                     )}
                 </div>
@@ -7131,6 +7028,32 @@ export default ProtectedRoute;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\RoleBasedRoute.jsx
+==================================================
+import React from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
+
+/**
+ * A wrapper for routes that checks if the current user has one of the required roles.
+ * If the user is not authorized, it redirects them to the main dashboard.
+ * @param {{children: React.ReactNode, roles: Array<string>}} props
+ */
+const RoleBasedRoute = ({ children, roles }) => {
+    const { user } = useAuth();
+
+    if (user && roles.includes(user.role)) {
+        return children;
+    }
+
+    // Redirect them to the home page if they don't have the right role
+    return <Navigate to="/" />;
+};
+
+export default RoleBasedRoute;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\Sidebar.jsx
 ==================================================
 import React, { useState } from 'react';
@@ -7321,19 +7244,38 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\contexts\AuthContext.jsx
 ==================================================
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../api/firebase';
+import { auth, db } from '../api/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
-// Create the context
 export const AuthContext = createContext();
 
-// Create the provider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
+      if (userAuth) {
+        // User is signed in. Fetch their profile from the 'users' collection.
+        const userDocRef = doc(db, 'users', userAuth.uid);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            // Combine auth data (uid, email) with Firestore data (role, etc.)
+            setUser({ uid: userAuth.uid, email: userAuth.email, ...userDoc.data() });
+          } else {
+            console.warn("User has an auth account but no profile document in 'users' collection.");
+            // Assign a default, non-privileged role if no profile is found
+            setUser({ uid: userAuth.uid, email: userAuth.email, role: 'default' });
+          }
+        } catch (error) {
+            console.error("Error fetching user profile:", error);
+            setUser(userAuth); // Fallback if there's an error
+        }
+      } else {
+        // User is signed out
+        setUser(null);
+      }
       setLoading(false);
     });
     return unsubscribe;
@@ -7348,12 +7290,11 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook to easily access the context data from any component
 export const useAuth = () => {
   return useContext(AuthContext);
 };
@@ -8801,6 +8742,58 @@ export default TrackingPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.js
+==================================================
+// src/utils/jobUtils.js
+
+import { CATALYST_RULES } from '../config';
+
+/**
+ * Processes raw recipe consumables into a display-friendly format, calculating catalyst additions.
+ * This centralized function ensures consistent consumable processing across the app.
+ * @param {Array} consumablesFromRecipe - The raw consumables array from a job or recipe.
+ * @param {Array} allInventoryItems - The master list of all inventory items.
+ * @param {number} temperature - The current temperature for catalyst calculation.
+ * @returns {Array} A list of processed consumables ready for display or costing.
+ */
+export const processConsumables = (consumablesFromRecipe, allInventoryItems, temperature) => {
+    if (!consumablesFromRecipe || !Array.isArray(consumablesFromRecipe)) return [];
+
+    const processedList = [];
+    const catalystItem = allInventoryItems.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
+
+    for (const consumable of consumablesFromRecipe) {
+        // Find the full details from the master inventory list using either itemId (from recipe) or id (from inventory)
+        const masterItem = allInventoryItems.find(c => c.id === (consumable.itemId || consumable.id));
+        const itemDetails = masterItem || consumable;
+        if (!itemDetails) continue;
+
+        if (consumable.type === 'fixed') {
+            processedList.push({ ...itemDetails, quantity: consumable.quantity, notes: '' });
+            if (itemDetails.requiresCatalyst && catalystItem && temperature) {
+                let percentage = 0;
+                for (const rule of CATALYST_RULES) {
+                    if (temperature <= rule.temp_max) {
+                        percentage = rule.percentage;
+                        break;
+                    }
+                }
+                if (percentage > 0) {
+                    const calculatedQty = consumable.quantity * (percentage / 100);
+                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Â°C)` });
+                }
+            }
+        } else if (consumable.type === 'dimensional') {
+            processedList.push({ ...itemDetails, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
+        } else if (!consumable.type && consumable.quantity) {
+            processedList.push({ ...itemDetails, notes: '' });
+        }
+    }
+    return processedList;
+};
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 #root {
@@ -8851,27 +8844,31 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
 ==================================================
-// src/App.jsx (Updated)
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
-import MainLayout from './components/layout/MainLayout';
+
+// Layouts & Guards
 import ProtectedRoute from './components/layout/ProtectedRoute';
+import RoleBasedRoute from './components/layout/RoleBasedRoute';
+
+// Pages
 import LoginPage from './pages/Login';
-import SettingsPage from './pages/SettingsPage';
+import DashboardPage from './pages/DashboardPage';
+import StockControlPage from './pages/StockControlPage';
 import JobCreatorPage from './pages/JobCreatorPage';
 import LiveTrackingPage from './pages/LiveTrackingPage';
 import ScannerPage from './pages/ScannerPage';
 import QcPage from './pages/QcPage';
-import StockControlPage from './pages/StockControlPage';
-import DashboardPage from './pages/DashboardPage';
-import PerformancePage from './pages/PerformancePage';
 import IssuesPage from './pages/IssuesPage';
+import PerformancePage from './pages/PerformancePage';
 import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage';
-import ProductViabilityPage from './pages/ProductViabilityPage'; // <-- IMPORT NEW PAGE
+import ProductViabilityPage from './pages/ProductViabilityPage';
+import SettingsPage from './pages/SettingsPage';
 
 function App() {
   const { user } = useAuth();
+
   return (
     <Router>
       <Routes>
@@ -8879,20 +8876,58 @@ function App() {
         <Route path="/*" element={
             <ProtectedRoute>
               <Routes>
+                {/* Routes accessible to ALL logged-in employees */}
                 <Route path="/" element={<DashboardPage />} />
-                <Route path="/stock" element={<StockControlPage />} />
-                <Route path="/creator" element={<JobCreatorPage />} />
                 <Route path="/tracking" element={<LiveTrackingPage />} />
                 <Route path="/scan" element={<ScannerPage />} />
-                <Route path="/qc" element={<QcPage />} />
-                <Route path="/issues" element={<IssuesPage />} />
-                <Route path="/performance" element={<PerformancePage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/employee/:employeeId" element={<EmployeeIntelligencePage />} />
-                
-                {/* ADD THE NEW ROUTE */}
-                <Route path="/profitability" element={<ProductViabilityPage />} />
-                
+
+                {/* --- ROLE PROTECTED ROUTES --- */}
+
+                {/* Routes for Managers and QC Inspectors */}
+                <Route path="/qc" element={
+                    <RoleBasedRoute roles={['Manager', 'QC Inspector']}>
+                        <QcPage />
+                    </RoleBasedRoute>
+                } />
+
+                {/* Routes for Managers ONLY */}
+                <Route path="/stock" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <StockControlPage />
+                    </RoleBasedRoute>
+                } />
+                <Route path="/creator" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <JobCreatorPage />
+                    </RoleBasedRoute>
+                } />
+                <Route path="/issues" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <IssuesPage />
+                    </RoleBasedRoute>
+                } />
+                <Route path="/performance" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <PerformancePage />
+                    </RoleBasedRoute>
+                } />
+                 <Route path="/employee/:employeeId" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <EmployeeIntelligencePage />
+                    </RoleBasedRoute>
+                } />
+                <Route path="/profitability" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <ProductViabilityPage />
+                    </RolebasedRoute>
+                } />
+                <Route path="/settings" element={
+                    <RoleBasedRoute roles={['Manager']}>
+                        <SettingsPage />
+                    </RoleBasedRoute>
+                } />
+
+                <Route path="*" element={<Navigate to="/" />} />
               </Routes>
             </ProtectedRoute>
           }
@@ -8903,6 +8938,22 @@ function App() {
 }
 
 export default App;
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\config.js
+==================================================
+// src/config.js
+
+/**
+ * Defines the rules for calculating the percentage of catalyst needed based on ambient temperature.
+ * This central configuration makes it easy to adjust business rules without changing component logic.
+ */
+export const CATALYST_RULES = [
+    { temp_max: 18, percentage: 3.0 },
+    { temp_max: 28, percentage: 2.0 },
+    { temp_max: 100, percentage: 1.0 }
+];
 
 
 ==================================================

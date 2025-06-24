@@ -1,59 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, checkExistingJobRecipe, setJobStepDetail } from '../../../api/firestore';
+import { processConsumables } from '../../../utils/jobUtils'; // <-- IMPORT THE UTILITY
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
-import { Search } from 'lucide-react'; // Import Search icon
+import { Search } from 'lucide-react';
 
-
-// Utility to process consumables for the job card preview
-const processRecipeConsumables = (consumablesFromRecipe, allConsumablesList, temp) => {
-    if (!consumablesFromRecipe) return [];
-
-    const processedList = [];
-    const CATALYST_RULES = [
-        { temp_max: 18, percentage: 3.0 },
-        { temp_max: 28, percentage: 2.0 },
-        { temp_max: 100, percentage: 1.0 }
-    ];
-
-    // Find a generic catalyst item, assuming 'catalyst' or 'hardener' in its name
-    const catalystItem = allConsumablesList.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
-
-    for (const consumable of consumablesFromRecipe) {
-        const masterItem = allConsumablesList.find(c => c.id === consumable.itemId);
-
-        // If masterItem is found, use its details. Otherwise, use what's on the consumable itself.
-        const itemDetails = masterItem || consumable;
-        if (!itemDetails) continue;
-
-        if (consumable.type === 'fixed') {
-            processedList.push({ ...itemDetails, quantity: consumable.quantity, notes: '' });
-
-            // Apply catalyst if required and catalyst item exists
-            if (itemDetails.requiresCatalyst && catalystItem) {
-                let percentage = 0;
-                for(const rule of CATALYST_RULES) {
-                    if (temp <= rule.temp_max) {
-                        percentage = rule.percentage;
-                        break;
-                    }
-                }
-                if (percentage > 0) {
-                    const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temp}°C)` });
-                }
-            }
-        } else if (consumable.type === 'dimensional') {
-            processedList.push({ ...itemDetails, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
-        }
-    }
-    return processedList;
-};
-
-
-// Helper component for Consumable editing within the inline recipe form
+// The RecipeConsumableEditor component remains unchanged.
+// Paste the existing RecipeConsumableEditor component code here.
 const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
     const [selectedFixedItemId, setSelectedFixedItemId] = useState('');
@@ -61,29 +16,22 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
     const [selectedDimItemId, setSelectedDimItemId] = useState('');
     const [cuts, setCuts] = useState([]);
     const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-
-    // NEW SEARCH RELATED STATES
     const [fixedSearchTerm, setFixedSearchTerm] = useState('');
     const [filteredFixedOptions, setFilteredFixedOptions] = useState([]);
-    const [selectedFixedItemDetails, setSelectedFixedItemDetails] = useState(null); // To store full item object
-
+    const [selectedFixedItemDetails, setSelectedFixedItemDetails] = useState(null); 
     const [dimSearchTerm, setDimSearchTerm] = useState('');
     const [filteredDimOptions, setFilteredDimOptions] = useState([]);
-    const [selectedDimItemDetails, setSelectedDimItemDetails] = useState(null); // To store full item object
-
+    const [selectedDimItemDetails, setSelectedDimItemDetails] = useState(null);
     const searchRefFixed = useRef(null);
     const searchRefDim = useRef(null);
-    // END NEW SEARCH RELATED STATES
 
-
-    // NEW SEARCH RELATED EFFECTS
     useEffect(() => {
         if (fixedSearchTerm.length > 0) {
             const lowerCaseSearchTerm = fixedSearchTerm.toLowerCase();
             const filtered = consumables.filter(item =>
                 item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
                 (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm))
-            ).slice(0, 10); // Limit results
+            ).slice(0, 10);
             setFilteredFixedOptions(filtered);
         } else {
             setFilteredFixedOptions([]);
@@ -97,14 +45,13 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                 (item.name.toLowerCase().includes('mat') || item.category === 'Raw Material') &&
                 (item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
                 (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm)))
-            ).slice(0, 10); // Limit results
+            ).slice(0, 10);
             setFilteredDimOptions(filtered);
         } else {
             setFilteredDimOptions([]);
         }
     }, [dimSearchTerm, consumables]);
 
-    // Click outside handler for fixed quantity search
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchRefFixed.current && !searchRefFixed.current.contains(event.target)) {
@@ -115,7 +62,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Click outside handler for dimensional search
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchRefDim.current && !searchRefDim.current.contains(event.target)) {
@@ -125,12 +71,9 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
-    // END NEW SEARCH RELATED EFFECTS
-
 
     const handleAddConsumable = () => {
         let newConsumable;
-
         switch (consumableType) {
             case 'fixed':
                 if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return alert("Please select an item and enter a valid quantity.");
@@ -147,18 +90,15 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
             setFixedSearchTerm('');
             setFixedQty('');
             setSelectedFixedItemDetails(null);
-
             setDimSearchTerm('');
             setCuts([]);
             setCutRule({ dimensions: '', notes: '' });
             setSelectedDimItemDetails(null);
-
         } else {
             alert("This consumable has already been added to the recipe.");
         }
     };
     const getConsumableName = (id) => consumables.find(c => c.id === id)?.name || 'Unknown Item';
-
     return (
         <div>
             <h5 className="font-semibold mb-2 text-gray-200">Required Consumables for Recipe</h5>
@@ -175,7 +115,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                 value={fixedSearchTerm}
                                 onChange={e => {
                                     setFixedSearchTerm(e.target.value);
-                                    setSelectedFixedItemDetails(null); // Clear selected item if typing
+                                    setSelectedFixedItemDetails(null);
                                 }}
                                 placeholder="Search by name or code..."
                             />
@@ -187,10 +127,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             key={item.id}
                                             className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                             onClick={() => {
-                                                setSelectedFixedItemDetails(item); // Store full item
-                                                setSelectedFixedItemId(item.id); // Store ID for logic
-                                                setFixedSearchTerm(item.name); // Set input text to item name
-                                                setFilteredFixedOptions([]); // Close results
+                                                setSelectedFixedItemDetails(item);
+                                                setSelectedFixedItemId(item.id);
+                                                setFixedSearchTerm(item.name);
+                                                setFilteredFixedOptions([]);
                                             }}
                                         >
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
@@ -217,7 +157,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                         </Button>
                     </div>
                 )}
-
                 {consumableType === 'dimensional' && (
                     <div className="space-y-3 animate-fade-in" ref={searchRefDim}>
                          <div className="flex-grow relative">
@@ -226,7 +165,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                 value={dimSearchTerm}
                                 onChange={e => {
                                     setDimSearchTerm(e.target.value);
-                                    setSelectedDimItemDetails(null); // Clear selected item if typing
+                                    setSelectedDimItemDetails(null);
                                 }}
                                 placeholder="Search by name or code..."
                             />
@@ -238,10 +177,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             key={item.id}
                                             className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                             onClick={() => {
-                                                setSelectedDimItemDetails(item); // Store full item
-                                                setSelectedDimItemId(item.id); // Store ID for logic
-                                                setDimSearchTerm(item.name); // Set input text to item name
-                                                setFilteredDimOptions([]); // Close results
+                                                setSelectedDimItemDetails(item);
+                                                setSelectedDimItemId(item.id);
+                                                setDimSearchTerm(item.name);
+                                                setFilteredDimOptions([]);
                                             }}
                                         >
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
@@ -269,7 +208,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                         </Button>
                     </div>
                 )}
-
                 <h6 className="text-sm font-bold pt-2 border-t border-gray-700 text-gray-200">Recipe Consumables</h6>
                 <ul className="space-y-2 max-h-40 overflow-y-auto">
                     {selectedConsumables.map((c, i) => (
@@ -289,10 +227,10 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
 };
 
 
-// JobCardPreview component defined BEFORE JobCardCreator
+// The JobCardPreview component also remains unchanged.
+// Paste the existing JobCardPreview component code here.
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
-
     return (
         <div className="mt-8 p-6 bg-gray-800 rounded-xl border border-gray-700">
             <h2 className="text-2xl font-bold text-white mb-6">Generated Job Card Preview</h2>
@@ -322,15 +260,13 @@ const JobCardPreview = ({ details }) => {
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools & Accessories</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
                                 {details.tools?.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No tools required.</li>}
-                                {details.accessories?.length > 0 ?
-                                details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
+                                {details.accessories?.length > 0 ? details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
                             </ul>
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-2 text-sm">
-                                {details.processedConsumables?.length >
-                                0 ? details.processedConsumables.map((c, i) => (
+                                {details.processedConsumables?.length > 0 ? details.processedConsumables.map((c, i) => (
                                     <li key={i}>
                                         <span className="font-semibold">{c.name}</span>
                                         {c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}
@@ -348,15 +284,15 @@ const JobCardPreview = ({ details }) => {
                 </div>
                 <div className="mt-6 border-t pt-4">
                     <h3 className="text-lg font-bold text-gray-800 mb-2">Steps</h3>
-                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">{details.steps?.length > 0 ?
-                    details.steps.map((step, i) => <li key={i}>{step}</li>) : <li>No steps defined.</li>}</ol>
+                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">{details.steps?.length > 0 ? details.steps.map((step, i) => <li key={i}>{step}</li>) : <li>No steps defined.</li>}</ol>
                 </div>
             </div>
         </div>
     )
 };
 
-// Main JobCardCreator component
+
+// Main component
 const JobCardCreator = () => {
     // State to hold all master data from Firestore
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
@@ -370,18 +306,16 @@ const JobCardCreator = () => {
     // Flags and states for "Define Recipe on Demand"
     const [showDefineRecipeForm, setShowDefineRecipeForm] = useState(false);
     const [tempRecipeDetails, setTempRecipeDetails] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
-    const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false); // To prevent double clicks/indicate saving
+    const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false);
 
     // Fetch all necessary data when the component mounts
     useEffect(() => {
         const fetchAllData = async () => {
             setLoading(true);
             try {
-                // Fetch current temperature from Open-Meteo for Cape Town
                 const weatherResponse = await fetch("https://api.open-meteo.com/v1/forecast?latitude=-33.92&longitude=18.42&current=temperature_2m");
                 const weatherData = await weatherResponse.json();
                 setCurrentTemp(weatherData.current.temperature_2m);
-                // Fetch all data from Firestore concurrently
 
                 const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
                     getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
@@ -390,8 +324,7 @@ const JobCardCreator = () => {
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 alert("Error fetching page data. Please check the console and refresh.");
-                if (currentTemp === null) setCurrentTemp(20);
-                // Fallback temperature if API fails
+                if (currentTemp === null) setCurrentTemp(20); // Fallback temperature if API fails
             } finally {
                 setLoading(false);
             }
@@ -404,15 +337,12 @@ const JobCardCreator = () => {
         const { name, value } = e.target;
         setSelection(prev => {
             const updated = { ...prev, [name]: value };
-            // Reset lower-level selections when a higher-level selection changes
             if (name === 'manufacturerId') { updated.makeId = ''; updated.modelId = ''; updated.partId = ''; }
             if (name === 'makeId') { updated.modelId = ''; updated.partId = ''; }
             if (name === 'modelId') { updated.partId = ''; }
-            
             if (name === 'departmentId') { updated.employeeId = ''; }
             return updated;
         });
-        // Hide the inline recipe definition form if selections change
         setShowDefineRecipeForm(false);
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
@@ -426,7 +356,6 @@ const JobCardCreator = () => {
     // Effect to generate job details whenever selections or data change
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
-        // Only generate if both part and department are selected, and temperature is known
         if (partId && departmentId && currentTemp !== null) {
             const part = allData.parts.find(p => p.id === partId);
             const department = allData.departments.find(d => d.id === departmentId);
@@ -434,17 +363,14 @@ const JobCardCreator = () => {
             
             let finalRecipeDetails = null;
             let isRecipeFoundInDb = false;
-            // 1. Try to find a standard recipe for the *current* selection
+
             const standardRecipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
             if (standardRecipe) {
                 finalRecipeDetails = standardRecipe;
                 isRecipeFoundInDb = true;
                 setShowDefineRecipeForm(false);
-                // Hide the define form if a standard recipe exists
             } else {
-                // No standard recipe. Prompt to define.
-                setShowDefineRecipeForm(true); // Show the inline form to define a new recipe
-                // Use tempRecipeDetails for the form, which also acts as the "recipe" for the preview
+                setShowDefineRecipeForm(true);
                 finalRecipeDetails = {
                     description: tempRecipeDetails.description || 'No description.',
                     estimatedTime: tempRecipeDetails.estimatedTime || 0,
@@ -456,14 +382,14 @@ const JobCardCreator = () => {
             }
             
             if (part && department) {
-                // Process consumables based on the final determined recipe details and current temperature
-                const processedConsumables = processRecipeConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
-                // Map tool and accessory IDs to their full objects for display
+                // <-- USE THE REFACTORED UTILITY FUNCTION
+                const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
+
                 const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                 const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
                 
                 setJobDetails({
-                    jobId: `JOB-${Date.now()}`, // Generate a unique job ID
+                    jobId: `JOB-${Date.now()}`,
                     partName: part.name,
                     partId: part.id,
                     photoUrl: part.photoUrl || '',
@@ -471,24 +397,20 @@ const JobCardCreator = () => {
                     departmentName: department.name,
                     employeeId: employee ? employee.id : '',
                     employeeName: employee ? employee.name : 'Unassigned',
-                    status: 'Pending', // Initial status
+                    status: 'Pending',
                     description: finalRecipeDetails?.description || 'No description.',
                     estimatedTime: finalRecipeDetails?.estimatedTime || 0,
                     steps: finalRecipeDetails?.steps || [],
                     tools: toolsForDisplay,
                     accessories: accessoriesForDisplay,
-                    consumables: finalRecipeDetails?.consumables || [], // Raw consumables (for saving recipe)
-
-                    processedConsumables: processedConsumables, // Consumables with quantities adjusted by rules (for job card display/costing)
-                    // Flags for conditional rendering of buttons
+                    consumables: finalRecipeDetails?.consumables || [],
+                    processedConsumables: processed, // <-- Use the result from the utility function
                     isRecipeFoundInDb: isRecipeFoundInDb,
                 });
             }
         } else {
             setJobDetails(null);
-            // Clear job details if selections are incomplete
             setShowDefineRecipeForm(false);
-            // Hide recipe definition form
         }
     }, [selection, allData, currentTemp, tempRecipeDetails]);
 
@@ -521,14 +443,12 @@ const JobCardCreator = () => {
     // Function to save the new recipe and create the job card
     const saveNewRecipeAndCreateJob = async () => {
         if (!jobDetails || !selection.partId || !selection.departmentId) return;
-        // Basic validation for recipe fields
         if (!tempRecipeDetails.description.trim() || !tempRecipeDetails.estimatedTime || !tempRecipeDetails.steps.trim()) {
             alert("Please fill in Description, Estimated Time, and Steps for the new recipe.");
             return;
         }
         
         setIsSavingNewRecipe(true);
-        // Disable button
         try {
             const recipeData = {
                 description: tempRecipeDetails.description.trim(),
@@ -540,22 +460,20 @@ const JobCardCreator = () => {
             };
             await setJobStepDetail(selection.partId, selection.departmentId, recipeData);
             alert("New recipe saved successfully!");
-            // Now create the job card based on these new recipe details
+            
             const jobCardDataForCreation = {
-                ...jobDetails, // Use current jobDetails base
+                ...jobDetails,
                 description: recipeData.description,
                 estimatedTime: recipeData.estimatedTime,
                 steps: recipeData.steps,
-                tools: recipeData.tools.map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean), // Full objects
-                accessories: recipeData.accessories.map(accId => allData.toolAccessories.find(a => a.id 
-                === accId)).filter(Boolean), // Full objects
-                consumables: recipeData.consumables, // Raw consumables
-                processedConsumables: processRecipeConsumables(recipeData.consumables, allData.allConsumables, currentTemp), // Processed
+                tools: recipeData.tools.map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
+                accessories: recipeData.accessories.map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
+                consumables: recipeData.consumables,
+                processedConsumables: processConsumables(recipeData.consumables, allData.allConsumables, currentTemp),
             };
             await addJobCard(jobCardDataForCreation);
             alert(`Job Card ${jobDetails.jobId} created successfully from new recipe!`);
             
-            // --- ADDED PRINTING LOGIC HERE ---
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
@@ -563,23 +481,20 @@ const JobCardCreator = () => {
             printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
             };
-            // --- END ADDED PRINTING LOGIC ---
 
-            // Refetch job steps to update allData
             const updatedJobSteps = await getJobStepDetails();
             setAllData(prev => ({ ...prev, jobSteps: updatedJobSteps }));
-            // Reset UI
             handleResetFormAndPreview();
         } catch (error) {
             console.error("Error saving new recipe or creating job:", error);
             alert("Failed to save new recipe or create job. Please try again.");
         } finally {
             setIsSavingNewRecipe(false);
-            // Re-enable button
         }
     };
 
-    // Quick-Repeat: Function to generate a new job card from the current previewed details
+    // All other handlers (handleGenerateNewJobCard, handleResetFormAndPreview, handlePrintAndCreate) and the JSX rendering remain the same.
+    // Paste the existing code for those handlers and the return statement here.
     const handleGenerateNewJobCard = async () => {
         if (!jobDetails) {
             alert("No job details to generate. Please select a part and department first.");
@@ -590,15 +505,13 @@ const JobCardCreator = () => {
             (jobDetails.employeeName !== 'Unassigned' ? ` It will be assigned to ${jobDetails.employeeName}.` : "")
         );
         if (!confirmGenerate) return;
+
         try {
-            // Create a new job card with updated jobId, but same recipe details
             const newJobCardData = {
                 ...jobDetails,
-                jobId: `JOB-${Date.now()}`, // Generate a NEW unique job ID
-                status: 'Pending', // Ensure status is pending for a new job
-                // Clear any timestamps/costs from previous instance
+                jobId: `JOB-${Date.now()}`,
+                status: 'Pending',
                 startedAt: null,
-                
                 completedAt: null,
                 pausedAt: null,
                 totalPausedMilliseconds: 0,
@@ -609,28 +522,22 @@ const JobCardCreator = () => {
             };
             await addJobCard(newJobCardData);
             alert(`New Job Card ${newJobCardData.jobId} created successfully!`);
-            // --- Printing the new job card ---
+            
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
-            // Adding basic inline styles for printability
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
-            printWindow.onload = () => { // Wait for content to load
+            printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
-                // Attempt auto-print
             };
-            // --- End Printing ---
-            // Keep current selections, but clear jobDetails to prepare for next possible generation
-            // This allows user to generate multiple cards without re-selecting
+            
             setJobDetails(prev => ({...prev, jobId: `JOB-${Date.now()}`}));
-            // Update preview with new job ID
         } catch (error) {
             console.error("Error generating new job card:", error);
             alert("Failed to generate new job card.");
         }
     };
 
-    // Common reset function
     const handleResetFormAndPreview = () => {
         setSelection({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
         setJobDetails(null);
@@ -638,11 +545,8 @@ const JobCardCreator = () => {
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
 
-    // Handler for printing (for jobs with existing recipes)
     const handlePrintAndCreate = async () => {
         if (!jobDetails) return;
-        // Check for existing job recipe to prevent duplicates (as per your requirement)
-        // This check applies to job cards being created from *catalog recipes*
         const recipeExistsInDb = await checkExistingJobRecipe(jobDetails.partId, jobDetails.departmentId);
         if (recipeExistsInDb) {
             const shouldCreateDuplicate = window.confirm("A job recipe with the same part and department already exists. Are you sure you want to create a new job card from this recipe?");
@@ -654,35 +558,27 @@ const JobCardCreator = () => {
         
         try {
             await addJobCard(jobDetails);
-            // Save the job card to Firestore
             alert(`Job Card ${jobDetails.jobId} created successfully!`);
-            // --- Printing the new job card ---
+
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
-            // Adding basic inline styles for printability
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
-            printWindow.onload = () => { // Wait for content to load
+            printWindow.onload = () => {
                 setTimeout(() => printWindow.print(), 500);
-                // Attempt auto-print
             };
-            // --- End Printing ---
+
             handleResetFormAndPreview();
-            // Reset form after successful creation and print
         } catch (error) {
             console.error("Error creating job card:", error);
             alert("Failed to create job card.");
         }
     };
 
-    // Display loading message if data is still being fetched
     if (loading) return <p className="text-center text-gray-400">Loading settings data...</p>;
 
-    // Conditional rendering for the print/create button based on recipe existence
     const renderActionButton = () => {
         if (!jobDetails) return null;
-
-        // Scenario: Part and Department selected, but no recipe in DB
         if (showDefineRecipeForm) {
             return (
                 <Button onClick={saveNewRecipeAndCreateJob} variant="primary" disabled={isSavingNewRecipe}>
@@ -690,7 +586,6 @@ const JobCardCreator = () => {
                 </Button>
             );
         } else {
-            // Scenario: Recipe exists or cloned details are being used without defining a new recipe
             return (
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     <Button onClick={handlePrintAndCreate} variant="primary">Print & Create Job</Button>
@@ -707,7 +602,6 @@ const JobCardCreator = () => {
                     Create New Job from Catalog
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {/* Dropdowns for catalog selection */}
                     <Dropdown label="1. Manufacturer" name="manufacturerId" value={selection.manufacturerId} onChange={handleSelection} options={allData.manufacturers} placeholder="Select Manufacturer" />
                     <Dropdown label="2. Make" name="makeId" value={selection.makeId} onChange={handleSelection} options={filteredMakes} placeholder="Select Make" disabled={!selection.manufacturerId} />
                     <Dropdown label="3. Model" name="modelId" value={selection.modelId} onChange={handleSelection} options={filteredModels} placeholder="Select Model" disabled={!selection.makeId} />
@@ -715,17 +609,14 @@ const JobCardCreator = () => {
                     <Dropdown label="5. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department" />
                     <Dropdown label="6. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
                 </div>
-                {/* Inline Recipe Definition Form */}
                 {showDefineRecipeForm && selection.partId && selection.departmentId && (
                     <div className="mt-8 p-6 bg-gray-900/50 rounded-lg border border-gray-700 animate-fade-in">
                         <h4 className="text-xl font-bold text-white mb-4">Define Recipe for New Part-Department Combination</h4>
                         <p className="text-gray-400 text-sm mb-4">No standard recipe found. Please define it now to create the first job card and save for future use.</p>
-                        
                         <div className="space-y-4">
                             <Input label="Description" name="description" value={tempRecipeDetails.description} onChange={handleTempRecipeInputChange} placeholder="e.g., Final assembly of side skirt" />
                             <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={tempRecipeDetails.estimatedTime} onChange={handleTempRecipeInputChange} placeholder="e.g., 45" />
                             <Textarea label="Steps (one per line)" name="steps" value={tempRecipeDetails.steps} onChange={handleTempRecipeInputChange} rows={5} placeholder="1. Align panels...&#10;2. Apply adhesive..." />
-                            {/* Tools & Accessories for Recipe Definition */}
                             <div>
                                 <h5 className="font-semibold text-white mb-2">Required Tools & Accessories for Recipe</h5>
                                 <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
@@ -749,8 +640,6 @@ const JobCardCreator = () => {
                                     ))}
                                 </div>
                             </div>
-                            
-                            {/* Consumables for Recipe Definition - using the helper editor */}
                             <div>
                                 <RecipeConsumableEditor
                                     consumables={allData.allConsumables}
@@ -762,15 +651,12 @@ const JobCardCreator = () => {
                         </div>
                     </div>
                 )}
-                
-                {/* Action Buttons: Define Recipe, Print & Create, Generate New */}
                 {jobDetails && (
                     <div className="mt-8 text-center">
                         {renderActionButton()}
                     </div>
                 )}
             </div>
-            {/* Job Card Preview component, only visible if job details are generated */}
             {jobDetails && <JobCardPreview details={jobDetails} />}
         </>
     );

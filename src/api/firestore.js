@@ -1,7 +1,28 @@
-import { db } from './firebase';
-import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment, limit, startAfter } from 'firebase/firestore';
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+
+// Your web app's Firebase configuration from the .env.local file
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+
+// Initialize and export Firebase services
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+
+export default app;
+
 
 // --- DEPARTMENTS API ---
+import { collection, getDocs, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot, query, orderBy, updateDoc, where, getDoc, writeBatch, setDoc, runTransaction, increment, limit, startAfter } from 'firebase/firestore';
 const departmentsCollection = collection(db, 'departments');
 export const getDepartments = async () => {
   const snapshot = await getDocs(departmentsCollection);
@@ -14,7 +35,6 @@ export const deleteDepartment = (departmentId) => {
   const departmentDoc = doc(db, 'departments', departmentId);
   return deleteDoc(departmentDoc);
 };
-
 // --- SKILLS API ---
 const skillsCollection = collection(db, 'skills');
 const skillHistoryCollection = collection(db, 'skillHistory');
@@ -38,7 +58,6 @@ export const getSkillHistoryForEmployee = async (employeeId) => {
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 // --- TOOLS API ---
 const toolsCollection = collection(db, 'tools');
 export const getTools = async () => {
@@ -52,7 +71,6 @@ export const deleteTool = (toolId) => {
   const toolDoc = doc(db, 'tools', toolId);
   return deleteDoc(toolDoc);
 };
-
 // --- TOOL ACCESSORIES API ---
 const toolAccessoriesCollection = collection(db, 'toolAccessories');
 export const getToolAccessories = async () => {
@@ -66,7 +84,6 @@ export const deleteToolAccessory = (accessoryId) => {
   const accessoryDoc = doc(db, 'toolAccessories', accessoryId);
   return deleteDoc(accessoryDoc);
 };
-
 // --- EMPLOYEES API ---
 const employeesCollection = collection(db, 'employees');
 export const getEmployees = async () => {
@@ -126,7 +143,6 @@ export const updateSupplier = (supplierId, updatedData) => {
   const supplierDoc = doc(db, 'suppliers', supplierId);
   return updateDoc(supplierDoc, updatedData);
 };
-
 // --- INVENTORY APIs ---
 const workshopSuppliesCollection = collection(db, 'workshopSupplies');
 const componentsCollection = collection(db, 'components');
@@ -176,7 +192,6 @@ export const updateRawMaterial = (materialId, updatedData) => {
   const materialDoc = doc(db, 'rawMaterials', materialId);
   return updateDoc(materialDoc, updatedData);
 };
-
 // --- OVERHEADS API ---
 const overheadsCategoriesCollection = collection(db, 'overheadsCategories');
 export const getOverheadCategories = async () => {
@@ -312,8 +327,6 @@ export const setJobStepDetail = (productId, departmentId, data) => {
   const docRef = doc(db, 'jobStepDetails', recipeId);
   return setDoc(docRef, { ...data, productId, departmentId });
 };
-
-
 // --- OLD PRODUCT CATALOG API (Used for JobCardCreator & Fitment) ---
 const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
@@ -343,7 +356,6 @@ export const updatePart = (partId, updatedData) => {
   const partDoc = doc(db, 'parts', partId);
   return updateDoc(partDoc, updatedData);
 };
-
 // --- JOB CARDS API ---
 const jobCardsCollection = collection(db, 'createdJobCards');
 export const searchPreviousJobs = async (searchText) => {
@@ -437,6 +449,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
       dataToUpdate.status = 'Complete';
       dataToUpdate.completedAt = serverTimestamp();
       let materialCost = 0;
+    
       let laborCost = 0;
       if (currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
         for (const consumable of currentJobData.processedConsumables) {
@@ -444,6 +457,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
           if (inventoryItem && inventoryItem.price !== undefined) {
             materialCost += (inventoryItem.price * consumable.quantity);
           } else if (consumable.price !== undefined) {
+         
             materialCost += (consumable.price * consumable.quantity);
           }
         }
@@ -516,7 +530,6 @@ export const getCompletedJobsForEmployee = async (employeeId) => {
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 // ===================================================================
 // NEW: UNIFIED PRODUCT CATALOG API v3
 // ===================================================================
@@ -524,11 +537,10 @@ const productsCollection = collection(db, 'products');
 const productCategoriesCollection = collection(db, 'productCategories');
 const fitmentCollection = collection(db, 'fitment');
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
-
 // --- Product Categories ---
 export const getProductCategories = async () => {
     const snapshot = await getDocs(query(productCategoriesCollection, orderBy('name')));
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addProductCategory = (categoryName) => {
     return addDoc(productCategoriesCollection, { name: categoryName });
@@ -536,18 +548,17 @@ export const addProductCategory = (categoryName) => {
 export const deleteProductCategory = async (categoryId) => {
     return deleteDoc(doc(db, 'productCategories', categoryId));
 };
-
 // --- Products (with duplicate part number check) ---
 export const getProducts = async () => {
     const snapshot = await getDocs(query(productsCollection, orderBy('name')));
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addProduct = async (productData) => {
     const q = query(productsCollection, where("partNumber", "==", productData.partNumber));
-    const querySnapshot = await getDocs(q);
+  const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
         throw new Error(`A product with Part Number "${productData.partNumber}" already exists.`);
-    }
+  }
     return addDoc(productsCollection, {
         ...productData,
         sellingPrice: Number(productData.sellingPrice) || 0,
@@ -556,15 +567,15 @@ export const addProduct = async (productData) => {
 };
 export const updateProduct = (productId, updatedData) => {
     const productDoc = doc(db, 'products', productId);
-    return updateDoc(productDoc, updatedData);
+  return updateDoc(productDoc, updatedData);
 };
 export const deleteProduct = async (productId) => {
     const batch = writeBatch(db);
-    const productDoc = doc(db, 'products', productId);
+  const productDoc = doc(db, 'products', productId);
     batch.delete(productDoc);
     const fitmentQuery = query(fitmentCollection, where('productId', '==', productId));
     const fitmentSnapshot = await getDocs(fitmentQuery);
-    fitmentSnapshot.forEach(doc => batch.delete(doc.ref));
+  fitmentSnapshot.forEach(doc => batch.delete(doc.ref));
     const recipeLinkQuery = query(productRecipeLinksCollection, where('productId', '==', productId));
     const recipeLinkSnapshot = await getDocs(recipeLinkQuery);
     recipeLinkSnapshot.forEach(doc => batch.delete(doc.ref));
@@ -574,7 +585,7 @@ export const deleteProduct = async (productId) => {
 // --- Fitment (Linking Products to Models) ---
 export const getFitmentForProduct = async (productId) => {
     const q = query(fitmentCollection, where('productId', '==', productId));
-    const snapshot = await getDocs(q);
+  const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addFitment = (productId, modelId, modelName, makeName, manufacturerName) => {
@@ -590,11 +601,10 @@ export const removeFitment = (fitmentId) => {
     const fitmentDoc = doc(db, 'fitment', fitmentId);
     return deleteDoc(fitmentDoc);
 };
-
 // --- Recipe Links (Linking Recipes to Products) ---
 export const getLinkedRecipesForProduct = async (productId) => {
     const q = query(productRecipeLinksCollection, where('productId', '==', productId));
-    const snapshot = await getDocs(q);
+  const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const linkRecipeToProduct = (linkData) => {
@@ -603,4 +613,16 @@ export const linkRecipeToProduct = (linkData) => {
 export const unlinkRecipeFromProduct = (linkId) => {
     const linkDoc = doc(db, 'productRecipeLinks', linkId);
     return deleteDoc(linkDoc);
+};
+
+// --- NEW PAYROLL API FUNCTIONS ---
+export const getCompletedJobsInRange = async (startDate, endDate) => {
+  const q = query(
+    jobCardsCollection,
+    where('status', '==', 'Complete'), // Only 'Complete' jobs
+    where('completedAt', '>=', startDate),
+    where('completedAt', '<=', endDate)
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };

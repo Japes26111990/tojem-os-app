@@ -1,52 +1,11 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'; // Added useMemo
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
 import Dropdown from '../../ui/Dropdown';
 import { Search, X, CheckCircle2, DollarSign, Clock, Zap, Edit, Trash2, Save, XCircle } from 'lucide-react';
-
-// Utility to process consumables (copied from JobCardCreator for consistency within this modal)
-// It's important to keep this utility here if you want to display processed consumables in the modal
-// or recalculate them if estimatedTime changes (though not implemented here for brevity of first edit)
-const processConsumablesForModal = (consumablesFromRecipe, allConsumablesList, temp) => {
-    if (!consumablesFromRecipe) return [];
-
-    const processedList = [];
-    const CATALYST_RULES = [
-        { temp_max: 18, percentage: 3.0 },
-        { temp_max: 28, percentage: 2.0 },
-        { temp_max: 100, percentage: 1.0 }
-    ];
-
-    const catalystItem = allConsumablesList.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
-
-    for (const consumable of consumablesFromRecipe) {
-        const masterItem = allConsumablesList.find(c => c.id === consumable.itemId);
-        const itemDetails = masterItem || consumable; // Fallback to consumable itself if not found in master list
-        if (!itemDetails) continue;
-
-        if (consumable.type === 'fixed') {
-            processedList.push({ ...itemDetails, quantity: consumable.quantity, notes: '' });
-            if (itemDetails.requiresCatalyst && catalystItem) {
-                let percentage = 0;
-                for(const rule of CATALYST_RULES) {
-                    if (temp <= rule.temp_max) {
-                        percentage = rule.percentage;
-                        break;
-                    }
-                }
-                if (percentage > 0) {
-                    const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temp}°C)` });
-                }
-            }
-        } else if (consumable.type === 'dimensional') {
-            processedList.push({ ...itemDetails, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
-        }
-    }
-    return processedList;
-};
-
+// Import the centralized utility functions
+import { processConsumables, calculateJobDuration } from '../../../utils/jobUtils';
 
 // Helper component for Consumable editing within the modal
 const ConsumableEditorInModal = ({ allConsumables, selectedConsumables, onAdd, onRemove }) => {
@@ -329,91 +288,54 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
     const processedConsumablesForDisplay = useMemo(() => {
         // We pass a dummy temperature (20) for consistent calculation in the modal,
         // unless you need actual live temperature to affect already created jobs' consumables display.
-        return processConsumablesForModal(job.consumables, allInventoryItems, 20);
+        return processConsumables(job.consumables, allInventoryItems, 20);
     }, [job.consumables, allInventoryItems]);
 
 
-    // Utility functions for formatting (already present)
+    // Utility functions for formatting
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
         return new Date(timestamp.seconds * 1000).toLocaleString();
     };
 
-    const formatDuration = (j, cTime) => {
-        if (!j.startedAt) return 'N/A';
-        let durationSeconds;
-        const startTime = j.startedAt.seconds * 1000;
-        const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-        if (j.status === 'Complete' || j.status === 'Awaiting QC' || j.status === 'Issue' || j.status === 'Archived - Issue') {
-            if (!j.completedAt) return 'N/A';
-            durationSeconds = (j.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'In Progress') {
-            durationSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'Paused' && j.pausedAt) {
-            durationSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else {
-            return 'N/A';
-        }
-        
-        if (durationSeconds < 0) return 'N/A';
-        const minutes = Math.floor(durationSeconds / 60);
-        const seconds = Math.floor(durationSeconds % 60);
-        return `${minutes}m ${seconds}s`;
-    };
-
     const formatEfficiency = (j, cTime) => {
-        if (!j.estimatedTime || !j.startedAt) return 'N/A';
-        let actualSeconds;
-        const startTime = j.startedAt.seconds * 1000;
-        const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-        if (j.status === 'Complete' || j.status === 'Awaiting QC' || j.status === 'Issue' || j.status === 'Archived - Issue') {
-            if (!j.completedAt) return 'N/A';
-            actualSeconds = (j.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'In Progress') {
-            actualSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
-        } else if (j.status === 'Paused' && j.pausedAt) {
-            actualSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else {
-            return 'N/A';
-        }
-        actualSeconds = Math.max(0, actualSeconds);
-        if (actualSeconds === 0) return 'N/A';
+        if (!j.estimatedTime) return 'N/A';
+        const durationResult = calculateJobDuration(j, cTime);
+        if (!durationResult || durationResult.totalMinutes === 0) return 'N/A';
+        
         const estimatedMinutes = j.estimatedTime;
-        const actualMinutes = actualSeconds / 60;
+        const actualMinutes = durationResult.totalMinutes;
+        
         return `${Math.round((estimatedMinutes / actualMinutes) * 100)}%`;
     };
 
     const calculateLiveTotalCost = (j, cTime, rates) => {
-        if (j.totalCost !== undefined && j.totalCost !== null) {
+        // If totalCost is already explicitly set (e.g., after QC approval), use that
+        if (typeof j.totalCost === 'number' && j.totalCost !== null) {
             return `R${j.totalCost.toFixed(2)}`;
         }
+        
         if (!j.employeeId || !rates[j.employeeId]) {
             return 'N/A';
         }
         const hourlyRate = rates[j.employeeId];
-        let activeSeconds = 0;
-        const startTime = j.startedAt ?
-        j.startedAt.seconds * 1000 : null;
-        const pausedMilliseconds = j.totalPausedMilliseconds || 0;
-        if (j.status === 'In Progress') {
-            if (startTime) {
-                activeSeconds = (cTime - startTime - pausedMilliseconds) / 1000;
-            }
-        } else if (j.status === 'Paused' && j.pausedAt && startTime) {
-            activeSeconds = (j.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-        } else {
-            return 'N/A';
-        }
-        activeSeconds = Math.max(0, activeSeconds);
-        const activeHours = activeSeconds / 3600;
-        const liveLaborCost = activeHours * hourlyRate;
         
+        // Calculate live labor cost based on current job duration
+        const durationResult = calculateJobDuration(j, cTime);
+        let liveLaborCost = 0;
+        if (durationResult) {
+            liveLaborCost = (durationResult.totalMinutes / 60) * hourlyRate;
+        }
+        
+        // Use the job's stored material cost, or 0 if not available
         const currentMaterialCost = j.materialCost || 0;
+        
         const totalLiveCost = liveLaborCost + currentMaterialCost;
         return `R${totalLiveCost.toFixed(2)}`;
     };
 
-    const liveDurationFormatted = formatDuration(job, currentTime);
+
+    const liveDurationFormatted = calculateJobDuration(job, currentTime)?.text || 'N/A';
     const liveEfficiencyFormatted = formatEfficiency(job, currentTime);
     const liveTotalCostFormatted = calculateLiveTotalCost(job, currentTime, employeeHourlyRates);
 
@@ -674,9 +596,10 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                                 </div>
                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
                                     <p className="text-xs text-gray-400">Labor Cost</p>
+                                    {/* This is a more robust way to show labor cost, considering if totalCost is not yet set */}
                                     <p className="font-bold font-mono">R{((job.laborCost === undefined || job.laborCost === null) && job.startedAt && employeeHourlyRates[job.employeeId] !== undefined) ?
                                     (
-                                            (formatDuration(job, currentTime).split('m')[0] * employeeHourlyRates[job.employeeId] / 60).toFixed(2)
+                                            (calculateJobDuration(job, currentTime)?.totalMinutes / 60 * employeeHourlyRates[job.employeeId]).toFixed(2)
                                         ) : job.laborCost?.toFixed(2) || '0.00'}
                                     </p>
                                 </div>
@@ -692,7 +615,7 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                                     {processedConsumablesForDisplay?.length > 0 ?
                                     processedConsumablesForDisplay.map((c, i) => (
                                         <li key={i}>
-                                            {c.name} (Qty: {c.quantity?.toFixed(3) || 'N/A'} {c.unit || ''}) (R{c.price?.toFixed(2) || '0.00'}) {/* CORRECTED LINE */}
+                                            {c.name} (Qty: {c.quantity?.toFixed(3) || 'N/A'} {c.unit || ''}) (R{c.price?.toFixed(2) || '0.00'})
                                         </li>
                                     )) : <li>None</li>}
                                 </ul>
