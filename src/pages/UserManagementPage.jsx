@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// This import should NOT be here: import MainLayout from '../components/layout/MainLayout';
+// import MainLayout from '../components/layout/MainLayout'; // REMOVE THIS IMPORT
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
@@ -13,14 +13,14 @@ const UserManagementPage = () => {
 
   // State for adding new user
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = '';
+  const [newUserPassword, setNewUserPassword] = useState(''); // Corrected line
   const [newUserRole, setNewUserRole] = useState('Workshop Employee'); // Default role for new users
   const [addingUser, setAddingUser] = useState(false);
 
   // State for editing existing user
   const [editingUserId, setEditingUserId] = useState(null);
-  const [editingUserRole, setEditingUserRole] = '';
-  const [editingUserName, setEditingUserName] = ''; // Assuming you might display name
+  const [editingUserRole, setEditingUserRole] = useState('');
+  const [editingUserName, setEditingUserName] = useState(''); // Assuming you might display name
 
   const availableRoles = [
     { id: 'Manager', name: 'Manager' },
