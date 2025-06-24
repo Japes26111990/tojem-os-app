@@ -3,19 +3,72 @@ import MainLayout from '../components/layout/MainLayout';
 import { listenToJobCards, updateJobStatus } from '../api/firestore';
 import JobDetailsModal from '../components/features/tracking/JobDetailsModal';
 import Button from '../components/ui/Button';
+import { useSearchParams, useNavigate } from 'react-router-dom'; // NEW: Import hooks for URL params
+import { getEmployees, getAllInventoryItems, getTools, getToolAccessories, deleteDocument } from '../api/firestore'; // Import for JobDetailsModal
 
 const IssuesPage = () => {
     const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedJob, setSelectedJob] = useState(null);
+    
+    // Data for JobDetailsModal (Employee hourly rates, allEmployees, etc.)
+    const [employeeHourlyRates, setEmployeeHourlyRates] = useState({});
+    const [allEmployees, setAllEmployees] = useState([]);
+    const [allInventoryItems, setAllInventoryItems] = useState([]);
+    const [allTools, setAllTools] = useState([]);
+    const [allToolAccessories, setAllToolAccessories] = useState([]);
+
+    const [searchParams, setSearchParams] = useSearchParams(); // NEW: Get URL search params
+    const navigate = useNavigate(); // NEW: For programmatic navigation and clearing params
+
 
     useEffect(() => {
-        const unsubscribe = listenToJobCards((fetchedJobs) => {
-            setJobs(fetchedJobs);
-            setLoading(false);
-        });
-        return () => unsubscribe();
+        let unsubscribeJobs;
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [fetchedEmployees, fetchedInventory, fetchedTools, fetchedToolAccessories] = await Promise.all([
+                    getEmployees(),
+                    getAllInventoryItems(),
+                    getTools(),
+                    getToolAccessories(),
+                ]);
+                setAllEmployees(fetchedEmployees);
+                setAllInventoryItems(fetchedInventory);
+                setAllTools(fetchedTools);
+                setAllToolAccessories(fetchedToolAccessories);
+
+                const rates = fetchedEmployees.reduce((acc, emp) => {
+                    acc[emp.id] = emp.hourlyRate || 0;
+                    return acc;
+                }, {});
+                setEmployeeHourlyRates(rates);
+
+                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
+                    setJobs(fetchedJobs);
+                    setLoading(false);
+                });
+            } catch (error) {
+                console.error("Failed to fetch initial data for issues page:", error);
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+        return () => { if (unsubscribeJobs) unsubscribeJobs(); };
     }, []);
+
+    // NEW: Effect to open modal based on URL jobId parameter
+    useEffect(() => {
+        const jobIdFromUrl = searchParams.get('jobId');
+        if (jobIdFromUrl && !loading && jobs.length > 0) {
+            const jobToOpen = jobs.find(job => job.jobId === jobIdFromUrl);
+            if (jobToOpen) {
+                setSelectedJob(jobToOpen);
+            }
+        }
+    }, [searchParams, loading, jobs]); // Re-run if params, loading state, or jobs change
+
 
     // Filter for only jobs with the 'Issue' status
     const issueJobs = useMemo(() => {
@@ -26,7 +79,6 @@ const IssuesPage = () => {
     const handleArchive = async (jobId) => {
         if (window.confirm("Are you sure you want to archive this issue? This action cannot be undone.")) {
             try {
-                // We'll give it a new status to filter it out permanently
                 await updateJobStatus(jobId, 'Archived - Issue');
                 alert("Issue has been archived.");
             } catch (error) {
@@ -35,6 +87,39 @@ const IssuesPage = () => {
             }
         }
     };
+
+    // Handlers to pass to JobDetailsModal
+    const handleUpdateJob = async (jobDocId, updatedData) => {
+        try {
+            await updateDocument('createdJobCards', jobDocId, updatedData);
+        } catch (error) {
+            console.error("Error updating job from modal:", error);
+            throw error;
+        }
+    };
+
+    const handleDeleteJob = async (jobDocId) => {
+        if (window.confirm(`Are you sure you want to permanently delete job "${selectedJob?.jobId}"? This action cannot be undone.`)) {
+            try {
+                await deleteDocument('createdJobCards', jobDocId);
+                alert("Job deleted successfully!");
+                setSelectedJob(null); // Close modal
+                navigate('/issues', { replace: true }); // Clear URL param
+            } catch (error) {
+                console.error("Error deleting job from modal:", error);
+                alert("Failed to delete job.");
+            }
+        }
+    };
+
+
+    // NEW: Function to close the modal and clear the URL parameter
+    const handleCloseModal = () => {
+        setSelectedJob(null);
+        // Clear jobId from URL without navigating away from /issues
+        navigate('/issues', { replace: true });
+    };
+
 
     return (
         <>
@@ -80,7 +165,18 @@ const IssuesPage = () => {
 
             {/* Reuse the JobDetailsModal we already built! */}
             {selectedJob && (
-                <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
+                <JobDetailsModal 
+                    job={selectedJob} 
+                    onClose={handleCloseModal} // NEW: Use the new close handler
+                    currentTime={Date.now()} 
+                    employeeHourlyRates={employeeHourlyRates} 
+                    allEmployees={allEmployees} 
+                    onUpdateJob={handleUpdateJob} 
+                    onDeleteJob={handleDeleteJob} 
+                    allInventoryItems={allInventoryItems} 
+                    allTools={allTools} 
+                    allToolAccessories={allToolAccessories} 
+                />
             )}
         </>
     );

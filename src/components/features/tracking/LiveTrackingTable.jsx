@@ -3,6 +3,7 @@ import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllI
 import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils'; // Import centralized utility
+import { useSearchParams, useNavigate } from 'react-router-dom'; // NEW: Import hooks for URL params
 
 const StatusBadge = ({ status }) => {
     const statusColors = {
@@ -75,34 +76,36 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
 const LiveTrackingTable = () => {
     const [jobs, setJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
-    const [allInventoryItems, setAllInventoryItems] = useState([]); // State for all inventory items
-    const [allTools, setAllTools] = useState([]); // State for all tools
-    const [allToolAccessories, setAllToolAccessories] = useState([]); // State for all tool accessories
+    const [allInventoryItems, setAllInventoryItems] = useState([]);
+    const [allTools, setAllTools] = useState([]);
+    const [allToolAccessories, setAllToolAccessories] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedJob, setSelectedJob] = useState(null);
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
 
-    const fetchAllRequiredData = async () => { // Renamed from fetchJobsAndEmployees for clarity
+    const [searchParams, setSearchParams] = useSearchParams(); // NEW: Get URL search params
+    const navigate = useNavigate(); // NEW: For programmatic navigation and clearing params
+
+    const fetchAllRequiredData = async () => {
         setLoading(true);
         try {
             const [fetchedEmployees, fetchedInventory, fetchedTools, fetchedToolAccessories] = await Promise.all([
                 getEmployees(),
-                getAllInventoryItems(), // Fetch all inventory items
-                getTools(), // Fetch all tools
-                getToolAccessories(), // Fetch all tool accessories
+                getAllInventoryItems(),
+                getTools(),
+                getToolAccessories(),
             ]);
             setEmployees(fetchedEmployees);
             setAllInventoryItems(fetchedInventory);
             setAllTools(fetchedTools);
             setAllToolAccessories(fetchedToolAccessories);
             
-            // Use onSnapshot for real-time updates on jobs
             const unsubscribe = listenToJobCards((fetchedJobs) => {
                 setJobs(fetchedJobs);
                 setLoading(false);
             });
-            return unsubscribe; // Return unsubscribe to be called on cleanup
+            return unsubscribe;
         } catch (error) {
             console.error("Failed to fetch initial data for tracking table:", error);
             setLoading(false);
@@ -123,7 +126,18 @@ const LiveTrackingTable = () => {
             if (unsubscribeJobs) unsubscribeJobs();
             clearInterval(intervalId);
         };
-    }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
+    }, []);
+
+    // NEW: Effect to open modal based on URL jobId parameter
+    useEffect(() => {
+        const jobIdFromUrl = searchParams.get('jobId');
+        if (jobIdFromUrl && !loading && jobs.length > 0) {
+            const jobToOpen = jobs.find(job => job.jobId === jobIdFromUrl);
+            if (jobToOpen) {
+                setSelectedJob(jobToOpen);
+            }
+        }
+    }, [searchParams, loading, jobs]); // Re-run if params, loading state, or jobs change
 
     const employeeHourlyRates = useMemo(() => {
         return employees.reduce((acc, emp) => {
@@ -153,26 +167,29 @@ const LiveTrackingTable = () => {
         };
     }, [jobs]);
 
-    // Handler for updating a job from the modal
     const handleUpdateJob = async (jobId, updatedData) => {
         try {
             await updateDocument('createdJobCards', jobId, updatedData);
-            // The listenToJobCards will automatically update the state, no need for manual setJobs
         } catch (error) {
             console.error("Error updating job from modal:", error);
-            throw error; // Re-throw to be caught by the modal's save handler
+            throw error;
         }
     };
 
-    // Handler for deleting a job from the modal
     const handleDeleteJob = async (jobId) => {
         try {
             await deleteDocument('createdJobCards', jobId);
-            // The listenToJobCards will automatically update the state
         } catch (error) {
             console.error("Error deleting job from modal:", error);
-            throw error; // Re-throw to be caught by the modal's delete handler
+            throw error;
         }
+    };
+
+    // NEW: Function to close the modal and clear the URL parameter
+    const handleCloseModal = () => {
+        setSelectedJob(null);
+        // Clear jobId from URL without navigating away from /tracking
+        navigate('/tracking', { replace: true });
     };
 
     if (loading) return <p className="text-center text-gray-400">Loading jobs...</p>;
@@ -241,15 +258,15 @@ const LiveTrackingTable = () => {
                 {selectedJob && (
                     <JobDetailsModal
                         job={selectedJob}
-                        onClose={() => setSelectedJob(null)}
+                        onClose={handleCloseModal} // NEW: Use the new close handler
                         currentTime={currentTime}
                         employeeHourlyRates={employeeHourlyRates}
-                        allEmployees={employees} // Pass allEmployees for dropdown in edit mode
-                        onUpdateJob={handleUpdateJob} // Pass update handler
-                        onDeleteJob={handleDeleteJob} // Pass delete handler
-                        allInventoryItems={allInventoryItems} // Pass all inventory items for consumable editor
-                        allTools={allTools} // Pass all tools for tool/accessory selection
-                        allToolAccessories={allToolAccessories} // Pass all tool accessories for selection
+                        allEmployees={employees}
+                        onUpdateJob={handleUpdateJob}
+                        onDeleteJob={handleDeleteJob}
+                        allInventoryItems={allInventoryItems}
+                        allTools={allTools}
+                        allToolAccessories={allToolAccessories}
                     />
                 )}
             </div>

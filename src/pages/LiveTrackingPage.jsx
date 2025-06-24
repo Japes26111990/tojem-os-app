@@ -1,8 +1,9 @@
 import React from 'react';
 import MainLayout from '../components/layout/MainLayout';
 import LiveTrackingTable from '../components/features/tracking/LiveTrackingTable';
+import { useSearchParams, useNavigate } from 'react-router-dom'; // NEW: Import here to make them available in the router context
 
-const LiveTrackingPage = () => {
+const TrackingPage = () => {
   return (
     <MainLayout>
       <div className="space-y-8">
@@ -13,4 +14,4 @@ const LiveTrackingPage = () => {
   );
 };
 
-export default LiveTrackingPage;
+export default TrackingPage;

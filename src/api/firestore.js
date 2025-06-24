@@ -626,3 +626,59 @@ export const getCompletedJobsInRange = async (startDate, endDate) => {
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
+// --- NEW USER MANAGEMENT API FUNCTIONS ---
+const usersCollection = collection(db, 'users'); // Reference to the 'users' collection
+
+export const getAllUsers = async () => {
+  const snapshot = await getDocs(usersCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const updateUserRole = async (userId, newRole) => {
+  const userDocRef = doc(db, 'users', userId);
+  return setDoc(userDocRef, { role: newRole }, { merge: true }); // Use setDoc with merge to avoid overwriting other fields
+};
+
+// This function will call a Cloud Function to create a new Firebase Auth user and Firestore user document
+// It's designed to be called from the frontend, but the actual creation happens on the backend (Cloud Function)
+export const createUserWithRole = async (email, password, role) => {
+  // IMPORTANT: You need to replace this URL with your actual deployed Cloud Function URL
+  // You can find this in your Firebase Console -> Functions -> Dashboard tab, under "Trigger" for the function
+  const functionUrl = 'https://us-central1-tojem-os-production.cloudfunctions.net/createUserAndSetRole'; 
+
+  const response = await fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password, role }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to create user via Cloud Function.');
+  }
+  return data;
+};
+
+// This function will call a Cloud Function to delete a Firebase Auth user and Firestore user document
+export const deleteUserWithRole = async (userId) => {
+  // IMPORTANT: You need to replace this URL with your actual deployed Cloud Function URL
+  // You can find this in your Firebase Console -> Functions -> Dashboard tab, under "Trigger" for the function
+  const functionUrl = 'https://us-central1-tojem-os-production.cloudfunctions.net/deleteUserAndRole'; 
+
+  const response = await fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to delete user via Cloud Function.');
+  }
+  return data;
+};

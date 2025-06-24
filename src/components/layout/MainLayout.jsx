@@ -6,6 +6,7 @@ import Button from '../ui/Button';
 import Sidebar from './Sidebar';
 import { PanelLeftClose, PanelRightClose } from 'lucide-react';
 import TojemLogo from '../../assets/TOJEM 2024.png';
+import NotificationBell from './NotificationBell';
 
 const MainLayout = ({ children }) => {
   const { user, signOut } = useAuth();
@@ -24,11 +25,14 @@ const MainLayout = ({ children }) => {
             </Button>
             <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p> {/* Added optional chaining */}
-            <Button onClick={signOut} variant="secondary" className="mt-1 py-1 px-3 text-xs">
-              Sign Out
-            </Button>
+          <div className="flex items-center space-x-4">
+            <NotificationBell />
+            <div className="text-right">
+              <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p>
+              <Button onClick={signOut} variant="secondary" className="mt-1 py-1 px-3 text-xs">
+                Sign Out
+              </Button>
+            </div>
           </div>
         </header>
         <nav className="flex justify-center bg-gray-800/20 p-2 shadow-lg border-b border-gray-700">
@@ -42,15 +46,13 @@ const MainLayout = ({ children }) => {
             <NavLink to="/issues" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Issues</NavLink>
             <NavLink to="/performance" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Performance</NavLink>
             <NavLink to="/profitability" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Profitability</NavLink>
-            
-            {/* NEW NAVIGATION LINKS FOR PAYROLL AND VALUATION */}
             <NavLink to="/payroll" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Payroll</NavLink>
             <NavLink to="/valuation" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Valuation</NavLink>
-            
+            <NavLink to="/calendar" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Calendar</NavLink>
             <NavLink to="/settings" className={({ isActive }) => `${linkClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}>Settings</NavLink>
           </div>
         </nav>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-8">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-8"> {/* REMOVED RED BORDER */}
           {children}
         </main>
       </div>

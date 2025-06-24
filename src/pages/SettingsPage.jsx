@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import MainLayout from '../components/layout/MainLayout';
+// This import should NOT be here: import MainLayout from '../components/layout/MainLayout';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
 import EmployeesManager from '../components/features/settings/EmployeesManager';
@@ -8,8 +8,8 @@ import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
 import OverheadsManager from '../components/features/settings/OverheadsManager'; 
 import SkillsManager from '../components/features/settings/SkillsManager';
-// REMOVE old managers and IMPORT the new one
 import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
+import UserManagementPage from './UserManagementPage';
 
 const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -29,7 +29,6 @@ const SettingsPage = () => {
   const tabs = useMemo(() => ({
     products: {
       label: 'Products & Recipes',
-      // REPLACE the old components with our single new one
       components: [<UnifiedProductManager key="unified-product-manager" />]
     },
     inventory: {
@@ -47,31 +46,33 @@ const SettingsPage = () => {
     financials: {
       label: 'Financials',
       components: [<OverheadsManager key="overheads" />]
+    },
+    users: {
+      label: 'User Management',
+      components: [<UserManagementPage key="user-management" />]
     }
   }), []); 
 
   return (
-    <MainLayout>
-      <div className="space-y-8">
-        <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
+    <div className="space-y-8">
+      <h2 className="text-3xl font-bold text-white">Settings & Data Management</h2>
 
-        <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
-          {Object.entries(tabs).map(([tabKey, tabData]) => (
-            <TabButton
-              key={tabKey}
-              label={tabData.label}
-              isActive={activeTab === tabKey}
-              onClick={() => setActiveTab(tabKey)}
-              isDanger={tabData.isDanger}
-            />
-          ))}
-        </div>
-
-        <div className="space-y-8">
-          {tabs[activeTab].components}
-        </div>
+      <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
+        {Object.entries(tabs).map(([tabKey, tabData]) => (
+          <TabButton
+            key={tabKey}
+            label={tabData.label}
+            isActive={activeTab === tabKey}
+            onClick={() => setActiveTab(tabKey)}
+            isDanger={tabData.isDanger}
+          />
+        ))}
       </div>
-    </MainLayout>
+
+      <div className="space-y-8">
+        {tabs[activeTab].components}
+      </div>
+    </div>
   );
 };
 
