@@ -1,14 +1,16 @@
+// FILE: src/components/features/job_cards/JobCardCreator.jsx (UPDATED)
+// =================================================================================================
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, checkExistingJobRecipe, setJobStepDetail } from '../../../api/firestore';
-import { processConsumables } from '../../../utils/jobUtils'; // <-- IMPORT THE UTILITY
+import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, setJobStepDetail } from '../../../api/firestore';
+import { processConsumables } from '../../../utils/jobUtils';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
 import { Search } from 'lucide-react';
 
-// The RecipeConsumableEditor component remains unchanged.
-// Paste the existing RecipeConsumableEditor component code here.
+// RecipeConsumableEditor and JobCardPreview components remain unchanged...
 const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
     const [selectedFixedItemId, setSelectedFixedItemId] = useState('');
@@ -225,10 +227,6 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
         </div>
     );
 };
-
-
-// The JobCardPreview component also remains unchanged.
-// Paste the existing JobCardPreview component code here.
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -292,23 +290,17 @@ const JobCardPreview = ({ details }) => {
 };
 
 
-// Main component
-const JobCardCreator = () => {
-    // State to hold all master data from Firestore
+// Main component - accept campaignId as a prop
+const JobCardCreator = ({ campaignId }) => {
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
     const [loading, setLoading] = useState(true);
-    // State to hold user selections in the dropdowns
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
-    // State for the generated job card details to be previewed and saved
     const [jobDetails, setJobDetails] = useState(null);
-    // State to hold current temperature from weather API for catalyst calculation
     const [currentTemp, setCurrentTemp] = useState(null);
-    // Flags and states for "Define Recipe on Demand"
     const [showDefineRecipeForm, setShowDefineRecipeForm] = useState(false);
     const [tempRecipeDetails, setTempRecipeDetails] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false);
 
-    // Fetch all necessary data when the component mounts
     useEffect(() => {
         const fetchAllData = async () => {
             setLoading(true);
@@ -324,7 +316,7 @@ const JobCardCreator = () => {
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 alert("Error fetching page data. Please check the console and refresh.");
-                if (currentTemp === null) setCurrentTemp(20); // Fallback temperature if API fails
+                if (currentTemp === null) setCurrentTemp(20);
             } finally {
                 setLoading(false);
             }
@@ -332,7 +324,6 @@ const JobCardCreator = () => {
         fetchAllData();
     }, []);
 
-    // Handler for dropdown selections
     const handleSelection = (e) => {
         const { name, value } = e.target;
         setSelection(prev => {
@@ -347,13 +338,11 @@ const JobCardCreator = () => {
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
 
-    // Memoized filtered options for dropdowns for performance
     const filteredMakes = useMemo(() => allData.makes.filter(m => m.manufacturerId === selection.manufacturerId), [allData.makes, selection.manufacturerId]);
     const filteredModels = useMemo(() => allData.models.filter(m => m.makeId === selection.makeId), [allData.models, selection.makeId]);
     const filteredParts = useMemo(() => allData.parts.filter(p => p.modelId === selection.modelId), [allData.parts, selection.modelId]);
     const filteredEmployees = useMemo(() => allData.employees.filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
 
-    // Effect to generate job details whenever selections or data change
     useEffect(() => {
         const { partId, departmentId, employeeId } = selection;
         if (partId && departmentId && currentTemp !== null) {
@@ -361,13 +350,12 @@ const JobCardCreator = () => {
             const department = allData.departments.find(d => d.id === departmentId);
             const employee = allData.employees.find(e => e.id === employeeId);
             
-            let finalRecipeDetails = null;
-            let isRecipeFoundInDb = false;
+            const recipeId = `${partId}_${departmentId}`;
+            const standardRecipe = allData.jobSteps.find(step => step.id === recipeId);
 
-            const standardRecipe = allData.jobSteps.find(step => step.partId === partId && step.departmentId === departmentId);
+            let finalRecipeDetails = null;
             if (standardRecipe) {
                 finalRecipeDetails = standardRecipe;
-                isRecipeFoundInDb = true;
                 setShowDefineRecipeForm(false);
             } else {
                 setShowDefineRecipeForm(true);
@@ -382,9 +370,7 @@ const JobCardCreator = () => {
             }
             
             if (part && department) {
-                // <-- USE THE REFACTORED UTILITY FUNCTION
                 const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
-
                 const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                 const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
                 
@@ -392,10 +378,9 @@ const JobCardCreator = () => {
                     jobId: `JOB-${Date.now()}`,
                     partName: part.name,
                     partId: part.id,
-                    photoUrl: part.photoUrl || '',
                     departmentId: department.id,
                     departmentName: department.name,
-                    employeeId: employee ? employee.id : '',
+                    employeeId: employee ? employee.id : 'unassigned',
                     employeeName: employee ? employee.name : 'Unassigned',
                     status: 'Pending',
                     description: finalRecipeDetails?.description || 'No description.',
@@ -404,17 +389,15 @@ const JobCardCreator = () => {
                     tools: toolsForDisplay,
                     accessories: accessoriesForDisplay,
                     consumables: finalRecipeDetails?.consumables || [],
-                    processedConsumables: processed, // <-- Use the result from the utility function
-                    isRecipeFoundInDb: isRecipeFoundInDb,
+                    processedConsumables: processed,
+                    campaignId: campaignId || null, // Include the campaignId
                 });
             }
         } else {
             setJobDetails(null);
-            setShowDefineRecipeForm(false);
         }
-    }, [selection, allData, currentTemp, tempRecipeDetails]);
+    }, [selection, allData, currentTemp, tempRecipeDetails, campaignId]);
 
-    // Handlers for inline recipe definition form
     const handleTempRecipeInputChange = (e) => {
         const { name, value } = e.target;
         setTempRecipeDetails(prev => ({ ...prev, [name]: value }));
@@ -440,7 +423,6 @@ const JobCardCreator = () => {
         setTempRecipeDetails(prev => ({ ...prev, consumables: prev.consumables.filter(c => c.itemId !== itemId) }));
     };
 
-    // Function to save the new recipe and create the job card
     const saveNewRecipeAndCreateJob = async () => {
         if (!jobDetails || !selection.partId || !selection.departmentId) return;
         if (!tempRecipeDetails.description.trim() || !tempRecipeDetails.estimatedTime || !tempRecipeDetails.steps.trim()) {
@@ -461,26 +443,7 @@ const JobCardCreator = () => {
             await setJobStepDetail(selection.partId, selection.departmentId, recipeData);
             alert("New recipe saved successfully!");
             
-            const jobCardDataForCreation = {
-                ...jobDetails,
-                description: recipeData.description,
-                estimatedTime: recipeData.estimatedTime,
-                steps: recipeData.steps,
-                tools: recipeData.tools.map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean),
-                accessories: recipeData.accessories.map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean),
-                consumables: recipeData.consumables,
-                processedConsumables: processConsumables(recipeData.consumables, allData.allConsumables, currentTemp),
-            };
-            await addJobCard(jobCardDataForCreation);
-            alert(`Job Card ${jobDetails.jobId} created successfully from new recipe!`);
-            
-            const printContents = document.getElementById('job-card-print-area').innerHTML;
-            const printWindow = window.open('', '', 'height=800,width=1000');
-            printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
-            printWindow.document.close();
-            printWindow.onload = () => {
-                setTimeout(() => printWindow.print(), 500);
-            };
+            handleGenerateNewJobCard();
 
             const updatedJobSteps = await getJobStepDetails();
             setAllData(prev => ({ ...prev, jobSteps: updatedJobSteps }));
@@ -492,17 +455,15 @@ const JobCardCreator = () => {
             setIsSavingNewRecipe(false);
         }
     };
-
-    // All other handlers (handleGenerateNewJobCard, handleResetFormAndPreview, handlePrintAndCreate) and the JSX rendering remain the same.
-    // Paste the existing code for those handlers and the return statement here.
+    
     const handleGenerateNewJobCard = async () => {
         if (!jobDetails) {
             alert("No job details to generate. Please select a part and department first.");
             return;
         }
+        
         const confirmGenerate = window.confirm(
-            `Are you sure you want to create another Job Card for "${jobDetails.partName}" in "${jobDetails.departmentName}"?` +
-            (jobDetails.employeeName !== 'Unassigned' ? ` It will be assigned to ${jobDetails.employeeName}.` : "")
+            `Create a new Job Card for "${jobDetails.partName}"?`
         );
         if (!confirmGenerate) return;
 
@@ -519,7 +480,9 @@ const JobCardCreator = () => {
                 laborCost: null,
                 totalCost: null,
                 issueReason: null,
+                campaignId: campaignId || null, // Ensure campaignId is passed on creation
             };
+            
             await addJobCard(newJobCardData);
             alert(`New Job Card ${newJobCardData.jobId} created successfully!`);
             
@@ -527,9 +490,6 @@ const JobCardCreator = () => {
             const printWindow = window.open('', '', 'height=800,width=1000');
             printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
-            printWindow.onload = () => {
-                setTimeout(() => printWindow.print(), 500);
-            };
             
             setJobDetails(prev => ({...prev, jobId: `JOB-${Date.now()}`}));
         } catch (error) {
@@ -545,36 +505,6 @@ const JobCardCreator = () => {
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     };
 
-    const handlePrintAndCreate = async () => {
-        if (!jobDetails) return;
-        const recipeExistsInDb = await checkExistingJobRecipe(jobDetails.partId, jobDetails.departmentId);
-        if (recipeExistsInDb) {
-            const shouldCreateDuplicate = window.confirm("A job recipe with the same part and department already exists. Are you sure you want to create a new job card from this recipe?");
-            if (!shouldCreateDuplicate) {
-                alert("Job card creation cancelled.");
-                return;
-            }
-        }
-        
-        try {
-            await addJobCard(jobDetails);
-            alert(`Job Card ${jobDetails.jobId} created successfully!`);
-
-            const printContents = document.getElementById('job-card-print-area').innerHTML;
-            const printWindow = window.open('', '', 'height=800,width=1000');
-            printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
-            printWindow.document.close();
-            printWindow.onload = () => {
-                setTimeout(() => printWindow.print(), 500);
-            };
-
-            handleResetFormAndPreview();
-        } catch (error) {
-            console.error("Error creating job card:", error);
-            alert("Failed to create job card.");
-        }
-    };
-
     if (loading) return <p className="text-center text-gray-400">Loading settings data...</p>;
 
     const renderActionButton = () => {
@@ -582,14 +512,13 @@ const JobCardCreator = () => {
         if (showDefineRecipeForm) {
             return (
                 <Button onClick={saveNewRecipeAndCreateJob} variant="primary" disabled={isSavingNewRecipe}>
-                    {isSavingNewRecipe ? 'Saving Recipe...' : 'Define Recipe & Create First Job'}
+                    {isSavingNewRecipe ? 'Saving...' : 'Define Recipe & Create First Job'}
                 </Button>
             );
         } else {
             return (
                 <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button onClick={handlePrintAndCreate} variant="primary">Print & Create Job</Button>
-                    <Button onClick={handleGenerateNewJobCard} variant="secondary">Generate New Job Card</Button>
+                    <Button onClick={handleGenerateNewJobCard} variant="primary">Generate New Job Card</Button>
                 </div>
             );
         }

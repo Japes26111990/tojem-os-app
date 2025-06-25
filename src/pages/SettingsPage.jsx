@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-// This import should NOT be here: import MainLayout from '../components/layout/MainLayout';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
 import EmployeesManager from '../components/features/settings/EmployeesManager';
@@ -10,11 +9,12 @@ import OverheadsManager from '../components/features/settings/OverheadsManager';
 import SkillsManager from '../components/features/settings/SkillsManager';
 import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
 import UserManagementPage from './UserManagementPage';
+import CampaignManager from '../components/features/settings/CampaignManager';
 
-const TabButton = ({ label, isActive, onClick, isDanger = false }) => {
+const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
-  const activeClasses = isDanger ? "bg-red-600 text-white" : "bg-blue-600 text-white";
-  const inactiveClasses = isDanger ? "bg-gray-800 text-red-400 hover:bg-red-500/20" : "bg-gray-800 text-gray-300 hover:bg-gray-700";
+  const activeClasses = "bg-blue-600 text-white";
+  const inactiveClasses = "bg-gray-800 text-gray-300 hover:bg-gray-700";
 
   return (
     <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
@@ -47,6 +47,10 @@ const SettingsPage = () => {
       label: 'Financials',
       components: [<OverheadsManager key="overheads" />]
     },
+    marketing: {
+      label: 'Marketing',
+      components: [<CampaignManager key="campaigns" />]
+    },
     users: {
       label: 'User Management',
       components: [<UserManagementPage key="user-management" />]
@@ -64,7 +68,6 @@ const SettingsPage = () => {
             label={tabData.label}
             isActive={activeTab === tabKey}
             onClick={() => setActiveTab(tabKey)}
-            isDanger={tabData.isDanger}
           />
         ))}
       </div>

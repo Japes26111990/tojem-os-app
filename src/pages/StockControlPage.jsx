@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import MainLayout from '../components/layout/MainLayout';
+// MainLayout import removed
 import StockControlDashboard from '../components/features/stock/StockControlDashboard';
 import PurchaseQueue from '../components/features/stock/PurchaseQueue';
 import InTransitOrders from '../components/features/stock/InTransitOrders';
@@ -47,27 +47,25 @@ const StockControlPage = () => {
   }, [purchaseQueueItems]);
 
   return (
-    <MainLayout>
-      <div className="space-y-4">
-        <h2 className="text-3xl font-bold text-white">Stock Control & Purchasing</h2>
-        <div className="border-b border-gray-700">
-            <nav className="-mb-px flex space-x-6">
-                <TabButton id="dashboard" label="Stock Overview" />
-                <TabButton id="queue" label="Purchase Queue" count={pendingItems.length} />
-                <TabButton id="transit" label="In-Transit Orders" count={orderedItems.length} />
-            </nav>
-        </div>
-        <div className="mt-6">
-            {loading ? <p className="text-center text-gray-400">Loading...</p> : (
-                <>
-                    {activeTab === 'dashboard' && <StockControlDashboard />}
-                    {activeTab === 'queue' && <PurchaseQueue onOrderPlaced={fetchData} />}
-                    {activeTab === 'transit' && <InTransitOrders items={orderedItems} suppliers={suppliers} onStockReceived={fetchData} />}
-                </>
-            )}
-        </div>
+    <div className="space-y-4">
+      <h2 className="text-3xl font-bold text-white">Stock Control & Purchasing</h2>
+      <div className="border-b border-gray-700">
+          <nav className="-mb-px flex space-x-6">
+              <TabButton id="dashboard" label="Stock Overview" />
+              <TabButton id="queue" label="Purchase Queue" count={pendingItems.length} />
+              <TabButton id="transit" label="In-Transit Orders" count={orderedItems.length} />
+          </nav>
       </div>
-    </MainLayout>
+      <div className="mt-6">
+          {loading ? <p className="text-center text-gray-400">Loading...</p> : (
+              <>
+                  {activeTab === 'dashboard' && <StockControlDashboard />}
+                  {activeTab === 'queue' && <PurchaseQueue onOrderPlaced={fetchData} />}
+                  {activeTab === 'transit' && <InTransitOrders items={orderedItems} suppliers={suppliers} onStockReceived={fetchData} />}
+              </>
+          )}
+      </div>
+    </div>
   );
 };
 

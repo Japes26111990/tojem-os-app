@@ -1,53 +1,46 @@
+// FILE: src/components/features/job_cards/CustomJobCreator.jsx (UPDATED)
+// =================================================================================================
+
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
-import Dropdown from '../../ui/Dropdown'; // Still used for Department/Employee
+import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import { addJobCard, getDepartments, getEmployees, getTools, getToolAccessories, getAllInventoryItems } from '../../../api/firestore';
-import { Search } from 'lucide-react'; // Import Search icon
+import { Search } from 'lucide-react';
 
-const CustomJobCreator = () => {
+// Accept campaignId as a prop
+const CustomJobCreator = ({ campaignId }) => {
     const [jobData, setJobData] = useState({
-        jobName: '', // This will be the partName for custom jobs
+        jobName: '',
         departmentId: '',
         employeeId: '',
         description: '',
         estimatedTime: '',
-        steps: '', // Stored as a single string, split by newline
+        steps: '',
         selectedTools: new Set(),
         selectedAccessories: new Set(),
-        consumables: [], // List of { id, name, quantity, unit, price } for custom jobs linked to inventory
+        consumables: [],
     });
 
     const [allDepartments, setAllDepartments] = useState([]);
     const [allEmployees, setAllEmployees] = useState([]);
     const [allTools, setAllTools] = useState([]);
     const [allToolAccessories, setAllToolAccessories] = useState([]);
-    const [allInventoryItems, setAllInventoryItems] = useState([]); // For consumables selection
+    const [allInventoryItems, setAllInventoryItems] = useState([]);
     const [loading, setLoading] = useState(true);
-
-    // State for the searchable consumable input
     const [consumableSearchTerm, setConsumableSearchTerm] = useState('');
     const [filteredConsumableOptions, setFilteredConsumableOptions] = useState([]);
-    const [selectedConsumableItem, setSelectedConsumableItem] = useState(null); // Full item object
+    const [selectedConsumableItem, setSelectedConsumableItem] = useState(null);
     const [consumableQuantity, setConsumableQuantity] = useState('');
-
-    // Ref to handle clicks outside the search results
     const consumableSearchRef = useRef(null);
-
-    // Ref to hold the dynamically generated Job Card Preview content for printing
-    const customJobPreviewRef = useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
             try {
                 const [departments, employees, tools, toolAccessories, inventoryItems] = await Promise.all([
-                    getDepartments(),
-                    getEmployees(),
-                    getTools(),
-                    getToolAccessories(),
-                    getAllInventoryItems()
+                    getDepartments(), getEmployees(), getTools(), getToolAccessories(), getAllInventoryItems()
                 ]);
                 setAllDepartments(departments);
                 setAllEmployees(employees);
@@ -64,25 +57,23 @@ const CustomJobCreator = () => {
         fetchData();
     }, []);
 
-    // Effect for consumable search filtering
     useEffect(() => {
         if (consumableSearchTerm.length > 0) {
             const lowerCaseSearchTerm = consumableSearchTerm.toLowerCase();
             const filtered = allInventoryItems.filter(item =>
                 item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
                 (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm))
-            ).slice(0, 10); // Limit results for performance
+            ).slice(0, 10);
             setFilteredConsumableOptions(filtered);
         } else {
             setFilteredConsumableOptions([]);
         }
     }, [consumableSearchTerm, allInventoryItems]);
 
-    // Handle clicks outside the consumable search results to close them
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (consumableSearchRef.current && !consumableSearchRef.current.contains(event.target)) {
-                setFilteredConsumableOptions([]); // Close the dropdown
+                setFilteredConsumableOptions([]);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -90,7 +81,6 @@ const CustomJobCreator = () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
-
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -121,46 +111,40 @@ const CustomJobCreator = () => {
         });
     };
 
-    // When a consumable item is selected from the search results
     const selectConsumableFromSearch = (item) => {
-        setSelectedConsumableItem(item); // Store the full item object
-        setConsumableSearchTerm(item.name); // Display the name in the search box
-        setFilteredConsumableOptions([]); // Hide search results
+        setSelectedConsumableItem(item);
+        setConsumableSearchTerm(item.name);
+        setFilteredConsumableOptions([]);
     };
 
-    // Adds the selected consumable to the list
     const addConsumable = () => {
         if (!selectedConsumableItem || parseFloat(consumableQuantity) <= 0 || isNaN(parseFloat(consumableQuantity))) {
             alert("Please select a consumable from the list and enter a valid quantity.");
             return;
         }
 
-        // Check if consumable already exists in the list to prevent duplicates
         const isDuplicate = jobData.consumables.some(c => c.id === selectedConsumableItem.id);
         if (isDuplicate) {
-            alert("This consumable has already been added. Please remove it first if you want to change its quantity.");
+            alert("This consumable has already been added.");
             return;
         }
 
         setJobData(prev => ({
             ...prev,
-            // Add id for stock deduction, and name/unit/price for display/costing
             consumables: [...prev.consumables, {
-                id: selectedConsumableItem.id, // Crucial for stock deduction
+                id: selectedConsumableItem.id,
                 name: selectedConsumableItem.name,
                 quantity: parseFloat(consumableQuantity),
-                unit: selectedConsumableItem.unit || 'units', // Use inventory item's unit or default
-                price: selectedConsumableItem.price || 0 // Use inventory item's price
+                unit: selectedConsumableItem.unit || 'units',
+                price: selectedConsumableItem.price || 0
             }]
         }));
-        // Reset consumable inputs after adding
         setSelectedConsumableItem(null);
         setConsumableQuantity('');
         setConsumableSearchTerm('');
         setFilteredConsumableOptions([]);
     };
 
-    // Removes a consumable from the list
     const removeConsumable = (indexToRemove) => {
         setJobData(prev => ({
             ...prev,
@@ -168,42 +152,38 @@ const CustomJobCreator = () => {
         }));
     };
 
-    // Handles the form submission for creating the custom job card
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Basic validation for essential fields
-        if (!jobData.jobName.trim()) { alert("Please enter a Job Name / Part Description."); return; }
-        if (!jobData.departmentId) { alert("Please select a Department."); return; }
-        if (!jobData.description.trim()) { alert("Please enter a Job Description."); return; }
-        if (!jobData.steps.trim()) { alert("Please enter the Job Steps."); return; }
+        if (!jobData.jobName.trim() || !jobData.departmentId || !jobData.description.trim() || !jobData.steps.trim()) {
+            alert("Please fill in Job Name, Department, Description, and Steps.");
+            return;
+        }
         
-        // Prepare data for Firestore
         const newJobId = `CUSTOM-${Date.now()}`;
         const finalJobData = {
-            jobId: newJobId, // Unique ID for custom jobs
-            partName: jobData.jobName.trim(), // Use jobName as partName for custom jobs
+            jobId: newJobId,
+            partName: jobData.jobName.trim(),
             departmentId: jobData.departmentId,
-            departmentName: allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown Department',
-            employeeId: jobData.employeeId || 'unassigned', // Allow unassigned, but record 'unassigned' string
+            departmentName: allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown',
+            employeeId: jobData.employeeId || 'unassigned',
             employeeName: allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned',
-            status: 'Pending', // Initial status for all new jobs
+            status: 'Pending',
             description: jobData.description.trim(),
             estimatedTime: parseFloat(jobData.estimatedTime) || 0,
-            steps: jobData.steps.split('\n').filter(s => s.trim() !== ''), // Split steps by new line
-            // Convert Sets of IDs to arrays of full tool/accessory objects for job card data
+            steps: jobData.steps.split('\n').filter(s => s.trim() !== ''),
             tools: Array.from(jobData.selectedTools).map(toolId => allTools.find(t => t.id === toolId)).filter(Boolean),
             accessories: Array.from(jobData.selectedAccessories).map(accId => allToolAccessories.find(a => a.id === accId)).filter(Boolean),
-            processedConsumables: jobData.consumables, // Consumables with linked IDs, quantities, and prices
-            isCustomJob: true, // Flag this job as custom for future filtering/logic
+            processedConsumables: jobData.consumables,
+            isCustomJob: true,
+            campaignId: campaignId || null, // Include the campaignId
         };
 
         try {
             await addJobCard(finalJobData);
             alert(`Custom Job Card ${finalJobData.jobId} created successfully!`);
 
-            // --- Print Logic for Custom Job Card ---
-            // Construct the HTML for the job card preview dynamically
+            // Print logic... (remains the same)
             const departmentName = allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown Department';
             const employeeName = allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned';
 
@@ -255,51 +235,12 @@ const CustomJobCreator = () => {
                     </div>
                 </div>
             `;
-
             const printWindow = window.open('', '_blank', 'height=800,width=1000');
-            printWindow.document.write(`
-                <html>
-                <head>
-                    <title>Custom Job Card ${newJobId}</title>
-                    <style>
-                        /* Basic print styles to make it look decent */
-                        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
-                        h1, h3 { color: #333; }
-                        p, li { color: #555; }
-                        @media print {
-                            body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-                            button { display: none; /* Hide print button when printing */ }
-                        }
-                    </style>
-                </head>
-                <body>
-                    ${printContents}
-                    <div style="margin-top: 20px; text-align: center;">
-                        <button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button>
-                    </div>
-                </body>
-                </html>
-            `);
+            printWindow.document.write(`<html><head><title>Custom Job Card ${newJobId}</title><style>body { margin: 0; padding: 20px; font-family: Arial, sans-serif; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body>${printContents}<div style="margin-top: 20px; text-align: center;"><button onclick="window.print()">Print This Job Card</button></div></body></html>`);
             printWindow.document.close();
+            printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
 
-            // Wait for the window content to load before attempting to print automatically
-            printWindow.onload = () => {
-                setTimeout(() => printWindow.print(), 500); // Attempt auto-print after a short delay
-            };
-            // --- End Print Logic ---
-
-            // Reset form fields after successful creation
-            setJobData({
-                jobName: '',
-                departmentId: '',
-                employeeId: '',
-                description: '',
-                estimatedTime: '',
-                steps: '',
-                selectedTools: new Set(),
-                selectedAccessories: new Set(),
-                consumables: [],
-            });
+            setJobData({ jobName: '', departmentId: '', employeeId: '', description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
             setSelectedConsumableItem(null);
             setConsumableQuantity('');
             setConsumableSearchTerm('');
@@ -311,7 +252,6 @@ const CustomJobCreator = () => {
         }
     };
 
-    // Display loading message while data is being fetched
     if (loading) return <p className="text-center text-gray-400">Loading custom job form data...</p>;
 
     return (
@@ -325,7 +265,6 @@ const CustomJobCreator = () => {
                 <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={jobData.estimatedTime} onChange={handleInputChange} placeholder="e.g., 90" />
                 <Textarea label="Steps (one per line)" name="steps" value={jobData.steps} onChange={handleInputChange} placeholder="1. Clean area&#10;2. Weld crack&#10;3. Sand smooth&#10;4. Paint" rows={5} />
 
-                {/* Tools & Accessories Selection */}
                 <div>
                     <h4 className="font-semibold text-white mb-2">Required Tools & Accessories</h4>
                     <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-900/50 rounded-lg">
@@ -350,7 +289,6 @@ const CustomJobCreator = () => {
                     </div>
                 </div>
 
-                {/* Consumables Input - Now a searchable dropdown linked to inventory */}
                 <div>
                     <h4 className="font-semibold text-white mb-2">Required Consumables (Select from Inventory)</h4>
                     <div className="p-4 bg-gray-900/50 rounded-lg space-y-3">
@@ -362,12 +300,11 @@ const CustomJobCreator = () => {
                                     value={consumableSearchTerm}
                                     onChange={(e) => {
                                         setConsumableSearchTerm(e.target.value);
-                                        setSelectedConsumableItem(null); // Clear selected item if typing
+                                        setSelectedConsumableItem(null);
                                     }}
                                     placeholder="Search by name or code..."
                                 />
                                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                                {/* Search Results */}
                                 {consumableSearchTerm.length > 0 && filteredConsumableOptions.length > 0 && (
                                     <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
                                         {filteredConsumableOptions.map(item => (
