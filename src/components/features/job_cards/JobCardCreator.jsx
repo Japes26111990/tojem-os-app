@@ -1,15 +1,14 @@
 // FILE: src/components/features/job_cards/JobCardCreator.jsx (UPDATED)
-// =================================================================================================
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, setJobStepDetail } from '../../../api/firestore';
+// MODIFIED IMPORT: Added getSkills, getDepartmentSkills to fetch all skills and department skills
+import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, setJobStepDetail, getSkills, getDepartmentSkills } from '../../../api/firestore';
 import { processConsumables } from '../../../utils/jobUtils';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
 import { Search } from 'lucide-react';
-
 // RecipeConsumableEditor and JobCardPreview components remain unchanged...
 const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
@@ -288,11 +287,10 @@ const JobCardPreview = ({ details }) => {
         </div>
     )
 };
-
-
 // Main component - accept campaignId as a prop
 const JobCardCreator = ({ campaignId }) => {
-    const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [] });
+    // MODIFIED: Added allSkills state
+    const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [], allSkills: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
     const [jobDetails, setJobDetails] = useState(null);
@@ -309,10 +307,12 @@ const JobCardCreator = ({ campaignId }) => {
                 const weatherData = await weatherResponse.json();
                 setCurrentTemp(weatherData.current.temperature_2m);
 
-                const [man, mak, mod, par, dep, emp, steps, t, ta, inv] = await Promise.all([
-                    getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems()
+                // MODIFIED PROMISE.ALL: Added getSkills
+                const [man, mak, mod, par, dep, emp, steps, t, ta, inv, skills] = await Promise.all([
+                    getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems(), getSkills()
                 ]);
-                setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv });
+                // MODIFIED setAllData: Included allSkills
+                setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv, allSkills: skills });
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 alert("Error fetching page data. Please check the console and refresh.");
@@ -344,58 +344,68 @@ const JobCardCreator = ({ campaignId }) => {
     const filteredEmployees = useMemo(() => allData.employees.filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
 
     useEffect(() => {
-        const { partId, departmentId, employeeId } = selection;
-        if (partId && departmentId && currentTemp !== null) {
-            const part = allData.parts.find(p => p.id === partId);
-            const department = allData.departments.find(d => d.id === departmentId);
-            const employee = allData.employees.find(e => e.id === employeeId);
-            
-            const recipeId = `${partId}_${departmentId}`;
-            const standardRecipe = allData.jobSteps.find(step => step.id === recipeId);
+        const updateJobDetails = async () => { // Made this function async
+            const { partId, departmentId, employeeId } = selection;
+            if (partId && departmentId && currentTemp !== null) {
+                const part = allData.parts.find(p => p.id === partId);
+                const department = allData.departments.find(d => d.id === departmentId);
+                const employee = allData.employees.find(e => e.id === employeeId);
+              
+                const recipeId = `${partId}_${departmentId}`;
+                const standardRecipe = allData.jobSteps.find(step => step.id === recipeId);
 
-            let finalRecipeDetails = null;
-            if (standardRecipe) {
-                finalRecipeDetails = standardRecipe;
-                setShowDefineRecipeForm(false);
-            } else {
-                setShowDefineRecipeForm(true);
-                finalRecipeDetails = {
-                    description: tempRecipeDetails.description || 'No description.',
-                    estimatedTime: tempRecipeDetails.estimatedTime || 0,
-                    steps: tempRecipeDetails.steps.split('\n').filter(s => s.trim() !== ''),
-                    tools: Array.from(tempRecipeDetails.tools),
-                    accessories: Array.from(tempRecipeDetails.accessories),
-                    consumables: tempRecipeDetails.consumables
-                };
-            }
-            
-            if (part && department) {
-                const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
-                const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
-                const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
+                let finalRecipeDetails = null;
+                let departmentRequiredSkills = []; // NEW: Variable to hold department's required skills
+
+                if (standardRecipe) {
+                    finalRecipeDetails = standardRecipe;
+                    setShowDefineRecipeForm(false);
+                } else {
+                    setShowDefineRecipeForm(true);
+                    finalRecipeDetails = {
+                        description: tempRecipeDetails.description || 'No description.',
+                        estimatedTime: tempRecipeDetails.estimatedTime || 0,
+                        steps: tempRecipeDetails.steps.split('\n').filter(s => s.trim() !== ''),
+                        tools: Array.from(tempRecipeDetails.tools),
+                        accessories: Array.from(tempRecipeDetails.accessories),
+                        consumables: tempRecipeDetails.consumables
+                    };
+                }
                 
-                setJobDetails({
-                    jobId: `JOB-${Date.now()}`,
-                    partName: part.name,
-                    partId: part.id,
-                    departmentId: department.id,
-                    departmentName: department.name,
-                    employeeId: employee ? employee.id : 'unassigned',
-                    employeeName: employee ? employee.name : 'Unassigned',
-                    status: 'Pending',
-                    description: finalRecipeDetails?.description || 'No description.',
-                    estimatedTime: finalRecipeDetails?.estimatedTime || 0,
-                    steps: finalRecipeDetails?.steps || [],
-                    tools: toolsForDisplay,
-                    accessories: accessoriesForDisplay,
-                    consumables: finalRecipeDetails?.consumables || [],
-                    processedConsumables: processed,
-                    campaignId: campaignId || null, // Include the campaignId
-                });
+                // NEW LOGIC: Fetch required skills for the selected department
+                if (departmentId) {
+                    departmentRequiredSkills = await getDepartmentSkills(departmentId);
+                }
+
+                if (part && department) {
+                    const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
+                    const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
+                    const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
+                    setJobDetails({
+                        jobId: `JOB-${Date.now()}`,
+                        partName: part.name,
+                        partId: part.id,
+                        departmentId: department.id,
+                        departmentName: department.name,
+                        employeeId: employee ? employee.id : 'unassigned',
+                        employeeName: employee ? employee.name : 'Unassigned',
+                        status: 'Pending',
+                        description: finalRecipeDetails?.description || 'No description.',
+                        estimatedTime: parseFloat(finalRecipeDetails?.estimatedTime) || 0, // Ensure estimated time is number
+                        steps: finalRecipeDetails?.steps || [],
+                        tools: toolsForDisplay,
+                        accessories: accessoriesForDisplay,
+                        consumables: finalRecipeDetails?.consumables || [],
+                        processedConsumables: processed,
+                        campaignId: campaignId || null,
+                        requiredSkills: departmentRequiredSkills, // NEW: Add requiredSkills to job card
+                    });
+                }
+            } else {
+                setJobDetails(null);
             }
-        } else {
-            setJobDetails(null);
-        }
+        };
+        updateJobDetails(); // Call the async function
     }, [selection, allData, currentTemp, tempRecipeDetails, campaignId]);
 
     const handleTempRecipeInputChange = (e) => {
@@ -443,7 +453,8 @@ const JobCardCreator = ({ campaignId }) => {
             await setJobStepDetail(selection.partId, selection.departmentId, recipeData);
             alert("New recipe saved successfully!");
             
-            handleGenerateNewJobCard();
+            // Re-call generateNewJobCard to use the newly saved recipe's data, including requiredSkills
+            handleGenerateNewJobCard(true); // Pass true to indicate it's from a new recipe save
 
             const updatedJobSteps = await getJobStepDetails();
             setAllData(prev => ({ ...prev, jobSteps: updatedJobSteps }));
@@ -455,8 +466,8 @@ const JobCardCreator = ({ campaignId }) => {
             setIsSavingNewRecipe(false);
         }
     };
-    
-    const handleGenerateNewJobCard = async () => {
+
+    const handleGenerateNewJobCard = async (fromNewRecipe = false) => { // Added fromNewRecipe parameter
         if (!jobDetails) {
             alert("No job details to generate. Please select a part and department first.");
             return;
@@ -468,8 +479,15 @@ const JobCardCreator = ({ campaignId }) => {
         if (!confirmGenerate) return;
 
         try {
+            // If called from new recipe save, ensure jobDetails is refreshed to include requiredSkills
+            let currentJobDetails = jobDetails;
+            if (fromNewRecipe && selection.departmentId) {
+                const departmentRequiredSkills = await getDepartmentSkills(selection.departmentId);
+                currentJobDetails = { ...jobDetails, requiredSkills: departmentRequiredSkills };
+            }
+
             const newJobCardData = {
-                ...jobDetails,
+                ...currentJobDetails, // Use currentJobDetails which may have updated requiredSkills
                 jobId: `JOB-${Date.now()}`,
                 status: 'Pending',
                 startedAt: null,
@@ -480,9 +498,8 @@ const JobCardCreator = ({ campaignId }) => {
                 laborCost: null,
                 totalCost: null,
                 issueReason: null,
-                campaignId: campaignId || null, // Ensure campaignId is passed on creation
+                campaignId: campaignId || null,
             };
-            
             await addJobCard(newJobCardData);
             alert(`New Job Card ${newJobCardData.jobId} created successfully!`);
             

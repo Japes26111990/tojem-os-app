@@ -20,7 +20,6 @@ import {
     increment,
     limit,
 } from 'firebase/firestore';
-
 // CORRECTED: We only import the 'db' instance, we don't re-initialize the app here.
 import { db } from './firebase';
 
@@ -31,12 +30,37 @@ export const getDepartments = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addDepartment = (departmentName) => {
-    return addDoc(departmentsCollection, { name: departmentName });
+    return addDoc(departmentsCollection, { name: departmentName, requiredSkills: [] }); // Initialize with empty requiredSkills array
 };
 export const deleteDepartment = (departmentId) => {
     const departmentDoc = doc(db, 'departments', departmentId);
     return deleteDoc(departmentDoc);
 };
+
+// NEW: Function to update a department's required skills
+export const updateDepartmentRequiredSkills = async (departmentId, requiredSkillsData) => {
+    const departmentDocRef = doc(db, 'departments', departmentId);
+    // Filter out skills that are explicitly "not required" (e.g., both prof and importance are 0)
+    const filteredSkillsData = requiredSkillsData.filter(skill =>
+        skill.minimumProficiency > 0 || skill.importanceWeight > 0
+    );
+    return updateDoc(departmentDocRef, { requiredSkills: filteredSkillsData });
+};
+
+
+// MODIFIED: getDepartmentSkills to fetch the new object structure
+export const getDepartmentSkills = async (departmentId) => {
+    if (!departmentId) return [];
+    const departmentDocRef = doc(db, 'departments', departmentId);
+    const departmentDoc = await getDoc(departmentDocRef);
+    if (departmentDoc.exists()) {
+        const data = departmentDoc.data();
+        // It will now return an array of objects: [{ skillId, minimumProficiency, importanceWeight }]
+        return data.requiredSkills || [];
+    }
+    return [];
+};
+
 
 // --- SKILLS API ---
 const skillsCollection = collection(db, 'skills');
@@ -62,19 +86,34 @@ export const getSkillHistoryForEmployee = async (employeeId) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+
+// Helper function to get the name of a skill given its ID (needed for display/mapping)
+export const getSkillNameById = async (skillId) => {
+    const skills = await getSkills();
+    const skill = skills.find(s => s.id === skillId);
+    return skill ? skill.name : 'Unknown Skill';
+};
+
 // --- TOOLS API ---
 const toolsCollection = collection(db, 'tools');
 export const getTools = async () => {
     const snapshot = await getDocs(toolsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-export const addTool = (toolName) => {
-    return addDoc(toolsCollection, { name: toolName });
+// MODIFIED: addTool to accept associatedSkills
+export const addTool = (toolData) => {
+    // toolData should now include { name, associatedSkills: [] }
+    return addDoc(toolsCollection, { ...toolData, associatedSkills: toolData.associatedSkills || [] });
 };
+// MODIFIED: deleteTool remains the same
 export const deleteTool = (toolId) => {
     const toolDoc = doc(db, 'tools', toolId);
     return deleteDoc(toolDoc);
 };
+// MODIFIED: updateDocument (generic update) will handle tool updates, so specific updateTool isn't strictly needed if using generic.
+// However, if there was a dedicated updateTool, it would also need to handle associatedSkills.
+// Since you're using updateDocument in ToolsManager, this is covered.
+
 
 // --- TOOL ACCESSORIES API ---
 const toolAccessoriesCollection = collection(db, 'toolAccessories');
@@ -82,13 +121,16 @@ export const getToolAccessories = async () => {
     const snapshot = await getDocs(toolAccessoriesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+// MODIFIED: addToolAccessory to accept associatedSkills
 export const addToolAccessory = (accessoryData) => {
-    return addDoc(toolAccessoriesCollection, accessoryData);
+    // accessoryData should now include { name, toolId, associatedSkills: [] }
+    return addDoc(toolAccessoriesCollection, { ...accessoryData, associatedSkills: accessoryData.associatedSkills || [] });
 };
 export const deleteToolAccessory = (accessoryId) => {
     const accessoryDoc = doc(db, 'toolAccessories', accessoryId);
     return deleteDoc(accessoryDoc);
 };
+
 
 // --- EMPLOYEES API ---
 const employeesCollection = collection(db, 'employees');
@@ -107,24 +149,41 @@ export const getEmployeeSkills = async (employeeId) => {
     const employeeDocRef = doc(db, 'employees', employeeId);
     const employeeDoc = await getDoc(employeeDocRef);
     if (employeeDoc.exists()) {
-        return employeeDoc.data().skills || {};
+        // Ensure skills are retrieved and numerical values are handled
+        const skillsData = employeeDoc.data().skills || {};
+        // Convert any old string proficiencies to a numerical equivalent if necessary
+        // For existing 'Beginner', 'Intermediate', 'Expert' data, you might need a one-time migration or conversion logic here.
+        // For now, we'll assume new data will be numerical.
+        return skillsData;
     }
     return {};
 };
+
+// MODIFIED: updateEmployeeSkillsAndLogHistory to store numerical proficiency
 export const updateEmployeeSkillsAndLogHistory = async (employee, skillsData, allSkills) => {
     const employeeDocRef = doc(db, 'employees', employee.id);
     const batch = writeBatch(db);
-    batch.update(employeeDocRef, { skills: skillsData });
-    const allSkillsMap = new Map(allSkills.map(s => [s.id, s.name]));
+
+    // Filter out skills with a proficiency of 0 (Not Acquired/No Skill)
+    const filteredSkillsData = {};
     for (const skillId in skillsData) {
-        const proficiency = skillsData[skillId];
+        if (skillsData[skillId] > 0) { // Only save if proficiency is > 0
+            filteredSkillsData[skillId] = skillsData[skillId];
+        }
+    }
+
+    batch.update(employeeDocRef, { skills: filteredSkillsData }); // Store numerical ratings
+
+    const allSkillsMap = new Map(allSkills.map(s => [s.id, s.name]));
+    for (const skillId in filteredSkillsData) { // Only log history for saved skills (> 0)
+        const proficiency = filteredSkillsData[skillId];
         const newHistoryRef = doc(skillHistoryCollection);
         const historyRecord = {
             employeeId: employee.id,
             employeeName: employee.name,
             skillId: skillId,
             skillName: allSkillsMap.get(skillId) || 'Unknown Skill',
-            proficiency: proficiency,
+            proficiency: proficiency, // This will now be a number (0-5)
             assessmentDate: serverTimestamp()
         };
         batch.set(newHistoryRef, historyRecord);
@@ -154,27 +213,34 @@ export const updateSupplier = (supplierId, updatedData) => {
 const workshopSuppliesCollection = collection(db, 'workshopSupplies');
 const componentsCollection = collection(db, 'components');
 const rawMaterialsCollection = collection(db, 'rawMaterials');
+
 export const getWorkshopSupplies = async () => {
     const snapshot = await getDocs(workshopSuppliesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-export const addWorkshopSupply = (supplyData) => addDoc(workshopSuppliesCollection, supplyData);
+// MODIFIED: addWorkshopSupply to accept associatedSkills
+export const addWorkshopSupply = (supplyData) => addDoc(workshopSuppliesCollection, { ...supplyData, associatedSkills: supplyData.associatedSkills || [] });
 export const deleteWorkshopSupply = (supplyId) => deleteDoc(doc(db, 'workshopSupplies', supplyId));
-export const updateWorkshopSupply = (supplyId, updatedData) => updateDoc(doc(db, 'workshopSupplies', supplyId), updatedData);
+// updateWorkshopSupply uses generic updateDocument
+
 export const getComponents = async () => {
     const snapshot = await getDocs(componentsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-export const addComponent = (componentData) => addDoc(componentsCollection, componentData);
+// MODIFIED: addComponent to accept associatedSkills
+export const addComponent = (componentData) => addDoc(componentsCollection, { ...componentData, associatedSkills: componentData.associatedSkills || [] });
 export const deleteComponent = (componentId) => deleteDoc(doc(db, 'components', componentId));
-export const updateComponent = (componentId, updatedData) => updateDoc(doc(db, 'components', componentId), updatedData);
+// updateComponent uses generic updateDocument
+
 export const getRawMaterials = async () => {
     const snapshot = await getDocs(rawMaterialsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-export const addRawMaterial = (materialData) => addDoc(rawMaterialsCollection, materialData);
+// MODIFIED: addRawMaterial to accept associatedSkills
+export const addRawMaterial = (materialData) => addDoc(rawMaterialsCollection, { ...materialData, associatedSkills: materialData.associatedSkills || [] });
 export const deleteRawMaterial = (materialId) => deleteDoc(doc(db, 'rawMaterials', materialId));
-export const updateRawMaterial = (materialId, updatedData) => updateDoc(doc(db, 'rawMaterials', materialId), updatedData);
+// updateRawMaterial uses generic updateDocument
+
 
 // --- OVERHEADS API ---
 const overheadsCategoriesCollection = collection(db, 'overheadsCategories');
@@ -241,7 +307,6 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
     else if (itemCategory === 'Raw Material') inventoryCollectionName = 'rawMaterials';
     else if (itemCategory === 'Workshop Supply') inventoryCollectionName = 'workshopSupplies';
     else throw new Error(`Unknown inventory category: ${itemCategory}`);
-
     const inventoryDocRef = doc(db, inventoryCollectionName, inventoryItemId);
     const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
     return runTransaction(db, async (transaction) => {
@@ -384,7 +449,6 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
                 }
             }
             dataToUpdate.materialCost = materialCost;
-
             let laborCost = 0;
             const employee = employeeMap.get(currentJobData.employeeId);
             const hourlyRate = employee?.hourlyRate || 0;
@@ -403,7 +467,6 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
             dataToUpdate.issueReason = rejectionReason;
         }
         transaction.update(jobRef, dataToUpdate);
-
         if (isApproved && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
             for (const consumable of currentJobData.processedConsumables) {
                 const inventoryItem = inventoryMap.get(consumable.id);
@@ -524,10 +587,8 @@ export const deleteUserWithRole = async (userId) => {
     if (!response.ok) throw new Error(data.error || 'Failed to delete user.');
     return data;
 };
-
 /// --- MARKETING & SALES API FUNCTIONS (UPDATED) ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
-
 export const getCampaigns = async () => {
   const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -537,7 +598,7 @@ export const addCampaign = (campaignData) => {
   // Add leadsGenerated with a default value of 0
   return addDoc(marketingCampaignsCollection, {
     ...campaignData,
-    leadsGenerated: 0, 
+    leadsGenerated: 0,
     createdAt: serverTimestamp()
   });
 };

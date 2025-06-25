@@ -1,12 +1,12 @@
 // FILE: src/components/features/job_cards/CustomJobCreator.jsx (UPDATED)
-// =================================================================================================
 
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
-import { addJobCard, getDepartments, getEmployees, getTools, getToolAccessories, getAllInventoryItems } from '../../../api/firestore';
+// MODIFIED IMPORT: Added getSkills to fetch all skills
+import { addJobCard, getDepartments, getEmployees, getTools, getToolAccessories, getAllInventoryItems, getSkills, getDepartmentSkills } from '../../../api/firestore';
 import { Search } from 'lucide-react';
 
 // Accept campaignId as a prop
@@ -28,6 +28,7 @@ const CustomJobCreator = ({ campaignId }) => {
     const [allTools, setAllTools] = useState([]);
     const [allToolAccessories, setAllToolAccessories] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
+    const [allSkills, setAllSkills] = useState([]); // NEW: State for all skills
     const [loading, setLoading] = useState(true);
     const [consumableSearchTerm, setConsumableSearchTerm] = useState('');
     const [filteredConsumableOptions, setFilteredConsumableOptions] = useState([]);
@@ -39,14 +40,16 @@ const CustomJobCreator = ({ campaignId }) => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const [departments, employees, tools, toolAccessories, inventoryItems] = await Promise.all([
-                    getDepartments(), getEmployees(), getTools(), getToolAccessories(), getAllInventoryItems()
+                // MODIFIED PROMISE.ALL: Added getSkills
+                const [departments, employees, tools, toolAccessories, inventoryItems, skills] = await Promise.all([
+                    getDepartments(), getEmployees(), getTools(), getToolAccessories(), getAllInventoryItems(), getSkills()
                 ]);
                 setAllDepartments(departments);
                 setAllEmployees(employees);
                 setAllTools(tools);
                 setAllToolAccessories(toolAccessories);
                 setAllInventoryItems(inventoryItems);
+                setAllSkills(skills); // NEW: Set all skills
             } catch (error) {
                 console.error("Error fetching data for custom job creator:", error);
                 alert("Failed to load necessary data for custom job creation.");
@@ -154,12 +157,17 @@ const CustomJobCreator = ({ campaignId }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-
         if (!jobData.jobName.trim() || !jobData.departmentId || !jobData.description.trim() || !jobData.steps.trim()) {
             alert("Please fill in Job Name, Department, Description, and Steps.");
             return;
         }
         
+        // NEW LOGIC: Fetch required skills for the selected department
+        let departmentRequiredSkills = [];
+        if (jobData.departmentId) {
+            departmentRequiredSkills = await getDepartmentSkills(jobData.departmentId);
+        }
+
         const newJobId = `CUSTOM-${Date.now()}`;
         const finalJobData = {
             jobId: newJobId,
@@ -176,9 +184,9 @@ const CustomJobCreator = ({ campaignId }) => {
             accessories: Array.from(jobData.selectedAccessories).map(accId => allToolAccessories.find(a => a.id === accId)).filter(Boolean),
             processedConsumables: jobData.consumables,
             isCustomJob: true,
-            campaignId: campaignId || null, // Include the campaignId
+            campaignId: campaignId || null,
+            requiredSkills: departmentRequiredSkills, // NEW: Add requiredSkills to job card
         };
-
         try {
             await addJobCard(finalJobData);
             alert(`Custom Job Card ${finalJobData.jobId} created successfully!`);
@@ -186,7 +194,6 @@ const CustomJobCreator = ({ campaignId }) => {
             // Print logic... (remains the same)
             const departmentName = allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown Department';
             const employeeName = allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned';
-
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
@@ -251,9 +258,7 @@ const CustomJobCreator = ({ campaignId }) => {
             alert("Failed to create custom job card.");
         }
     };
-
     if (loading) return <p className="text-center text-gray-400">Loading custom job form data...</p>;
-
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-4xl mx-auto">
             <h3 className="text-lg font-semibold text-white mb-4">Create a One-Off / Custom Job Card</h3>

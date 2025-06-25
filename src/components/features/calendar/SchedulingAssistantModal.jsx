@@ -1,64 +1,188 @@
+// FILE: src/components/features/calendar/SchedulingAssistantModal.jsx
+
 import React, { useState, useEffect } from 'react';
-import { listenToJobCards } from '../../../api/firestore';
-// --- THE FIX IS HERE ---
-import { writeBatch, doc } from 'firebase/firestore'; // Added 'doc' to the import
+import { listenToJobCards, getEmployees, getSkills, getDepartmentSkills } from '../../../api/firestore';
+import { writeBatch, doc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import Button from '../../ui/Button';
-import { X } from 'lucide-react';
+import { X, Bot, Clock } from 'lucide-react';
 
 const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
     const [pendingJobs, setPendingJobs] = useState([]);
+    const [allEmployees, setAllEmployees] = useState([]);
+    const [allSkills, setAllSkills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isScheduling, setIsScheduling] = useState(false);
-
     const [schedulePlan, setSchedulePlan] = useState([]);
 
     useEffect(() => {
         const unsubscribe = listenToJobCards((allJobs) => {
             const unscheduled = allJobs.filter(job => job.status === 'Pending' && !job.scheduledDate);
             setPendingJobs(unscheduled);
-            setLoading(false);
+            // Don't set loading to false yet, wait for other data
         });
+
+        const fetchAdditionalData = async () => {
+            try {
+                const [employees, skills] = await Promise.all([
+                    getEmployees(),
+                    getSkills()
+                ]);
+                setAllEmployees(employees);
+                setAllSkills(skills);
+            } catch (error) {
+                console.error("Error fetching employees or skills for scheduling:", error);
+                alert("Failed to load employee/skill data for scheduling.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchAdditionalData();
 
         return () => unsubscribe();
     }, []);
-    
-    const generateSchedule = () => {
+
+    const generateSchedule = async () => {
+        setIsScheduling(true);
         const workHoursPerDay = 8;
         const workMinutesPerDay = workHoursPerDay * 60;
-        let dayIndex = 0;
-        let dailyMinutes = 0;
-        const plan = [];
 
+        // Create a copy of employees that we can modify for availability
+        const availableEmployees = allEmployees.map(emp => ({
+            ...emp,
+            currentScheduleEnd: new Date(), // Start available from now
+            skillsMap: new Map(Object.entries(emp.skills || {})), // Convert skills object to map
+        }));
+
+        const employeeAvailability = new Map(availableEmployees.map(emp => [emp.id, {
+            freeUntil: new Date(), // When this employee becomes free
+            dailyMinutesAssigned: 0,
+        }]));
+
+        const allSkillsMap = new Map(allSkills.map(s => [s.id, s.name]));
+
+        const plan = [];
+        // Prioritize jobs that are estimated to take longer, for better packing
         const sortedJobs = [...pendingJobs].sort((a, b) => (b.estimatedTime || 0) - (a.estimatedTime || 0));
 
-        sortedJobs.forEach(job => {
-            const jobDuration = job.estimatedTime || 60;
+        let currentDay = new Date();
+        currentDay.setHours(9, 0, 0, 0); // Start scheduling from 9 AM today
 
-            if (dailyMinutes + jobDuration > workMinutesPerDay) {
-                dayIndex++;
-                dailyMinutes = 0;
-            }
+        for (const job of sortedJobs) {
+            const jobDuration = job.estimatedTime || 60; // Default to 60 mins if not set
+
+            let assignedEmployee = null;
+            let proposedStartTime = null;
+            let bestEmployeeScore = -1; // Higher score is better
             
-            let scheduledDate = new Date();
-            let addedDays = 0;
-            // Loop until we find the next workday
-            while(addedDays < dayIndex){
-                scheduledDate.setDate(scheduledDate.getDate() + 1);
-                if (scheduledDate.getDay() !== 0 && scheduledDate.getDay() !== 6) { // If not Sunday or Saturday
-                   addedDays++;
+            // Find the best employee for this job
+            for (const emp of availableEmployees) {
+                // Heuristic: Get required skills for the job's department
+                // In a robust system, job recipes would explicitly list required skills.
+                const requiredSkillIds = await getDepartmentSkills(job.departmentId); // Fetch skills for this job's department
+                const requiredSkillsExist = requiredSkillIds.length > 0;
+
+                // Calculate skill match score for this employee
+                let skillMatchScore = 0; // 0 = no match, 1 = some match, 2 = good match, 3 = expert match
+                if (requiredSkillsExist) {
+                    let employeeHasAnyRequiredSkill = false;
+                    let employeeIsExpertInAnyRequiredSkill = false;
+
+                    for (const reqSkillId of requiredSkillIds) {
+                        const proficiency = emp.skillsMap.get(reqSkillId);
+                        if (proficiency) {
+                            employeeHasAnyRequiredSkill = true;
+                            if (proficiency === 'Expert') {
+                                employeeIsExpertInAnyRequiredSkill = true;
+                                skillMatchScore += 3; // Boost for expertise
+                            } else if (proficiency === 'Intermediate') {
+                                skillMatchScore += 2;
+                            } else if (proficiency === 'Beginner') {
+                                skillMatchScore += 1;
+                            }
+                        }
+                    }
+                    if (employeeHasAnyRequiredSkill && !employeeIsExpertInAnyRequiredSkill) {
+                        // Ensure at least a base score if some skills match but not expert
+                        skillMatchScore = Math.max(skillMatchScore, 1); 
+                    }
+                } else {
+                    // If no specific skills required or inferred, any employee gets a base score
+                    skillMatchScore = 0.5; 
+                }
+
+                // If no skill matching, or employee is not suitable due to skills, skip them unless
+                // no skill-specific employees are found later. For now, allow anyone with some skill score.
+                if (skillMatchScore === 0) continue; 
+
+                // Check employee availability
+                const empAvailability = employeeAvailability.get(emp.id);
+                let currentEmpTime = new Date(Math.max(currentDay.getTime(), empAvailability.freeUntil.getTime()));
+                currentEmpTime.setSeconds(0,0); // Align to minute for cleaner scheduling
+
+                // Make sure we are within a workday (Mon-Fri)
+                while (currentEmpTime.getDay() === 0 || currentEmpTime.getDay() === 6) { // Sunday = 0, Saturday = 6
+                    currentEmpTime.setDate(currentEmpTime.getDate() + 1);
+                    currentEmpTime.setHours(9, 0, 0, 0); // Reset to start of day
+                    empAvailability.dailyMinutesAssigned = 0; // Reset daily minutes for new day
+                }
+
+                // If starting a new day for this employee, reset assigned minutes for the day
+                if (currentEmpTime.getHours() < 9 || currentEmpTime.getHours() >= (9 + workHoursPerDay)) {
+                    currentEmpTime.setDate(currentEmpTime.getDate() + 1);
+                    currentEmpTime.setHours(9, 0, 0, 0);
+                    empAvailability.dailyMinutesAssigned = 0;
+                }
+                
+                // If this job would push employee over daily work limit
+                if (empAvailability.dailyMinutesAssigned + jobDuration > workMinutesPerDay) {
+                     currentEmpTime.setDate(currentEmpTime.getDate() + 1);
+                     currentEmpTime.setHours(9, 0, 0, 0);
+                     empAvailability.dailyMinutesAssigned = 0;
+                     // Re-check for weekend after advancing day
+                     while (currentEmpTime.getDay() === 0 || currentEmpTime.getDay() === 6) {
+                        currentEmpTime.setDate(currentEmpTime.getDate() + 1);
+                        currentEmpTime.setHours(9, 0, 0, 0);
+                     }
+                }
+
+                // Calculate a score: inverse of time to become free + skill match score
+                const timeToFree = (currentEmpTime.getTime() - new Date().getTime()) / (1000 * 60); // minutes
+                // Give preference to employees who are free sooner AND have better skills
+                // A simple scoring: skillMatchScore * 1000 - timeToFree (arbitrary weights)
+                const currentScore = (skillMatchScore * 1000) - timeToFree;
+
+                if (currentScore > bestEmployeeScore) {
+                    bestEmployeeScore = currentScore;
+                    assignedEmployee = emp;
+                    proposedStartTime = currentEmpTime;
                 }
             }
-            
-            const hour = 9 + Math.floor(dailyMinutes / 60);
-            const minute = dailyMinutes % 60;
-            scheduledDate.setHours(hour, minute, 0, 0);
 
-            plan.push({ ...job, proposedDate: scheduledDate });
-            dailyMinutes += jobDuration;
-        });
+            if (assignedEmployee && proposedStartTime) {
+                // Update employee's availability
+                const empAvailability = employeeAvailability.get(assignedEmployee.id);
+                const jobEndTime = new Date(proposedStartTime.getTime() + jobDuration * 60 * 1000);
+                empAvailability.freeUntil = jobEndTime;
+                empAvailability.dailyMinutesAssigned += jobDuration;
 
+                plan.push({
+                    ...job,
+                    proposedDate: proposedStartTime,
+                    proposedEmployeeId: assignedEmployee.id,
+                    proposedEmployeeName: assignedEmployee.name
+                });
+            } else {
+                // If no suitable employee found, schedule without assignment for now, or alert
+                plan.push({ ...job, proposedDate: new Date(currentDay), proposedEmployeeId: 'unassigned', proposedEmployeeName: 'Unassigned (No suitable employee found)' });
+                // Fallback: Just push it to current day and advance currentDay
+                currentDay.setDate(currentDay.getDate() + 1);
+                currentDay.setHours(9, 0, 0, 0);
+            }
+        }
         setSchedulePlan(plan);
+        setIsScheduling(false);
     };
 
     const commitSchedule = async () => {
@@ -67,8 +191,12 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
         try {
             const batch = writeBatch(db);
             schedulePlan.forEach(job => {
-                const jobRef = doc(db, 'createdJobCards', job.id); // This line will now work
-                batch.update(jobRef, { scheduledDate: job.proposedDate });
+                const jobRef = doc(db, 'createdJobCards', job.id);
+                batch.update(jobRef, {
+                    scheduledDate: job.proposedDate,
+                    employeeId: job.proposedEmployeeId, // Save assigned employee
+                    employeeName: job.proposedEmployeeName // Save assigned employee name
+                });
             });
             await batch.commit();
             onScheduleComplete();
@@ -92,7 +220,7 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
                 <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
                     <div>
                         <h2 className="text-xl font-bold text-white">Scheduling Assistant</h2>
-                        <p className="text-sm text-gray-400">Auto-schedule pending jobs for the upcoming week.</p>
+                        <p className="text-sm text-gray-400">Auto-schedule pending jobs for the upcoming week based on employee skills and availability.</p>
                     </div>
                     <Button onClick={onClose} variant="secondary" className="p-2">
                         <X size={20} />
@@ -105,8 +233,8 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
                             {schedulePlan.length > 0 ? 'Proposed Schedule' : `Found ${pendingJobs.length} Unscheduled Jobs`}
                         </h3>
                         {schedulePlan.length === 0 ? (
-                             <Button onClick={generateSchedule} disabled={loading || pendingJobs.length === 0}>
-                                Generate Schedule
+                             <Button onClick={generateSchedule} disabled={loading || pendingJobs.length === 0 || isScheduling}>
+                                {isScheduling ? <><Clock size={16} className="mr-2 animate-spin"/> Generating...</> : <><Bot size={18} className="mr-2"/>Generate Optimal Schedule</>}
                             </Button>
                         ) : (
                             <div className="flex gap-2">
@@ -119,22 +247,22 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
                     </div>
                     
                     <div className="bg-gray-900/50 p-4 rounded-lg">
-                        {loading ? <p>Loading pending jobs...</p> : 
+                        {loading ? <p>Loading pending jobs, employees, and skills...</p> : 
                          schedulePlan.length > 0 ? (
                             <ul className="space-y-2">
                                 {schedulePlan.map(job => (
                                     <li key={job.id} className="p-3 bg-gray-700 rounded-md text-sm">
                                         <p className="font-bold text-white">{job.partName} <span className="text-xs font-mono text-gray-400">({job.jobId})</span></p>
-                                        <p className="text-blue-400">Scheduled for: {job.proposedDate.toLocaleString('en-ZA')}</p>
+                                        <p className="text-blue-400">Scheduled for: {job.proposedDate.toLocaleString('en-ZA')} by {job.proposedEmployeeName}</p>
                                     </li>
                                 ))}
                             </ul>
-                         ) : (
+                        ) : (
                             <ul className="space-y-2">
                                 {pendingJobs.map(job => (
-                                     <li key={job.id} className="p-2 bg-gray-700 rounded-md text-sm">
+                                    <li key={job.id} className="p-2 bg-gray-700 rounded-md text-sm">
                                         {job.partName} ({job.estimatedTime || 'N/A'} mins)
-                                     </li>
+                                    </li>
                                 ))}
                                 {pendingJobs.length === 0 && <p className="text-gray-500 text-center">No unscheduled jobs found.</p>}
                             </ul>

@@ -1,10 +1,13 @@
+// FILE: src/components/features/settings/InventoryManager.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { getComponents, addComponent, updateComponent, deleteComponent, getRawMaterials, addRawMaterial, updateRawMaterial, deleteRawMaterial, getWorkshopSupplies, addWorkshopSupply, updateWorkshopSupply, deleteWorkshopSupply, getSuppliers } from '../../../api/firestore';
+// MODIFIED IMPORT: Removed specific update functions as they are handled by generic updateDocument via useInventoryManager's api prop
+import { getComponents, addComponent, deleteComponent, getRawMaterials, addRawMaterial, deleteRawMaterial, getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, getSuppliers, getSkills, updateDocument } from '../../../api/firestore';
 import { useInventoryManager } from '../../../hooks/useInventoryManager';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Search, Scale, Hash } from 'lucide-react'; // Import new icons
+import { Search, Scale, Hash, Save, PlusCircle, Factory } from 'lucide-react'; // Import new icons
 
 const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
     const stock = Number(currentStock);
@@ -28,23 +31,37 @@ const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel })
 
 const InventoryManager = () => {
   const [suppliers, setSuppliers] = useState([]);
+  const [allSkills, setAllSkills] = useState([]);
   const [category, setCategory] = useState('components');
 
+  const getProficiencyLabel = (level) => {
+      switch (level) {
+          case 0: return 'Not Applicable / No Minimum';
+          case 1: return 'Beginner (1)';
+          case 2: return 'Basic (2)';
+          case 3: return 'Intermediate (3)';
+          case 4: return 'Advanced (4)';
+          case 5: return 'Expert (5)';
+          default: return 'N/A';
+      }
+  };
+
   useEffect(() => {
-    const fetchSuppliersData = async () => {
-      const fetchedSuppliers = await getSuppliers();
+    const fetchData = async () => {
+      const [fetchedSuppliers, fetchedSkills] = await Promise.all([getSuppliers(), getSkills()]);
       setSuppliers(fetchedSuppliers);
+      setAllSkills(fetchedSkills);
     };
-    fetchSuppliersData();
+    fetchData();
   }, []);
-  
+
   const apiMap = useMemo(() => ({
-    components: { get: getComponents, add: addComponent, update: updateComponent, delete: deleteComponent, categoryName: 'Component' },
-    rawMaterials: { get: getRawMaterials, add: addRawMaterial, update: updateRawMaterial, delete: deleteRawMaterial, categoryName: 'Raw Material' },
-    workshopSupplies: { get: getWorkshopSupplies, add: addWorkshopSupply, update: updateWorkshopSupply, delete: deleteWorkshopSupply, categoryName: 'Workshop Supply' },
+    components: { get: getComponents, add: addComponent, update: (id, data) => updateDocument('components', id, data), delete: deleteComponent, categoryName: 'Component' },
+    rawMaterials: { get: getRawMaterials, add: addRawMaterial, update: (id, data) => updateDocument('rawMaterials', id, data), delete: deleteRawMaterial, categoryName: 'Raw Material' },
+    workshopSupplies: { get: getWorkshopSupplies, add: addWorkshopSupply, update: (id, data) => updateDocument('workshopSupplies', id, data), delete: deleteWorkshopSupply, categoryName: 'Workshop Supply' },
   }), []);
 
-  const manager = useInventoryManager(apiMap[category], suppliers);
+  const manager = useInventoryManager(apiMap[category], suppliers, allSkills); // Pass allSkills
 
   const categoryInfo = {
     components: { desc: 'Discrete parts that go into the final product (e.g., bolts, screws, brackets).', placeholder: 'e.g., 8mm Bolt' },
@@ -104,9 +121,72 @@ const InventoryManager = () => {
             )}
         </div>
 
+        {/* NEW: Associated Skills Section for Inventory */}
+        {manager.newItem.name.trim() && (
+            <div className="border-t border-gray-700 pt-4 mt-4">
+                <h4 className="text-lg font-semibold text-white mb-3">Associated Skills for "{manager.newItem.name}"</h4>
+                <p className="text-sm text-gray-400 mb-4">
+                    Define skills typically required to work with or process this material/component.
+                </p>
+                <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
+                    {allSkills.map(skill => {
+                        const currentAssociatedSkill = manager.newItem.associatedSkills?.find(s => s.skillId === skill.id);
+                        const isIncluded = !!currentAssociatedSkill;
+
+                        return (
+                            <div key={skill.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={isIncluded}
+                                        onChange={(e) => manager.handleToggleSkillAssociation(skill.id, e.target.checked)} // New handler
+                                        className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <label className="font-bold text-white flex-grow">{skill.name}</label>
+                                </div>
+
+                                {isIncluded && (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-400 mb-1">Default Min. Proficiency (0-5)</label>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="5"
+                                                step="1"
+                                                value={currentAssociatedSkill.defaultMinimumProficiency || 0}
+                                                onChange={(e) => manager.handleAssociatedSkillChange(skill.id, 'defaultMinimumProficiency', e.target.value)}
+                                                className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg accent-blue-600"
+                                            />
+                                            <p className="text-center text-sm text-gray-400 mt-1">
+                                                {getProficiencyLabel(currentAssociatedSkill.defaultMinimumProficiency || 0)}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <Input
+                                                label="Importance Weight (0-10)"
+                                                type="number"
+                                                min="0"
+                                                max="10"
+                                                value={currentAssociatedSkill.importanceWeight || 0}
+                                                onChange={(e) => manager.handleAssociatedSkillChange(skill.id, 'importanceWeight', e.target.value)}
+                                                placeholder="e.g., 5"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">Higher value = more critical skill for this item.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        )}
+        {/* END NEW: Associated Skills Section */}
+
         <div className="flex justify-end gap-2">
           {manager.editingItemId && <Button type="button" variant="secondary" onClick={manager.cancelEdit}>Cancel</Button>}
-          <Button type="submit" variant="primary">{manager.editingItemId ? 'Update Item' : 'Add Item'}</Button>
+          <Button type="submit" variant="primary">{manager.editingItemId ? <><Save size={16} className="mr-2"/> Update Item</> : <><PlusCircle size={16} className="mr-2"/> Add Item</>}</Button>
         </div>
       </form>
 
@@ -142,6 +222,7 @@ const InventoryManager = () => {
                 {item.stockTakeMethod === 'weight' ? <Scale size={14} className="text-gray-400" title="Counted by Weight"/> : <Hash size={14} className="text-gray-400" title="Counted by Quantity"/>}
                 {item.name}
                 {item.requiresCatalyst && <span className="text-xs bg-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full" title="Requires Catalyst">C</span>}
+                {item.associatedSkills?.length > 0 && <Factory size={14} className="text-gray-400" title="Associated Skill(s)"/>}
             </p>
             <p>{manager.getSupplierName(item.supplierId)}</p>
             <div className="col-span-2"><StockLevelIndicator {...item} /></div>
