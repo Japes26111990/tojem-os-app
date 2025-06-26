@@ -1,6 +1,8 @@
+// src/api/firestore.js (UPDATED with getDocs and query)
 // FILE: src/api/firestore.js
 
 // CORRECTED: All functions are imported in a single, clean statement.
+// ADDED getDocs, query, where to support new dashboard queries
 import {
     collection,
     getDocs,
@@ -616,3 +618,6 @@ export const deleteCampaign = (campaignId) => {
   const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
   return deleteDoc(campaignDoc);
 };
+
+// Export `collection`, `query`, and `where` to be used in other files if needed
+export { collection, query, where, getDocs };

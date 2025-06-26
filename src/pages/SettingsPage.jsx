@@ -1,3 +1,5 @@
+// src/pages/SettingsPage.jsx (UPDATED)
+
 import React, { useState, useMemo } from 'react';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
@@ -10,6 +12,8 @@ import SkillsManager from '../components/features/settings/SkillsManager';
 import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
 import UserManagementPage from './UserManagementPage';
 import CampaignManager from '../components/features/settings/CampaignManager';
+// Import the new FinancialSettings component
+import FinancialSettings from '../components/features/settings/FinancialSettings'; 
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -45,7 +49,8 @@ const SettingsPage = () => {
     },
     financials: {
       label: 'Financials',
-      components: [<OverheadsManager key="overheads" />]
+      // UPDATED: Now includes both Overheads and the new FinancialSettings
+      components: [<OverheadsManager key="overheads" />, <FinancialSettings key="financial-settings" />]
     },
     marketing: {
       label: 'Marketing',
