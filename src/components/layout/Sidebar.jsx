@@ -1,3 +1,5 @@
+// src/components/layout/Sidebar.jsx (Updated)
+
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,23 +16,25 @@ import WeatherApplet from '../features/sidebar/WeatherApplet';
 import CalendarApplet from '../features/sidebar/CalendarApplet';
 import CalculatorApplet from '../features/sidebar/CalculatorApplet';
 
-// ... (SidebarLink, NavGroup, and Applet components remain the same)
 const SidebarLink = ({ to, icon, text, isOpen }) => {
     const commonClasses = "flex items-center p-3 my-1 rounded-lg transition-colors";
     const activeClass = "bg-blue-600 text-white font-semibold";
     const inactiveClass = "text-gray-300 hover:bg-gray-700";
     return (<NavLink to={to} className={({ isActive }) => `${commonClasses} ${isActive ? activeClass : inactiveClass}`}>{icon}{isOpen && <span className="ml-4 text-sm">{text}</span>}</NavLink>);
 };
+
 const NavGroup = ({ title, icon, children, isOpen, defaultOpen = false }) => {
     const [isGroupOpen, setGroupOpen] = useState(defaultOpen);
     return (<div className="py-2"><button onClick={() => setGroupOpen(!isGroupOpen)} className="w-full flex items-center p-3 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors">{icon}{isOpen && <span className="ml-4 font-semibold text-sm">{title}</span>}{isOpen && (isGroupOpen ? <ChevronDown size={16} className="ml-auto" /> : <ChevronRight size={16} className="ml-auto" />)}</button>{isGroupOpen && isOpen && (<div className="mt-1 border-l-2 border-gray-700 ml-5 pl-3 space-y-1">{children}</div>)}</div>);
 };
+
 const Applet = ({ icon, text, children, isOpen }) => {
     const [isAppletOpen, setAppletOpen] = useState(false);
     return(<div><button onClick={() => setAppletOpen(!isAppletOpen)} className="w-full flex items-center p-3 my-1 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors">{icon}{isOpen && <span className="ml-4 text-sm">{text}</span>}{isOpen && (isAppletOpen ? <ChevronDown size={16} className="ml-auto text-gray-500" /> : <ChevronRight size={16} className="ml-auto text-gray-500" />)}</button>{isAppletOpen && isOpen && (<div className="mt-1 border-l-2 border-blue-500/30 ml-5 pl-1 py-2">{children}</div>)}</div>);
 };
 
-const Sidebar = ({ isOpen }) => {
+// --- MODIFIED TO ACCEPT MOUSE EVENT HANDLERS ---
+const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     const { user } = useAuth();
     const userRole = user?.role || ''; 
 
@@ -48,24 +52,27 @@ const Sidebar = ({ isOpen }) => {
         valuation: { roles: ['Manager', 'Office Manager'] },
         payroll: { roles: ['Manager', 'Office Manager'] },
         settings: { roles: ['Manager'] },
-        marketing: { roles: ['Manager', 'Marketing'] }
+        marketing: { roles: ['Manager', 'Marketing'] },
+        quotes: { roles: ['Manager', 'Office Manager', 'Marketing'] }
     };
     
     const canSee = (navItem) => navConfig[navItem]?.roles.includes(userRole);
-
     if (userRole === 'Floor Tablet') return null;
 
     return (
-        <div className={`bg-gray-800 border-r border-gray-700 p-2 flex flex-col transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'}`}>
+        <div 
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+            className={`bg-gray-800 border-r border-gray-700 p-2 flex flex-col transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'}`}
+        >
             <div className="flex-grow overflow-y-auto">
                 
                 {canSee('dashboard') && <SidebarLink to="/" icon={<LayoutDashboard size={22} />} text="Dashboard" isOpen={isOpen} />}
 
-                {canSee('marketing') && (
-                    <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
-                        <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />
-                    </NavGroup>
-                )}
+                <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
+                    {canSee('marketing') && <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />}
+                    {canSee('quotes') && <SidebarLink to="/quotes" icon={<DollarSign size={18} />} text="Sales Quotes" isOpen={isOpen} />}
+                </NavGroup>
 
                 <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
                     {canSee('tracking') && <SidebarLink to="/tracking" icon={<BarChart3 size={18} />} text="Live Tracking" isOpen={isOpen} />}
@@ -81,7 +88,7 @@ const Sidebar = ({ isOpen }) => {
 
                 {canSee('stock') && (
                     <NavGroup title="Supply Chain" icon={<Truck size={22} />} isOpen={isOpen}>
-                         <SidebarLink to="/stock" icon={<Package size={18} />} text="Stock Control" isOpen={isOpen} />
+                        <SidebarLink to="/stock" icon={<Package size={18} />} text="Stock Control" isOpen={isOpen} />
                     </NavGroup>
                 )}
 
@@ -91,7 +98,7 @@ const Sidebar = ({ isOpen }) => {
                     {canSee('valuation') && <SidebarLink to="/valuation" icon={<Banknote size={18} />} text="Valuation" isOpen={isOpen} />}
                 </NavGroup>
 
-                 <NavGroup title="Administration" icon={<Briefcase size={22} />} isOpen={isOpen}>
+                <NavGroup title="Administration" icon={<Briefcase size={22} />} isOpen={isOpen}>
                     {canSee('payroll') && <SidebarLink to="/payroll" icon={<Banknote size={18} />} text="Payroll" isOpen={isOpen} />}
                 </NavGroup>
 

@@ -24,6 +24,7 @@ import PayrollPage from './pages/PayrollPage';
 import ValuationPage from './pages/ValuationPage';
 import CalendarPage from './pages/CalendarPage';
 import MarketingPage from './pages/MarketingPage';
+import QuotingPage from './pages/QuotingPage';
 
 
 function App() {
@@ -53,7 +54,7 @@ function App() {
                   <Route path="/calendar" element={ <RoleBasedRoute roles={['Manager', 'Workshop Employee']}><CalendarPage /></RoleBasedRoute> } />
                   <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
                   <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
-                  
+                  <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
                   {/* Fallback route if no other route matches */}
                   <Route path="*" element={<Navigate to="/" />} />
                 </Routes>

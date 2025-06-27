@@ -1,15 +1,13 @@
-// FILE: src/components/features/job_cards/CustomJobCreator.jsx (UPDATED)
+// src/components/features/job_cards/CustomJobCreator.jsx (UPDATED & FIXED)
 
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
-// MODIFIED IMPORT: Added getSkills to fetch all skills
 import { addJobCard, getDepartments, getEmployees, getTools, getToolAccessories, getAllInventoryItems, getSkills, getDepartmentSkills } from '../../../api/firestore';
 import { Search } from 'lucide-react';
 
-// Accept campaignId as a prop
 const CustomJobCreator = ({ campaignId }) => {
     const [jobData, setJobData] = useState({
         jobName: '',
@@ -28,7 +26,7 @@ const CustomJobCreator = ({ campaignId }) => {
     const [allTools, setAllTools] = useState([]);
     const [allToolAccessories, setAllToolAccessories] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
-    const [allSkills, setAllSkills] = useState([]); // NEW: State for all skills
+    const [allSkills, setAllSkills] = useState([]);
     const [loading, setLoading] = useState(true);
     const [consumableSearchTerm, setConsumableSearchTerm] = useState('');
     const [filteredConsumableOptions, setFilteredConsumableOptions] = useState([]);
@@ -40,7 +38,6 @@ const CustomJobCreator = ({ campaignId }) => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // MODIFIED PROMISE.ALL: Added getSkills
                 const [departments, employees, tools, toolAccessories, inventoryItems, skills] = await Promise.all([
                     getDepartments(), getEmployees(), getTools(), getToolAccessories(), getAllInventoryItems(), getSkills()
                 ]);
@@ -49,7 +46,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 setAllTools(tools);
                 setAllToolAccessories(toolAccessories);
                 setAllInventoryItems(inventoryItems);
-                setAllSkills(skills); // NEW: Set all skills
+                setAllSkills(skills);
             } catch (error) {
                 console.error("Error fetching data for custom job creator:", error);
                 alert("Failed to load necessary data for custom job creation.");
@@ -101,7 +98,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 return { ...prev, selectedTools: newTools, selectedAccessories: newAccessories };
             } else {
                 newTools.add(toolId);
-                return { ...prev, selectedTools: newTools };
+                 return { ...prev, selectedTools: newTools };
             }
         });
     };
@@ -162,7 +159,6 @@ const CustomJobCreator = ({ campaignId }) => {
             return;
         }
         
-        // NEW LOGIC: Fetch required skills for the selected department
         let departmentRequiredSkills = [];
         if (jobData.departmentId) {
             departmentRequiredSkills = await getDepartmentSkills(jobData.departmentId);
@@ -185,13 +181,13 @@ const CustomJobCreator = ({ campaignId }) => {
             processedConsumables: jobData.consumables,
             isCustomJob: true,
             campaignId: campaignId || null,
-            requiredSkills: departmentRequiredSkills, // NEW: Add requiredSkills to job card
+            requiredSkills: departmentRequiredSkills,
         };
+
         try {
             await addJobCard(finalJobData);
             alert(`Custom Job Card ${finalJobData.jobId} created successfully!`);
 
-            // Print logic... (remains the same)
             const departmentName = allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown Department';
             const employeeName = allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned';
             const printContents = `
@@ -203,8 +199,8 @@ const CustomJobCreator = ({ campaignId }) => {
                             <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${departmentName}</span></p>
                         </div>
                         <div style="text-align: right;">
-                           <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(newJobId)}&size=80x80" alt="QR Code" style="margin-bottom: 5px;"/>
-                           <p style="font-size: 10px; color: #999; margin: 0;">${newJobId}</p>
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(newJobId)}&size=80x80" alt="QR Code" style="margin-bottom: 5px;"/>
+                            <p style="font-size: 10px; color: #999; margin: 0;">${newJobId}</p>
                         </div>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
@@ -242,10 +238,16 @@ const CustomJobCreator = ({ campaignId }) => {
                     </div>
                 </div>
             `;
+            
             const printWindow = window.open('', '_blank', 'height=800,width=1000');
-            printWindow.document.write(`<html><head><title>Custom Job Card ${newJobId}</title><style>body { margin: 0; padding: 20px; font-family: Arial, sans-serif; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body>${printContents}<div style="margin-top: 20px; text-align: center;"><button onclick="window.print()">Print This Job Card</button></div></body></html>`);
-            printWindow.document.close();
-            printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+
+            if (printWindow) {
+                printWindow.document.write(`<html><head><title>Custom Job Card ${newJobId}</title><style>body { margin: 0; padding: 20px; font-family: Arial, sans-serif; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body>${printContents}<div style="margin-top: 20px; text-align: center;"><button onclick="window.print()">Print This Job Card</button></div></body></html>`);
+                printWindow.document.close();
+                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+            } else {
+                alert("The print window was blocked by your browser. Please allow popups for this site to print job cards automatically.");
+            }
 
             setJobData({ jobName: '', departmentId: '', employeeId: '', description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
             setSelectedConsumableItem(null);
@@ -258,7 +260,9 @@ const CustomJobCreator = ({ campaignId }) => {
             alert("Failed to create custom job card.");
         }
     };
+
     if (loading) return <p className="text-center text-gray-400">Loading custom job form data...</p>;
+    
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-4xl mx-auto">
             <h3 className="text-lg font-semibold text-white mb-4">Create a One-Off / Custom Job Card</h3>

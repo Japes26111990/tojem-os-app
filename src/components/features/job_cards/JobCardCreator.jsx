@@ -1,7 +1,6 @@
-// FILE: src/components/features/job_cards/JobCardCreator.jsx (UPDATED)
+// src/components/features/job_cards/JobCardCreator.jsx (UPDATED & FIXED)
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-// MODIFIED IMPORT: Added getSkills, getDepartmentSkills to fetch all skills and department skills
 import { getManufacturers, getMakes, getModels, getParts, getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools, getToolAccessories, getAllInventoryItems, setJobStepDetail, getSkills, getDepartmentSkills } from '../../../api/firestore';
 import { processConsumables } from '../../../utils/jobUtils';
 import Dropdown from '../../ui/Dropdown';
@@ -9,7 +8,7 @@ import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
 import { Search } from 'lucide-react';
-// RecipeConsumableEditor and JobCardPreview components remain unchanged...
+
 const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRemove }) => {
     const [consumableType, setConsumableType] = useState('fixed');
     const [selectedFixedItemId, setSelectedFixedItemId] = useState('');
@@ -123,7 +122,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             {fixedSearchTerm.length > 0 && filteredFixedOptions.length > 0 && (
                                 <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                                    {filteredFixedOptions.map(item => (
+                                     {filteredFixedOptions.map(item => (
                                         <li
                                             key={item.id}
                                             className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
@@ -137,17 +136,17 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
                                         </li>
                                     ))}
-                                </ul>
+                                 </ul>
                             )}
                         </div>
                         <div className="w-24">
-                            <Input
+                             <Input
                                 label="Qty"
                                 type="number"
                                 value={fixedQty}
                                 onChange={e => setFixedQty(e.target.value)}
                                 placeholder="e.g., 5"
-                            />
+                             />
                         </div>
                         <Button
                             type="button"
@@ -161,7 +160,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                 {consumableType === 'dimensional' && (
                     <div className="space-y-3 animate-fade-in" ref={searchRefDim}>
                          <div className="flex-grow relative">
-                            <Input
+                             <Input
                                 label="Material to Cut"
                                 value={dimSearchTerm}
                                 onChange={e => {
@@ -170,7 +169,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                 }}
                                 placeholder="Search by name or code..."
                             />
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             {dimSearchTerm.length > 0 && filteredDimOptions.length > 0 && (
                                 <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
                                     {filteredDimOptions.map(item => (
@@ -187,11 +186,11 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                                             {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
                                         </li>
                                     ))}
-                                </ul>
+                                 </ul>
                             )}
                         </div>
                         <div className="p-2 border border-gray-700 rounded-md">
-                            <p className="text-xs text-gray-400 mb-2">Cutting Instructions</p>
+                             <p className="text-xs text-gray-400 mb-2">Cutting Instructions</p>
                             <div className="flex items-end gap-2">
                                 <Input label="Dimensions (e.g., 120cm x 80cm)" value={cutRule.dimensions} onChange={e => setCutRule({...cutRule, dimensions: e.target.value})} />
                                 <Input label="Notes" value={cutRule.notes} onChange={e => setCutRule({...cutRule, notes: e.target.value})} />
@@ -199,7 +198,7 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                             </div>
                             <ul className="text-xs mt-2 space-y-1">{cuts.map((c, i) => <li key={i}>{c.dimensions} ({c.notes})</li>)}</ul>
                         </div>
-                        <Button
+                         <Button
                             type="button"
                             onClick={handleAddConsumable}
                             className="w-full"
@@ -212,20 +211,21 @@ const RecipeConsumableEditor = ({ consumables, selectedConsumables, onAdd, onRem
                 <h6 className="text-sm font-bold pt-2 border-t border-gray-700 text-gray-200">Recipe Consumables</h6>
                 <ul className="space-y-2 max-h-40 overflow-y-auto">
                     {selectedConsumables.map((c, i) => (
-                        <li key={i} className="flex justify-between items-center bg-gray-700 p-2 rounded text-sm text-gray-200">
+                         <li key={i} className="flex justify-between items-center bg-gray-700 p-2 rounded text-sm text-gray-200">
                             <div>
                                 <p className="font-semibold">{getConsumableName(c.itemId)}</p>
                                 {c.type === 'fixed' && <p className="text-xs text-gray-400">Qty: {c.quantity}</p>}
                                 {c.type === 'dimensional' && <p className="text-xs text-gray-400">{c.cuts.length} cut(s) required</p>}
                             </div>
-                            <Button type="button" onClick={() => onRemove(c.itemId)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
+                             <Button type="button" onClick={() => onRemove(c.itemId)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
                         </li>
                     ))}
                 </ul>
             </div>
         </div>
-    );
+     );
 };
+
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -234,48 +234,48 @@ const JobCardPreview = ({ details }) => {
             <div id="job-card-print-area" className="bg-white text-gray-800 p-8 rounded-lg shadow-lg">
                 <div className="flex justify-between items-start pb-4 border-b">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Job Card</h1>
+                         <h1 className="text-3xl font-bold text-gray-900">Job Card</h1>
                         <p className="text-gray-600">Part: <span className="font-semibold">{details.partName}</span></p>
                         <p className="text-gray-600">Department: <span className="font-semibold">{details.departmentName}</span></p>
                     </div>
-                    <div className="text-right">
+                     <div className="text-right">
                        <img src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(details.jobId)}&size=80x80`} alt="QR Code"/>
                        <p className="text-xs text-gray-500 mt-1">{details.jobId}</p>
                     </div>
-                </div>
+                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
                     <div>
                         {details.photoUrl ? ( <img src={details.photoUrl} alt={details.partName} className="rounded-lg object-cover w-full h-64 mb-4 border" /> ) : ( <div className="rounded-lg w-full h-64 mb-4 border bg-gray-100 flex items-center justify-center text-gray-400"><span>No Image Available</span></div> )}
                         <div className="space-y-2 text-sm">
                             <p><b>Employee:</b> {details.employeeName}</p>
-                            <p><b>Est. Time:</b> {details.estimatedTime || 'N/A'} mins</p>
+                             <p><b>Est. Time:</b> {details.estimatedTime || 'N/A'} mins</p>
                             <p><b>Description:</b> {details.description || 'No description.'}</p>
                         </div>
                     </div>
                     <div className="space-y-4">
                         <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools & Accessories</h3>
+                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools & Accessories</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
                                 {details.tools?.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No tools required.</li>}
                                 {details.accessories?.length > 0 ? details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
                             </ul>
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
+                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
                             <ul className="list-disc list-inside text-gray-600 space-y-2 text-sm">
                                 {details.processedConsumables?.length > 0 ? details.processedConsumables.map((c, i) => (
                                     <li key={i}>
                                         <span className="font-semibold">{c.name}</span>
-                                        {c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}
+                                         {c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}
                                         {c.notes && <span className="text-xs italic text-gray-500 ml-1">{c.notes}</span>}
-                                        {c.cuts && (
+                                         {c.cuts && (
                                             <ul className="list-square list-inside ml-4 mt-1">
-                                                {c.cuts.map((cut, j) => <li key={j}>{cut.dimensions} <span className="text-xs italic text-gray-500">{cut.notes}</span></li>)}
+                                                 {c.cuts.map((cut, j) => <li key={j}>{cut.dimensions} <span className="text-xs italic text-gray-500">{cut.notes}</span></li>)}
                                             </ul>
-                                        )}
+                                         )}
                                     </li>
                                 )) : <li>No consumables required.</li>}
-                            </ul>
+                             </ul>
                         </div>
                     </div>
                 </div>
@@ -287,9 +287,8 @@ const JobCardPreview = ({ details }) => {
         </div>
     )
 };
-// Main component - accept campaignId as a prop
+
 const JobCardCreator = ({ campaignId }) => {
-    // MODIFIED: Added allSkills state
     const [allData, setAllData] = useState({ manufacturers:[], makes:[], models:[], parts:[], departments:[], employees:[], jobSteps: [], tools: [], toolAccessories: [], allConsumables: [], allSkills: [] });
     const [loading, setLoading] = useState(true);
     const [selection, setSelection] = useState({ manufacturerId: '', makeId: '', modelId: '', partId: '', departmentId: '', employeeId: '' });
@@ -305,13 +304,12 @@ const JobCardCreator = ({ campaignId }) => {
             try {
                 const weatherResponse = await fetch("https://api.open-meteo.com/v1/forecast?latitude=-33.92&longitude=18.42&current=temperature_2m");
                 const weatherData = await weatherResponse.json();
-                setCurrentTemp(weatherData.current.temperature_2m);
+                 setCurrentTemp(weatherData.current.temperature_2m);
 
-                // MODIFIED PROMISE.ALL: Added getSkills
                 const [man, mak, mod, par, dep, emp, steps, t, ta, inv, skills] = await Promise.all([
                     getManufacturers(), getMakes(), getModels(), getParts(), getDepartments(), getEmployees(), getJobStepDetails(), getTools(), getToolAccessories(), getAllInventoryItems(), getSkills()
                 ]);
-                // MODIFIED setAllData: Included allSkills
+  
                 setAllData({ manufacturers: man, makes: mak, models: mod, parts: par, departments: dep, employees: emp, jobSteps: steps, tools: t, toolAccessories: ta, allConsumables: inv, allSkills: skills });
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
@@ -331,7 +329,7 @@ const JobCardCreator = ({ campaignId }) => {
             if (name === 'manufacturerId') { updated.makeId = ''; updated.modelId = ''; updated.partId = ''; }
             if (name === 'makeId') { updated.modelId = ''; updated.partId = ''; }
             if (name === 'modelId') { updated.partId = ''; }
-            if (name === 'departmentId') { updated.employeeId = ''; }
+             if (name === 'departmentId') { updated.employeeId = ''; }
             return updated;
         });
         setShowDefineRecipeForm(false);
@@ -342,9 +340,9 @@ const JobCardCreator = ({ campaignId }) => {
     const filteredModels = useMemo(() => allData.models.filter(m => m.makeId === selection.makeId), [allData.models, selection.makeId]);
     const filteredParts = useMemo(() => allData.parts.filter(p => p.modelId === selection.modelId), [allData.parts, selection.modelId]);
     const filteredEmployees = useMemo(() => allData.employees.filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
-
+    
     useEffect(() => {
-        const updateJobDetails = async () => { // Made this function async
+        const updateJobDetails = async () => {
             const { partId, departmentId, employeeId } = selection;
             if (partId && departmentId && currentTemp !== null) {
                 const part = allData.parts.find(p => p.id === partId);
@@ -355,10 +353,17 @@ const JobCardCreator = ({ campaignId }) => {
                 const standardRecipe = allData.jobSteps.find(step => step.id === recipeId);
 
                 let finalRecipeDetails = null;
-                let departmentRequiredSkills = []; // NEW: Variable to hold department's required skills
+                let finalRequiredSkills = [];
 
                 if (standardRecipe) {
                     finalRecipeDetails = standardRecipe;
+                    // --- NEW LOGIC: Prioritize skills from the specific recipe ---
+                    if (standardRecipe.requiredSkills && standardRecipe.requiredSkills.length > 0) {
+                        finalRequiredSkills = standardRecipe.requiredSkills;
+                    } else if (departmentId) {
+                        // Fallback to department skills if recipe has none defined
+                        finalRequiredSkills = await getDepartmentSkills(departmentId);
+                    }
                     setShowDefineRecipeForm(false);
                 } else {
                     setShowDefineRecipeForm(true);
@@ -370,17 +375,17 @@ const JobCardCreator = ({ campaignId }) => {
                         accessories: Array.from(tempRecipeDetails.accessories),
                         consumables: tempRecipeDetails.consumables
                     };
+                    // For a new recipe, start with the department's skills as a baseline
+                    if (departmentId) {
+                        finalRequiredSkills = await getDepartmentSkills(departmentId);
+                    }
                 }
                 
-                // NEW LOGIC: Fetch required skills for the selected department
-                if (departmentId) {
-                    departmentRequiredSkills = await getDepartmentSkills(departmentId);
-                }
-
                 if (part && department) {
                     const processed = processConsumables(finalRecipeDetails?.consumables, allData.allConsumables, currentTemp);
                     const toolsForDisplay = (finalRecipeDetails?.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                     const accessoriesForDisplay = (finalRecipeDetails?.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
+                    
                     setJobDetails({
                         jobId: `JOB-${Date.now()}`,
                         partName: part.name,
@@ -391,21 +396,21 @@ const JobCardCreator = ({ campaignId }) => {
                         employeeName: employee ? employee.name : 'Unassigned',
                         status: 'Pending',
                         description: finalRecipeDetails?.description || 'No description.',
-                        estimatedTime: parseFloat(finalRecipeDetails?.estimatedTime) || 0, // Ensure estimated time is number
+                        estimatedTime: parseFloat(finalRecipeDetails?.estimatedTime) || 0,
                         steps: finalRecipeDetails?.steps || [],
                         tools: toolsForDisplay,
                         accessories: accessoriesForDisplay,
                         consumables: finalRecipeDetails?.consumables || [],
                         processedConsumables: processed,
                         campaignId: campaignId || null,
-                        requiredSkills: departmentRequiredSkills, // NEW: Add requiredSkills to job card
+                        requiredSkills: finalRequiredSkills, // <-- Use the determined skills
                     });
                 }
             } else {
                 setJobDetails(null);
             }
         };
-        updateJobDetails(); // Call the async function
+        updateJobDetails();
     }, [selection, allData, currentTemp, tempRecipeDetails, campaignId]);
 
     const handleTempRecipeInputChange = (e) => {
@@ -447,14 +452,13 @@ const JobCardCreator = ({ campaignId }) => {
                 estimatedTime: Number(tempRecipeDetails.estimatedTime),
                 steps: tempRecipeDetails.steps.split('\n').filter(s => s.trim() !== ''),
                 tools: Array.from(tempRecipeDetails.tools),
-                accessories: Array.from(tempRecipeDetails.accessories),
+                 accessories: Array.from(tempRecipeDetails.accessories),
                 consumables: tempRecipeDetails.consumables,
             };
             await setJobStepDetail(selection.partId, selection.departmentId, recipeData);
             alert("New recipe saved successfully!");
             
-            // Re-call generateNewJobCard to use the newly saved recipe's data, including requiredSkills
-            handleGenerateNewJobCard(true); // Pass true to indicate it's from a new recipe save
+            handleGenerateNewJobCard(true);
 
             const updatedJobSteps = await getJobStepDetails();
             setAllData(prev => ({ ...prev, jobSteps: updatedJobSteps }));
@@ -467,7 +471,7 @@ const JobCardCreator = ({ campaignId }) => {
         }
     };
 
-    const handleGenerateNewJobCard = async (fromNewRecipe = false) => { // Added fromNewRecipe parameter
+    const handleGenerateNewJobCard = async (fromNewRecipe = false) => {
         if (!jobDetails) {
             alert("No job details to generate. Please select a part and department first.");
             return;
@@ -479,7 +483,6 @@ const JobCardCreator = ({ campaignId }) => {
         if (!confirmGenerate) return;
 
         try {
-            // If called from new recipe save, ensure jobDetails is refreshed to include requiredSkills
             let currentJobDetails = jobDetails;
             if (fromNewRecipe && selection.departmentId) {
                 const departmentRequiredSkills = await getDepartmentSkills(selection.departmentId);
@@ -487,17 +490,17 @@ const JobCardCreator = ({ campaignId }) => {
             }
 
             const newJobCardData = {
-                ...currentJobDetails, // Use currentJobDetails which may have updated requiredSkills
+                ...currentJobDetails,
                 jobId: `JOB-${Date.now()}`,
                 status: 'Pending',
                 startedAt: null,
-                completedAt: null,
+                 completedAt: null,
                 pausedAt: null,
                 totalPausedMilliseconds: 0,
                 materialCost: null,
                 laborCost: null,
                 totalCost: null,
-                issueReason: null,
+                 issueReason: null,
                 campaignId: campaignId || null,
             };
             await addJobCard(newJobCardData);
@@ -505,9 +508,14 @@ const JobCardCreator = ({ campaignId }) => {
             
             const printContents = document.getElementById('job-card-print-area').innerHTML;
             const printWindow = window.open('', '', 'height=800,width=1000');
-            printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
-            printWindow.document.close();
-            
+
+            if (printWindow) {
+                printWindow.document.write(`<html><head><title>Print Job Card</title><script src="https://cdn.tailwindcss.com/"></script><style>@media print { body { -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body><div class="p-8">${printContents}</div><div class="mt-4 text-center"><button onclick="window.print()" style="padding: 10px 20px; background-color: #3b82f6; color: white; border-radius: 8px; border: none; cursor: pointer;">Print This Job Card</button></div></body></html>`);
+                printWindow.document.close();
+            } else {
+                alert("The print window was blocked by your browser. Please allow popups for this site to print job cards automatically.");
+            }
+
             setJobDetails(prev => ({...prev, jobId: `JOB-${Date.now()}`}));
         } catch (error) {
             console.error("Error generating new job card:", error);
@@ -547,7 +555,7 @@ const JobCardCreator = ({ campaignId }) => {
                 <h3 className="text-lg font-semibold text-white mb-6 text-center">
                     Create New Job from Catalog
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Dropdown label="1. Manufacturer" name="manufacturerId" value={selection.manufacturerId} onChange={handleSelection} options={allData.manufacturers} placeholder="Select Manufacturer" />
                     <Dropdown label="2. Make" name="makeId" value={selection.makeId} onChange={handleSelection} options={filteredMakes} placeholder="Select Make" disabled={!selection.manufacturerId} />
                     <Dropdown label="3. Model" name="modelId" value={selection.modelId} onChange={handleSelection} options={filteredModels} placeholder="Select Model" disabled={!selection.makeId} />
@@ -560,48 +568,48 @@ const JobCardCreator = ({ campaignId }) => {
                         <h4 className="text-xl font-bold text-white mb-4">Define Recipe for New Part-Department Combination</h4>
                         <p className="text-gray-400 text-sm mb-4">No standard recipe found. Please define it now to create the first job card and save for future use.</p>
                         <div className="space-y-4">
-                            <Input label="Description" name="description" value={tempRecipeDetails.description} onChange={handleTempRecipeInputChange} placeholder="e.g., Final assembly of side skirt" />
+                             <Input label="Description" name="description" value={tempRecipeDetails.description} onChange={handleTempRecipeInputChange} placeholder="e.g., Final assembly of side skirt" />
                             <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={tempRecipeDetails.estimatedTime} onChange={handleTempRecipeInputChange} placeholder="e.g., 45" />
                             <Textarea label="Steps (one per line)" name="steps" value={tempRecipeDetails.steps} onChange={handleTempRecipeInputChange} rows={5} placeholder="1. Align panels...&#10;2. Apply adhesive..." />
                             <div>
                                 <h5 className="font-semibold text-white mb-2">Required Tools & Accessories for Recipe</h5>
-                                <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
+                                 <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
                                     {(allData.tools || []).map(tool => (
                                         <div key={tool.id}>
-                                            <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200">
+                                             <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200">
                                                 <input type="checkbox" checked={tempRecipeDetails.tools.has(tool.id)} onChange={() => handleTempRecipeToolToggle(tool.id)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
                                                 <span>{tool.name}</span>
                                             </label>
-                                            {tempRecipeDetails.tools.has(tool.id) && (
+                                             {tempRecipeDetails.tools.has(tool.id) && (
                                                 <div className="pl-6 mt-1 space-y-1 text-xs border-l-2 border-gray-700">
-                                                    {(allData.toolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => (
+                                                     {(allData.toolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => (
                                                         <label key={accessory.id} className="flex items-center space-x-2 text-xs text-gray-300">
                                                             <input type="checkbox" checked={tempRecipeDetails.accessories.has(accessory.id)} onChange={() => handleTempRecipeAccessoryToggle(accessory.id)} className="h-3 w-3 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
-                                                            <span>{accessory.name}</span>
-                                                        </label>
+                                                             <span>{accessory.name}</span>
+                                                         </label>
                                                     ))}
-                                                </div>
+                                                 </div>
                                             )}
                                         </div>
-                                    ))}
+                                     ))}
                                 </div>
                             </div>
-                            <div>
+                             <div>
                                 <RecipeConsumableEditor
                                     consumables={allData.allConsumables}
-                                    selectedConsumables={tempRecipeDetails.consumables}
+                                     selectedConsumables={tempRecipeDetails.consumables}
                                     onAdd={handleTempRecipeConsumableAdd}
                                     onRemove={handleTempRecipeConsumableRemove}
-                                />
+                                 />
                             </div>
                         </div>
                     </div>
-                )}
+                 )}
                 {jobDetails && (
                     <div className="mt-8 text-center">
                         {renderActionButton()}
                     </div>
-                )}
+                 )}
             </div>
             {jobDetails && <JobCardPreview details={jobDetails} />}
         </>

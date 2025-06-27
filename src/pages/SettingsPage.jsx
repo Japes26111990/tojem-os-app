@@ -12,14 +12,14 @@ import SkillsManager from '../components/features/settings/SkillsManager';
 import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
 import UserManagementPage from './UserManagementPage';
 import CampaignManager from '../components/features/settings/CampaignManager';
-// Import the new FinancialSettings component
 import FinancialSettings from '../components/features/settings/FinancialSettings'; 
+import TrainingManager from '../components/features/settings/TrainingManager';
+import ReworkReasonsManager from '../components/features/settings/ReworkReasonsManager'; // <-- 1. IMPORT NEW COMPONENT
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
   const activeClasses = "bg-blue-600 text-white";
   const inactiveClasses = "bg-gray-800 text-gray-300 hover:bg-gray-700";
-
   return (
     <button onClick={onClick} className={`${baseClasses} ${isActive ? activeClasses : inactiveClasses}`}>
       {label}
@@ -44,12 +44,16 @@ const SettingsPage = () => {
       components: [<ToolsManager key="tools" />, <ToolAccessoriesManager key="tool-accessories" />]
     },
     company: {
-      label: 'Company & Staff',
-      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />]
+       label: 'Company & Staff',
+       // --- 2. ADD NEW MANAGER TO THIS TAB ---
+      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />, <ReworkReasonsManager key="rework-reasons" />]
+    },
+    training: {
+        label: 'Training',
+        components: [<TrainingManager key="training" />]
     },
     financials: {
       label: 'Financials',
-      // UPDATED: Now includes both Overheads and the new FinancialSettings
       components: [<OverheadsManager key="overheads" />, <FinancialSettings key="financial-settings" />]
     },
     marketing: {
@@ -57,10 +61,10 @@ const SettingsPage = () => {
       components: [<CampaignManager key="campaigns" />]
     },
     users: {
-      label: 'User Management',
+       label: 'User Management',
       components: [<UserManagementPage key="user-management" />]
     }
-  }), []); 
+  }), []);
 
   return (
     <div className="space-y-8">

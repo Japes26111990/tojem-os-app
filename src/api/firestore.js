@@ -1,8 +1,5 @@
-// src/api/firestore.js (UPDATED with getDocs and query)
-// FILE: src/api/firestore.js
+// src/api/firestore.js (Consolidated & Updated)
 
-// CORRECTED: All functions are imported in a single, clean statement.
-// ADDED getDocs, query, where to support new dashboard queries
 import {
     collection,
     getDocs,
@@ -22,7 +19,6 @@ import {
     increment,
     limit,
 } from 'firebase/firestore';
-// CORRECTED: We only import the 'db' instance, we don't re-initialize the app here.
 import { db } from './firebase';
 
 // --- DEPARTMENTS API ---
@@ -32,37 +28,29 @@ export const getDepartments = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addDepartment = (departmentName) => {
-    return addDoc(departmentsCollection, { name: departmentName, requiredSkills: [] }); // Initialize with empty requiredSkills array
+    return addDoc(departmentsCollection, { name: departmentName, requiredSkills: [] });
 };
 export const deleteDepartment = (departmentId) => {
     const departmentDoc = doc(db, 'departments', departmentId);
     return deleteDoc(departmentDoc);
 };
-
-// NEW: Function to update a department's required skills
 export const updateDepartmentRequiredSkills = async (departmentId, requiredSkillsData) => {
     const departmentDocRef = doc(db, 'departments', departmentId);
-    // Filter out skills that are explicitly "not required" (e.g., both prof and importance are 0)
     const filteredSkillsData = requiredSkillsData.filter(skill =>
         skill.minimumProficiency > 0 || skill.importanceWeight > 0
     );
     return updateDoc(departmentDocRef, { requiredSkills: filteredSkillsData });
 };
-
-
-// MODIFIED: getDepartmentSkills to fetch the new object structure
 export const getDepartmentSkills = async (departmentId) => {
     if (!departmentId) return [];
     const departmentDocRef = doc(db, 'departments', departmentId);
     const departmentDoc = await getDoc(departmentDocRef);
     if (departmentDoc.exists()) {
         const data = departmentDoc.data();
-        // It will now return an array of objects: [{ skillId, minimumProficiency, importanceWeight }]
         return data.requiredSkills || [];
     }
     return [];
 };
-
 
 // --- SKILLS API ---
 const skillsCollection = collection(db, 'skills');
@@ -87,9 +75,6 @@ export const getSkillHistoryForEmployee = async (employeeId) => {
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
-
-// Helper function to get the name of a skill given its ID (needed for display/mapping)
 export const getSkillNameById = async (skillId) => {
     const skills = await getSkills();
     const skill = skills.find(s => s.id === skillId);
@@ -102,20 +87,13 @@ export const getTools = async () => {
     const snapshot = await getDocs(toolsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// MODIFIED: addTool to accept associatedSkills
 export const addTool = (toolData) => {
-    // toolData should now include { name, associatedSkills: [] }
     return addDoc(toolsCollection, { ...toolData, associatedSkills: toolData.associatedSkills || [] });
 };
-// MODIFIED: deleteTool remains the same
 export const deleteTool = (toolId) => {
     const toolDoc = doc(db, 'tools', toolId);
     return deleteDoc(toolDoc);
 };
-// MODIFIED: updateDocument (generic update) will handle tool updates, so specific updateTool isn't strictly needed if using generic.
-// However, if there was a dedicated updateTool, it would also need to handle associatedSkills.
-// Since you're using updateDocument in ToolsManager, this is covered.
-
 
 // --- TOOL ACCESSORIES API ---
 const toolAccessoriesCollection = collection(db, 'toolAccessories');
@@ -123,16 +101,13 @@ export const getToolAccessories = async () => {
     const snapshot = await getDocs(toolAccessoriesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// MODIFIED: addToolAccessory to accept associatedSkills
 export const addToolAccessory = (accessoryData) => {
-    // accessoryData should now include { name, toolId, associatedSkills: [] }
     return addDoc(toolAccessoriesCollection, { ...accessoryData, associatedSkills: accessoryData.associatedSkills || [] });
 };
 export const deleteToolAccessory = (accessoryId) => {
     const accessoryDoc = doc(db, 'toolAccessories', accessoryId);
     return deleteDoc(accessoryDoc);
 };
-
 
 // --- EMPLOYEES API ---
 const employeesCollection = collection(db, 'employees');
@@ -151,33 +126,23 @@ export const getEmployeeSkills = async (employeeId) => {
     const employeeDocRef = doc(db, 'employees', employeeId);
     const employeeDoc = await getDoc(employeeDocRef);
     if (employeeDoc.exists()) {
-        // Ensure skills are retrieved and numerical values are handled
         const skillsData = employeeDoc.data().skills || {};
-        // Convert any old string proficiencies to a numerical equivalent if necessary
-        // For existing 'Beginner', 'Intermediate', 'Expert' data, you might need a one-time migration or conversion logic here.
-        // For now, we'll assume new data will be numerical.
         return skillsData;
     }
     return {};
 };
-
-// MODIFIED: updateEmployeeSkillsAndLogHistory to store numerical proficiency
 export const updateEmployeeSkillsAndLogHistory = async (employee, skillsData, allSkills) => {
     const employeeDocRef = doc(db, 'employees', employee.id);
     const batch = writeBatch(db);
-
-    // Filter out skills with a proficiency of 0 (Not Acquired/No Skill)
     const filteredSkillsData = {};
     for (const skillId in skillsData) {
-        if (skillsData[skillId] > 0) { // Only save if proficiency is > 0
+        if (skillsData[skillId] > 0) {
             filteredSkillsData[skillId] = skillsData[skillId];
         }
     }
-
-    batch.update(employeeDocRef, { skills: filteredSkillsData }); // Store numerical ratings
-
+    batch.update(employeeDocRef, { skills: filteredSkillsData });
     const allSkillsMap = new Map(allSkills.map(s => [s.id, s.name]));
-    for (const skillId in filteredSkillsData) { // Only log history for saved skills (> 0)
+    for (const skillId in filteredSkillsData) {
         const proficiency = filteredSkillsData[skillId];
         const newHistoryRef = doc(skillHistoryCollection);
         const historyRecord = {
@@ -185,7 +150,7 @@ export const updateEmployeeSkillsAndLogHistory = async (employee, skillsData, al
             employeeName: employee.name,
             skillId: skillId,
             skillName: allSkillsMap.get(skillId) || 'Unknown Skill',
-            proficiency: proficiency, // This will now be a number (0-5)
+            proficiency: proficiency,
             assessmentDate: serverTimestamp()
         };
         batch.set(newHistoryRef, historyRecord);
@@ -220,29 +185,22 @@ export const getWorkshopSupplies = async () => {
     const snapshot = await getDocs(workshopSuppliesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// MODIFIED: addWorkshopSupply to accept associatedSkills
 export const addWorkshopSupply = (supplyData) => addDoc(workshopSuppliesCollection, { ...supplyData, associatedSkills: supplyData.associatedSkills || [] });
 export const deleteWorkshopSupply = (supplyId) => deleteDoc(doc(db, 'workshopSupplies', supplyId));
-// updateWorkshopSupply uses generic updateDocument
 
 export const getComponents = async () => {
     const snapshot = await getDocs(componentsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// MODIFIED: addComponent to accept associatedSkills
 export const addComponent = (componentData) => addDoc(componentsCollection, { ...componentData, associatedSkills: componentData.associatedSkills || [] });
 export const deleteComponent = (componentId) => deleteDoc(doc(db, 'components', componentId));
-// updateComponent uses generic updateDocument
 
 export const getRawMaterials = async () => {
     const snapshot = await getDocs(rawMaterialsCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// MODIFIED: addRawMaterial to accept associatedSkills
 export const addRawMaterial = (materialData) => addDoc(rawMaterialsCollection, { ...materialData, associatedSkills: materialData.associatedSkills || [] });
 export const deleteRawMaterial = (materialId) => deleteDoc(doc(db, 'rawMaterials', materialId));
-// updateRawMaterial uses generic updateDocument
-
 
 // --- OVERHEADS API ---
 const overheadsCategoriesCollection = collection(db, 'overheadsCategories');
@@ -360,7 +318,7 @@ export const setJobStepDetail = (productId, departmentId, data) => {
     return setDoc(docRef, { ...data, productId, departmentId });
 };
 
-// --- OLD PRODUCT CATALOG API (DEPRECATED BUT USED BY JOB CREATOR) ---
+// --- OLD PRODUCT CATALOG API ---
 const manufacturersCollection = collection(db, 'manufacturers');
 const makesCollection = collection(db, 'makes');
 const modelsCollection = collection(db, 'models');
@@ -414,17 +372,36 @@ export const updateJobStatus = async (docId, newStatus) => {
     const jobDocRef = doc(db, 'createdJobCards', docId);
     const jobDoc = await getDoc(jobDocRef);
     if (!jobDoc.exists()) throw new Error("Job not found!");
+
     const currentData = jobDoc.data();
     const dataToUpdate = { status: newStatus };
+
     if (newStatus === 'In Progress') {
         if (!currentData.startedAt) dataToUpdate.startedAt = serverTimestamp();
         else if (currentData.status === 'Paused' && currentData.pausedAt) {
             dataToUpdate.totalPausedMilliseconds = increment(new Date().getTime() - currentData.pausedAt.toDate().getTime());
             dataToUpdate.pausedAt = null;
         }
-    } else if (newStatus === 'Paused') dataToUpdate.pausedAt = serverTimestamp();
-    else if (newStatus === 'Awaiting QC') dataToUpdate.completedAt = serverTimestamp();
-    return updateDoc(jobDocRef, dataToUpdate);
+    } else if (newStatus === 'Paused') {
+        dataToUpdate.pausedAt = serverTimestamp();
+    } else if (newStatus === 'Awaiting QC') {
+        dataToUpdate.completedAt = serverTimestamp();
+    }
+
+    const scanEventRef = doc(collection(db, 'scanEvents'));
+    const scanEventData = {
+        employeeId: currentData.employeeId,
+        employeeName: currentData.employeeName,
+        jobId: currentData.jobId,
+        statusUpdatedTo: newStatus,
+        timestamp: serverTimestamp()
+    };
+
+    const batch = writeBatch(db);
+    batch.update(jobDocRef, dataToUpdate);
+    batch.set(scanEventRef, scanEventData);
+
+    return batch.commit();
 };
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
     return runTransaction(db, async (transaction) => {
@@ -589,35 +566,76 @@ export const deleteUserWithRole = async (userId) => {
     if (!response.ok) throw new Error(data.error || 'Failed to delete user.');
     return data;
 };
-/// --- MARKETING & SALES API FUNCTIONS (UPDATED) ---
+
+// --- MARKETING & SALES API FUNCTIONS ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
 export const getCampaigns = async () => {
   const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 export const addCampaign = (campaignData) => {
-  // Add leadsGenerated with a default value of 0
   return addDoc(marketingCampaignsCollection, {
     ...campaignData,
     leadsGenerated: 0,
     createdAt: serverTimestamp()
   });
 };
-
 export const updateCampaign = (campaignId, updatedData) => {
   const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
-  // Ensure leadsGenerated is stored as a number
   if (updatedData.leadsGenerated !== undefined) {
       updatedData.leadsGenerated = Number(updatedData.leadsGenerated) || 0;
   }
   return updateDoc(campaignDoc, updatedData);
 };
-
 export const deleteCampaign = (campaignId) => {
   const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
   return deleteDoc(campaignDoc);
 };
+
+// --- TRAINING RESOURCES API ---
+const trainingResourcesCollection = collection(db, 'trainingResources');
+export const getTrainingResources = async () => {
+    const snapshot = await getDocs(trainingResourcesCollection);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+export const addTrainingResource = (data) => {
+    return addDoc(trainingResourcesCollection, data);
+};
+export const updateTrainingResource = (id, data) => {
+    const resourceDoc = doc(db, 'trainingResources', id);
+    return updateDoc(resourceDoc, data);
+};
+export const deleteTrainingResource = (id) => {
+    const resourceDoc = doc(db, 'trainingResources', id);
+    return deleteDoc(resourceDoc);
+};
+
+// --- SUBCONTRACTOR LOGS API ---
+const subcontractorAdHocLogsCollection = collection(db, 'subcontractorAdHocLogs');
+const subcontractorTeamLogsCollection = collection(db, 'subcontractorTeamLogs');
+
+export const addSubcontractorAdHocLog = (logData) => {
+    return addDoc(subcontractorAdHocLogsCollection, { ...logData, createdAt: serverTimestamp() });
+};
+
+export const addSubcontractorTeamLog = (logData) => {
+    return addDoc(subcontractorTeamLogsCollection, { ...logData, createdAt: serverTimestamp() });
+};
+
+// --- QUOTES API ---
+const quotesCollection = collection(db, 'quotes');
+export const addQuote = (quoteData) => {
+    return addDoc(quotesCollection, { ...quoteData, status: 'draft', createdAt: serverTimestamp() });
+};
+
+// --- REWORK REASONS API ---
+export const getReworkReasons = async () => {
+    const reasonsCollection = collection(db, 'reworkReasons');
+    const q = query(reasonsCollection, orderBy('name'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };

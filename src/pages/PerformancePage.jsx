@@ -1,6 +1,7 @@
+// src/pages/PerformancePage.jsx (Corrected)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-// MainLayout import removed
 import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses, getDepartments } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
@@ -40,6 +41,7 @@ const PerformancePage = () => {
                 ]);
                 
                 setDepartments(fetchedDepartments);
+                
                 const departmentsMap = new Map(fetchedDepartments.map(d => [d.id, d.name]));
                 const employeesWithDeptName = fetchedEmployees.map(emp => ({ ...emp, departmentName: departmentsMap.get(emp.departmentId) || 'Unknown' }));
                 setEmployees(employeesWithDeptName);
@@ -47,6 +49,7 @@ const PerformancePage = () => {
                 const expensePromises = fetchedCategories.map(category => getOverheadExpenses(category.id));
                 const results = await Promise.all(expensePromises);
                 setAllOverheadExpenses(results.flat());
+                
                 unsubscribeJobs = listenToJobCards((fetchedJobs) => setJobs(fetchedJobs));
                 setLoading(false);
             } catch (error) {
@@ -60,9 +63,37 @@ const PerformancePage = () => {
     }, []);
     
     const performanceData = useMemo(() => {
-        // ... (memoized logic remains the same)
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
-        const overheadCostPerProductiveHour = totalMonthlyOverheads / (employees.length * 173.2);
+        // Use a safe default for number of employees to avoid division by zero
+        const employeeCount = employees.length > 0 ? employees.length : 1;
+        const overheadCostPerProductiveHour = totalMonthlyOverheads / (employeeCount * 173.2);
+
+        // --- THIS IS THE CORRECTED LOGIC BLOCK ---
+        
+        // First, filter for jobs that are actually completed and have valid time data
+        const validCompletedJobs = jobs.filter(job => 
+            job.status === 'Complete' && 
+            job.startedAt && 
+            job.completedAt
+        );
+
+        // Now, perform all calculations on this clean, valid data set
+        const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
+            const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
+            return acc + (durationSeconds > 0 ? durationSeconds / 60 : 0);
+        }, 0);
+
+        const efficiencyData = validCompletedJobs.map(job => {
+            if (!job.estimatedTime || job.estimatedTime <= 0) return null;
+            const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
+            if (durationSeconds <= 0) return null;
+            return ((job.estimatedTime * 60) / durationSeconds) * 100;
+        }).filter(Boolean); // Filter out nulls
+
+        const overallAvgEfficiency = efficiencyData.length > 0 ? efficiencyData.reduce((sum, eff) => sum + eff, 0) / efficiencyData.length : 0;
+        const overallTotalJobValue = validCompletedJobs.reduce((acc, job) => acc + (job.totalCost || 0), 0);
+
+        // --- END OF CORRECTION ---
 
         let employeeMetrics = (employees || []).map(emp => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
@@ -91,40 +122,29 @@ const PerformancePage = () => {
                 reworkRate: empJobsCompleted > 0 ? (empIssueJobs / empJobsCompleted) * 100 : 0,
             };
         });
-
+        
         const maxNetValue = Math.max(1, ...employeeMetrics.map(e => e.netValueAdded));
         const maxEfficiency = Math.max(100, ...employeeMetrics.map(e => e.avgEfficiency));
-
+        
         const employeePerformanceMetrics = employeeMetrics.map(emp => {
             const netValueScore = Math.max(0, (emp.netValueAdded / maxNetValue) * 100);
             const efficiencyScore = Math.max(0, (emp.avgEfficiency / maxEfficiency) * 100);
             const qualityScore = Math.max(0, 100 - emp.reworkRate);
-            
             const ops = (efficiencyScore * 0.4) + (netValueScore * 0.4) + (qualityScore * 0.2);
-            
             return { ...emp, ops };
         });
 
-        const overallJobsCompleted = jobs.filter(j => j.status === 'Complete').length;
-        const overallTotalWorkMinutes = jobs.reduce((acc, job) => acc + (Math.max(0, ((job.completedAt?.toDate().getTime() || 0) - (job.startedAt?.toDate().getTime() || 0) - (job.totalPausedMilliseconds || 0))) / 60000), 0);
-        const overallAvgEfficiency = jobs.length > 0 ? jobs.reduce((acc, job) => {
-            const actual = Math.max(0, ((job.completedAt?.toDate().getTime() || 0) - (job.startedAt?.toDate().getTime() || 0) - (job.totalPausedMilliseconds || 0)) / 1000);
-            if(job.estimatedTime > 0 && actual > 0) return acc + (((job.estimatedTime * 60) / actual) * 100);
-            return acc;
-        }, 0) / jobs.length : 0;
-        const overallTotalJobValue = jobs.reduce((acc, job) => acc + (job.totalCost || 0), 0);
-        
         return {
             overallKpis: {
-                jobsCompleted: overallJobsCompleted,
-                totalWorkHours: overallTotalWorkMinutes.toFixed(1),
+                jobsCompleted: validCompletedJobs.length,
+                totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1), // Convert minutes to hours
                 avgEfficiency: `${Math.round(overallAvgEfficiency)}%`,
                 totalJobValue: `R ${overallTotalJobValue.toFixed(2)}`,
             },
             employeePerformanceMetrics
         };
     }, [jobs, employees, allOverheadExpenses]);
-    
+
     if (loading) return <p className="text-center text-gray-400">Loading Performance Data...</p>;
 
     return (
@@ -138,7 +158,7 @@ const PerformancePage = () => {
                 <KpiCard icon={<DollarSign size={24} />} title="Total Job Value" value={performanceData.overallKpis.totalJobValue} color="bg-yellow-500/20 text-yellow-400" />
             </div>
             
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                     <h3 className="text-xl font-bold text-white">
                         Performance Leaderboard
