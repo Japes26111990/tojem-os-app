@@ -1,15 +1,19 @@
-// FILE: src/hooks/useInventoryManager.js
+// src/hooks/useInventoryManager.js (Updated for Dynamic Supplier Pricing)
 
 import { useState, useEffect, useMemo } from 'react';
-import { addToPurchaseQueue, updateDocument } from '../api/firestore'; // MODIFIED: Import updateDocument
+import { 
+    getSupplierPricingForItem, 
+    addSupplierPrice, 
+    deleteSupplierPrice, 
+    updateSupplierPrice 
+} from '../api/firestore';
 
 export const useInventoryManager = (api, suppliers, allSkills) => {
   const [items, setItems] = useState([]);
   const [newItem, setNewItem] = useState({
-    name: '', itemCode: '', price: '', unit: '', supplierId: '',
+    name: '', itemCode: '', price: '', unit: '',
     currentStock: '', reorderLevel: '', standardStockLevel: '',
     requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
-    lastCountedInSessionId: '',
     associatedSkills: [],
   });
   const [editingItemId, setEditingItemId] = useState(null);
@@ -17,7 +21,9 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [showLowStock, setShowLowStock] = useState(false);
-  const [category, setCategory] = useState(api.categoryName.toLowerCase().replace(' ', ''));
+
+  // --- NEW STATE for managing supplier prices ---
+  const [supplierPrices, setSupplierPrices] = useState([]);
 
   const fetchData = async () => {
     if (!api) return;
@@ -31,8 +37,21 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     if (api && api.get) {
       fetchData();
     }
-    cancelEdit(); // Reset form when category (api) changes
+    cancelEdit();
   }, [api]);
+
+  // --- NEW EFFECT: Fetch supplier prices when an item is being edited ---
+  useEffect(() => {
+      if (editingItemId) {
+          const fetchPrices = async () => {
+              const prices = await getSupplierPricingForItem(editingItemId);
+              setSupplierPrices(prices);
+          };
+          fetchPrices();
+      } else {
+          setSupplierPrices([]);
+      }
+  }, [editingItemId]);
 
   const getSupplierName = (supplierId) => (suppliers || []).find(s => s.id === supplierId)?.name || 'N/A';
 
@@ -63,21 +82,16 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     setNewItem(prevState => ({ ...prevState, [name]: val }));
   };
 
-  // NEW: Dedicated function for toggling skill association in InventoryManager
   const handleToggleSkillAssociation = (skillId, isChecked) => {
     setNewItem(prevItem => {
         if (isChecked) {
-            // Add skill with default values if checked
             return { ...prevItem, associatedSkills: [...(prevItem.associatedSkills || []), { skillId, defaultMinimumProficiency: 0, importanceWeight: 0 }] };
         } else {
-            // Remove skill if unchecked
             return { ...prevItem, associatedSkills: prevItem.associatedSkills.filter(s => s.skillId !== skillId) };
         }
     });
   };
 
-
-  // MODIFIED: handleAssociatedSkillChange now only updates properties of an *existing* associated skill
   const handleAssociatedSkillChange = (skillId, field, value) => {
     setNewItem(prevItem => ({
         ...prevItem,
@@ -87,19 +101,17 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     }));
   };
 
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newItem.name.trim() || !newItem.supplierId) return alert("Item name and supplier are required.");
+    if (!newItem.name.trim()) return alert("Item name is required.");
 
-    const filteredAssociatedSkills = newItem.associatedSkills.filter(s =>
+    const filteredAssociatedSkills = (newItem.associatedSkills || []).filter(s =>
         s.defaultMinimumProficiency > 0 || s.importanceWeight > 0
     );
 
     const dataToSave = {
       name: newItem.name,
       itemCode: newItem.itemCode || '',
-      supplierId: newItem.supplierId,
       price: parseFloat(newItem.price) || 0,
       unit: newItem.unit || '',
       currentStock: parseInt(newItem.currentStock, 10) || 0,
@@ -109,28 +121,13 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       stockTakeMethod: newItem.stockTakeMethod || 'quantity',
       unitWeight: parseFloat(newItem.unitWeight) || 0,
       tareWeight: parseFloat(newItem.tareWeight) || 0,
-      lastCountedInSessionId: newItem.lastCountedInSessionId || '',
       associatedSkills: filteredAssociatedSkills,
     };
     try {
-      let docId = editingItemId;
       if (editingItemId) {
-        // Use api.update (which is defined in InventoryManager.jsx using updateDocument)
         await api.update(editingItemId, dataToSave);
       } else {
-        const newDoc = await api.add(dataToSave);
-        docId = newDoc.id;
-      }
-      
-      if (dataToSave.reorderLevel > 0 && dataToSave.currentStock < dataToSave.reorderLevel) {
-        await addToPurchaseQueue({
-          itemId: docId,
-          itemName: dataToSave.name,
-          supplierId: dataToSave.supplierId,
-          itemCode: dataToSave.itemCode,
-          category: api.categoryName
-        });
-        alert(`'${dataToSave.name}' is low on stock and has been automatically added to the reorder list!`);
+        await api.add(dataToSave);
       }
       cancelEdit();
       fetchData();
@@ -148,19 +145,55 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   const cancelEdit = () => {
     setEditingItemId(null);
     setNewItem({
-      name: '', itemCode: '', price: '', unit: '', supplierId: '',
+      name: '', itemCode: '', price: '', unit: '',
       currentStock: '', reorderLevel: '', standardStockLevel: '',
       requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
-      lastCountedInSessionId: '',
       associatedSkills: [],
     });
+    setSupplierPrices([]); // Clear prices on cancel
   };
-  const handleDelete = async (id) => { if (window.confirm("Are you sure?")) { await api.delete(id); fetchData(); } };
+
+  const handleDelete = async (id) => { 
+      if (window.confirm("Are you sure? This will delete the item and all its supplier pricing links.")) { 
+          await api.delete(id); 
+          fetchData(); 
+      } 
+  };
+  
+  // --- NEW HANDLERS FOR SUPPLIER PRICING ---
+  const handleAddSupplierPrice = async (supplierId, price) => {
+      if (!editingItemId || !supplierId || !price) {
+          alert("Please select a supplier and enter a price.");
+          return;
+      }
+      const supplier = suppliers.find(s => s.id === supplierId);
+      if (!supplier) return;
+
+      const priceData = {
+          itemId: editingItemId,
+          itemName: newItem.name,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          price: parseFloat(price)
+      };
+      await addSupplierPrice(priceData);
+      const prices = await getSupplierPricingForItem(editingItemId);
+      setSupplierPrices(prices);
+  };
+
+  const handleDeleteSupplierPrice = async (priceId) => {
+      if (window.confirm("Delete this supplier price link?")) {
+          await deleteSupplierPrice(priceId);
+          setSupplierPrices(prev => prev.filter(p => p.id !== priceId));
+      }
+  };
 
   return {
-    newItem, loading, editingItemId, displayedItems, sortBy, searchTerm, showLowStock, category,
+    newItem, loading, editingItemId, displayedItems, sortBy, searchTerm, showLowStock,
+    supplierPrices, // <-- Expose new state
     handleInputChange, handleSubmit, handleEdit, cancelEdit, handleDelete,
-    handleToggleSkillAssociation, handleAssociatedSkillChange, // Export new handlers
-    setSortBy, setSearchTerm, setShowLowStock, setCategory, getSupplierName
+    handleToggleSkillAssociation, handleAssociatedSkillChange,
+    handleAddSupplierPrice, handleDeleteSupplierPrice, // <-- Expose new handlers
+    setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };

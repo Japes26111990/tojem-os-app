@@ -1,11 +1,17 @@
+// src/components/features/stock/PurchaseQueue.jsx (Upgraded for Dynamic Supplier Quoting)
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { getPurchaseQueue, getSuppliers, markItemsAsOrdered } from '../../../api/firestore';
+import { getPurchaseQueue, getSuppliers, markItemsAsOrdered, getSupplierPricingForItem } from '../../../api/firestore';
 import Button from '../../ui/Button';
+import { ThumbsUp, Tag } from 'lucide-react';
+import Input from '../../ui/Input';
 
 const PurchaseQueue = ({ onOrderPlaced }) => {
   const [queuedItems, setQueuedItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [allPricing, setAllPricing] = useState({});
   const [orderQuantities, setOrderQuantities] = useState({});
+  const [selectedSuppliers, setSelectedSuppliers] = useState({});
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -14,6 +20,27 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
     const pendingItems = queue.filter(item => item.status === 'pending');
     setQueuedItems(pendingItems);
     setSuppliers(supplierList);
+
+    // Fetch all pricing info for all queued items
+    const pricingMap = {};
+    const pricingPromises = pendingItems.map(async (item) => {
+      const prices = await getSupplierPricingForItem(item.itemId);
+      pricingMap[item.itemId] = prices;
+    });
+    await Promise.all(pricingPromises);
+    setAllPricing(pricingMap);
+
+    // Pre-select the cheapest supplier for each item
+    const initialSelections = {};
+    pendingItems.forEach(item => {
+        const prices = pricingMap[item.itemId] || [];
+        if (prices.length > 0) {
+            const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+            initialSelections[item.itemId] = cheapest.supplierId;
+        }
+    });
+    setSelectedSuppliers(initialSelections);
+
     setLoading(false);
   };
 
@@ -25,18 +52,29 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
     setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
   };
 
-  const groupedBySupplier = useMemo(() => {
+  const handleSupplierSelection = (itemId, supplierId) => {
+    setSelectedSuppliers(prev => ({...prev, [itemId]: supplierId}));
+  };
+
+  // Group items by the *currently selected* supplier
+  const groupedBySelectedSupplier = useMemo(() => {
     const groups = {};
     queuedItems.forEach(item => {
-      const supplier = suppliers.find(s => s.id === item.supplierId);
-      if (!supplier) return;
-      if (!groups[supplier.id]) {
-        groups[supplier.id] = { supplierDetails: supplier, items: [] };
+      const selectedSupplierId = selectedSuppliers[item.itemId];
+      if (!selectedSupplierId) return; // Skip if no supplier is selected for this item
+
+      if (!groups[selectedSupplierId]) {
+        const supplierDetails = suppliers.find(s => s.id === selectedSupplierId);
+        if(supplierDetails) {
+            groups[selectedSupplierId] = { supplierDetails: supplierDetails, items: [] };
+        }
       }
-      groups[supplier.id].items.push(item);
+      if(groups[selectedSupplierId]) {
+        groups[selectedSupplierId].items.push(item);
+      }
     });
     return Object.values(groups).sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
-  }, [queuedItems, suppliers]);
+  }, [queuedItems, suppliers, selectedSuppliers]);
 
   const handleGenerateEmail = (group) => {
     const supplierEmail = group.supplierDetails.email || '';
@@ -55,55 +93,100 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
     const encodedBody = encodeURIComponent(body);
     window.location.href = `mailto:${supplierEmail}?subject=${subject}&body=${encodedBody}`;
 
-    const itemIdsToUpdate = group.items.map(item => item.id);
     markItemsAsOrdered(group.supplierDetails, group.items, orderQuantities).then(() => {
         alert("Items have been marked as ordered and removed from the queue.");
         fetchData();
         if(onOrderPlaced) onOrderPlaced();
     });
   };
+  
+  const getItemPricingOptions = (itemId) => {
+      return allPricing[itemId] || [];
+  };
 
   if (loading) return <p className="text-center text-gray-400">Loading purchase queue...</p>;
 
   return (
     <div className="space-y-6">
-      {groupedBySupplier.length === 0 && <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center text-gray-400">Your purchase queue is empty.</div>}
-      {groupedBySupplier.map(({ supplierDetails, items }) => (
-        <div key={supplierDetails.id} className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+      {queuedItems.length === 0 && <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center text-gray-400">Your purchase queue is empty.</div>}
+      
+      {/* Items to be ordered, now listed individually */}
+       {queuedItems.length > 0 && (
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-4">Items Requiring Purchase</h3>
+                <div className="space-y-4">
+                    {queuedItems.map(item => {
+                        const pricingOptions = getItemPricingOptions(item.itemId);
+                        const cheapestOption = pricingOptions.length > 0 ? pricingOptions.reduce((min, p) => p.price < min.price ? p : min) : null;
+                        const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+                        return (
+                            <div key={item.id} className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center bg-gray-900/50 p-4 rounded-lg">
+                                <div>
+                                    <p className="font-semibold text-white">{item.itemName}</p>
+                                    <p className="text-xs text-gray-400">{item.itemCode || 'No Code'}</p>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 block mb-1">Select Supplier</label>
+                                    <select 
+                                        value={selectedSuppliers[item.itemId] || ''}
+                                        onChange={(e) => handleSupplierSelection(item.itemId, e.target.value)}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
+                                    >
+                                        <option value="" disabled>Choose...</option>
+                                        {pricingOptions.map(p => (
+                                            <option key={p.id} value={p.supplierId}>
+                                                {p.supplierName} - R{p.price.toFixed(2)} {p.supplierId === cheapestOption?.supplierId ? ' (Best Price)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-400 text-center">Current: {item.currentStock}</p>
+                                    <p className="text-xs text-green-400 text-center">Recommended to order: {recommendedQty}</p>
+                                </div>
+                                <div>
+                                    <Input 
+                                        label="Order Qty"
+                                        type="number"
+                                        value={orderQuantities[item.id] || recommendedQty}
+                                        onChange={(e) => handleQuantityChange(item.id, e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        )}
+
+      {/* Grouped orders ready to be generated */}
+      {groupedBySelectedSupplier.map(({ supplierDetails, items }) => (
+        <div key={supplierDetails.id} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h3 className="text-xl font-bold text-white">{supplierDetails.name}</h3>
+              <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> Order for: {supplierDetails.name}</h3>
               <p className="text-sm text-gray-400">{supplierDetails.email}</p>
             </div>
-            <Button onClick={() => handleGenerateEmail({ supplierDetails, items })}>Generate Email Order</Button>
+            <Button onClick={() => handleGenerateEmail({ supplierDetails, items })}>Generate Email & Mark as Ordered</Button>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th className="p-2 text-sm font-semibold text-gray-400">Item</th>
-                  <th className="p-2 text-sm font-semibold text-gray-400 text-center">Current / Reorder</th>
-                  <th className="p-2 text-sm font-semibold text-gray-400 text-center">Recommended Qty</th>
-                  <th className="p-2 text-sm font-semibold text-gray-400 w-32">Order Qty</th>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-blue-400/30">
+                <tr>
+                  <th className="p-2 font-semibold text-gray-300">Item</th>
+                  <th className="p-2 font-semibold text-gray-300 text-center">Order Qty</th>
+                  <th className="p-2 font-semibold text-gray-300 text-right">Price</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => {
-                  const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+                    const pricing = allPricing[item.itemId]?.find(p => p.supplierId === supplierDetails.id);
+                    const orderQty = orderQuantities[item.id] || Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
                   return (
-                    <tr key={item.id} className="border-b border-gray-700">
+                    <tr key={item.id} className="border-b border-blue-400/20">
                       <td className="p-2 text-gray-200">{item.itemName}</td>
-                      <td className="p-2 text-gray-400 text-center">{item.currentStock} / {item.reorderLevel}</td>
-                      <td className="p-2 text-green-400 font-bold text-center">{recommendedQty}</td>
-                      <td className="p-2">
-                        {/* --- THIS IS THE CORRECTED PART --- */}
-                        <input 
-                          type="number" 
-                          value={orderQuantities[item.id] || recommendedQty} 
-                          onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                          className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </td>
+                      <td className="p-2 text-white font-bold text-center">{orderQty}</td>
+                      <td className="p-2 text-green-400 font-mono text-right">R {pricing ? pricing.price.toFixed(2) : 'N/A'}</td>
                     </tr>
                   )
                 })}

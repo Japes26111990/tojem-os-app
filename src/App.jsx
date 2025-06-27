@@ -34,7 +34,6 @@ function App() {
     <Router>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
-        {/* THE FIX IS HERE: path="*" instead of path="/*" */}
         <Route path="*" element={
             <ProtectedRoute>
               <MainLayout>

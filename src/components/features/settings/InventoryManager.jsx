@@ -1,13 +1,62 @@
-// FILE: src/components/features/settings/InventoryManager.jsx
+// src/components/features/settings/InventoryManager.jsx (Updated for Dynamic Supplier Pricing)
 
 import React, { useState, useEffect, useMemo } from 'react';
-// MODIFIED IMPORT: Removed specific update functions as they are handled by generic updateDocument via useInventoryManager's api prop
 import { getComponents, addComponent, deleteComponent, getRawMaterials, addRawMaterial, deleteRawMaterial, getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, getSuppliers, getSkills, updateDocument } from '../../../api/firestore';
 import { useInventoryManager } from '../../../hooks/useInventoryManager';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Search, Scale, Hash, Save, PlusCircle, Factory } from 'lucide-react'; // Import new icons
+import { Search, Scale, Hash, Save, PlusCircle, Factory, Trash2, DollarSign } from 'lucide-react';
+
+// New sub-component for managing supplier prices
+const SupplierPricingManager = ({ manager, suppliers }) => {
+    const [newPrice, setNewPrice] = useState('');
+    const [newSupplierId, setNewSupplierId] = useState('');
+
+    const handleAddClick = () => {
+        manager.handleAddSupplierPrice(newSupplierId, newPrice);
+        setNewPrice('');
+        setNewSupplierId('');
+    };
+    
+    // Filter out suppliers that are already linked to this item
+    const availableSuppliers = useMemo(() => {
+        const linkedSupplierIds = new Set(manager.supplierPrices.map(p => p.supplierId));
+        return suppliers.filter(s => !linkedSupplierIds.has(s.id));
+    }, [suppliers, manager.supplierPrices]);
+
+    return (
+        <div className="border-t border-gray-700 pt-4 mt-4">
+            <h4 className="text-lg font-semibold text-white mb-3">Supplier Pricing for "{manager.newItem.name}"</h4>
+            <div className="space-y-3 p-4 bg-gray-800 rounded-lg border border-gray-700">
+                {/* List of existing prices */}
+                <div className="space-y-2">
+                    {manager.supplierPrices.map(priceLink => (
+                        <div key={priceLink.id} className="flex items-center justify-between bg-gray-700 p-2 rounded-md">
+                            <span className="text-gray-200">{priceLink.supplierName}</span>
+                            <div className="flex items-center gap-3">
+                                <span className="font-mono text-green-400">R {priceLink.price.toFixed(2)}</span>
+                                <Button onClick={() => manager.handleDeleteSupplierPrice(priceLink.id)} variant="danger" size="sm" className="p-1 h-7 w-7"><Trash2 size={14} /></Button>
+                            </div>
+                        </div>
+                    ))}
+                    {manager.supplierPrices.length === 0 && <p className="text-xs text-gray-500 text-center">No suppliers linked yet.</p>}
+                </div>
+                {/* Form to add a new price */}
+                <div className="flex items-end gap-2 border-t border-gray-600 pt-3">
+                    <div className="flex-grow">
+                        <Dropdown label="Add Supplier" options={availableSuppliers} value={newSupplierId} onChange={e => setNewSupplierId(e.target.value)} placeholder="Select supplier..." />
+                    </div>
+                    <div className="w-32">
+                        <Input label="Price (R)" type="number" step="0.01" value={newPrice} onChange={e => setNewPrice(e.target.value)} placeholder="e.g., 15.50" />
+                    </div>
+                    <Button onClick={handleAddClick} variant="secondary"><PlusCircle size={16} className="mr-2"/>Add Price</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
     const stock = Number(currentStock);
@@ -61,7 +110,7 @@ const InventoryManager = () => {
     workshopSupplies: { get: getWorkshopSupplies, add: addWorkshopSupply, update: (id, data) => updateDocument('workshopSupplies', id, data), delete: deleteWorkshopSupply, categoryName: 'Workshop Supply' },
   }), []);
 
-  const manager = useInventoryManager(apiMap[category], suppliers, allSkills); // Pass allSkills
+  const manager = useInventoryManager(apiMap[category], suppliers, allSkills);
 
   const categoryInfo = {
     components: { desc: 'Discrete parts that go into the final product (e.g., bolts, screws, brackets).', placeholder: 'e.g., 8mm Bolt' },
@@ -82,11 +131,10 @@ const InventoryManager = () => {
       <p className="text-sm text-gray-400 mb-6">{categoryInfo[category].desc}</p>
       
       <form onSubmit={manager.handleSubmit} className="space-y-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
             <div className="lg:col-span-2"><Input label="Item Name" name="name" value={manager.newItem.name} onChange={manager.handleInputChange} placeholder={categoryInfo[category].placeholder} /></div>
-            <div className="lg:col-span-2"><Dropdown label="Supplier" name="supplierId" value={manager.newItem.supplierId} onChange={manager.handleInputChange} options={suppliers} placeholder="Select..." /></div>
             <Input label="Item Code" name="itemCode" value={manager.newItem.itemCode} onChange={manager.handleInputChange} placeholder="Optional" />
-            <Input label="Price" name="price" type="number" value={manager.newItem.price} onChange={manager.handleInputChange} placeholder="e.g., 12.50" />
+            <Input label="Default Price (fallback)" name="price" type="number" value={manager.newItem.price} onChange={manager.handleInputChange} placeholder="e.g., 12.50" />
             <Input label="Unit" name="unit" value={manager.newItem.unit} onChange={manager.handleInputChange} placeholder="e.g., each, kg" />
             <div className="grid grid-cols-3 gap-2">
                 <Input label="In Stock" name="currentStock" type="number" value={manager.newItem.currentStock} onChange={manager.handleInputChange} placeholder="50" />
@@ -121,7 +169,11 @@ const InventoryManager = () => {
             )}
         </div>
 
-        {/* NEW: Associated Skills Section for Inventory */}
+        {/* --- DYNAMIC SUPPLIER PRICING UI --- */}
+        {manager.editingItemId && (
+            <SupplierPricingManager manager={manager} suppliers={suppliers} />
+        )}
+
         {manager.newItem.name.trim() && (
             <div className="border-t border-gray-700 pt-4 mt-4">
                 <h4 className="text-lg font-semibold text-white mb-3">Associated Skills for "{manager.newItem.name}"</h4>
@@ -139,7 +191,7 @@ const InventoryManager = () => {
                                     <input
                                         type="checkbox"
                                         checked={isIncluded}
-                                        onChange={(e) => manager.handleToggleSkillAssociation(skill.id, e.target.checked)} // New handler
+                                        onChange={(e) => manager.handleToggleSkillAssociation(skill.id, e.target.checked)}
                                         className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
                                     />
                                     <label className="font-bold text-white flex-grow">{skill.name}</label>
@@ -182,7 +234,6 @@ const InventoryManager = () => {
                 </div>
             </div>
         )}
-        {/* END NEW: Associated Skills Section */}
 
         <div className="flex justify-end gap-2">
           {manager.editingItemId && <Button type="button" variant="secondary" onClick={manager.cancelEdit}>Cancel</Button>}
@@ -209,26 +260,22 @@ const InventoryManager = () => {
         </div>
       </div>
 
-      <div className="hidden md:grid grid-cols-6 gap-4 px-3 py-2 text-sm font-semibold text-gray-400 border-b border-gray-700">
-        <div className="col-span-2">Name</div>
-        <div>Supplier</div>
+      <div className="hidden md:grid grid-cols-5 gap-4 px-3 py-2 text-sm font-semibold text-gray-400 border-b border-gray-700">
+        <div className="col-span-3">Name</div>
         <div className="col-span-2">Stock Level</div>
-        <div>Actions</div>
       </div>
       <div className="space-y-3 mt-2">
         {manager.loading ? <p className="text-center p-4">Loading...</p> : (manager.displayedItems || []).map(item => (
-          <div key={item.id} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center bg-gray-700 p-3 rounded-lg">
-            <p className="font-semibold col-span-2 flex items-center gap-2">
+          <div key={item.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-center bg-gray-700 p-3 rounded-lg">
+            <p className="font-semibold col-span-3 flex items-center gap-2">
                 {item.stockTakeMethod === 'weight' ? <Scale size={14} className="text-gray-400" title="Counted by Weight"/> : <Hash size={14} className="text-gray-400" title="Counted by Quantity"/>}
                 {item.name}
                 {item.requiresCatalyst && <span className="text-xs bg-blue-500/50 text-blue-300 px-2 py-0.5 rounded-full" title="Requires Catalyst">C</span>}
                 {item.associatedSkills?.length > 0 && <Factory size={14} className="text-gray-400" title="Associated Skill(s)"/>}
             </p>
-            <p>{manager.getSupplierName(item.supplierId)}</p>
-            <div className="col-span-2"><StockLevelIndicator {...item} /></div>
-            <div className="flex items-center justify-end gap-2">
-              <Button onClick={() => manager.handleEdit(item)} variant="secondary" className="py-1 px-3 text-xs">Edit</Button>
-              <Button onClick={() => manager.handleDelete(item.id)} variant="danger" className="py-1 px-3 text-xs">Delete</Button>
+            <div className="col-span-2 flex items-center gap-4">
+                <div className="flex-grow"><StockLevelIndicator {...item} /></div>
+                <Button onClick={() => manager.handleEdit(item)} variant="secondary" className="py-1 px-3 text-xs">Manage</Button>
             </div>
           </div>
         ))}
