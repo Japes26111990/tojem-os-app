@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-    LayoutDashboard, HardHat, Package, Truck, BarChart3, 
-    FileText, CheckSquare, AlertTriangle, ScanLine, 
+import {
+    LayoutDashboard, HardHat, Package, Truck, BarChart3,
+    FileText, CheckSquare, AlertTriangle, ScanLine,
     Calendar as CalendarIcon, SlidersHorizontal, ChevronDown, ChevronRight,
     Briefcase, Banknote, BrainCircuit, DollarSign,
     Aperture, Calculator, NotebookText, Sun,
@@ -36,7 +36,7 @@ const Applet = ({ icon, text, children, isOpen }) => {
 // --- MODIFIED TO ACCEPT MOUSE EVENT HANDLERS ---
 const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     const { user } = useAuth();
-    const userRole = user?.role || ''; 
+    const userRole = user?.role || '';
 
     const navConfig = {
         dashboard: { roles: ['Manager', 'QC Inspector', 'Workshop Employee', 'Office Manager', 'Marketing'] },
@@ -53,20 +53,21 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
         payroll: { roles: ['Manager', 'Office Manager'] },
         settings: { roles: ['Manager'] },
         marketing: { roles: ['Manager', 'Marketing'] },
-        quotes: { roles: ['Manager', 'Office Manager', 'Marketing'] }
+        quotes: { roles: ['Manager', 'Office Manager', 'Marketing'] },
+        adjustment: { roles: ['Manager'] },
     };
-    
+
     const canSee = (navItem) => navConfig[navItem]?.roles.includes(userRole);
     if (userRole === 'Floor Tablet') return null;
 
     return (
-        <div 
+        <div
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             className={`bg-gray-800 border-r border-gray-700 p-2 flex flex-col transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'}`}
         >
             <div className="flex-grow overflow-y-auto">
-                
+
                 {canSee('dashboard') && <SidebarLink to="/" icon={<LayoutDashboard size={22} />} text="Dashboard" isOpen={isOpen} />}
 
                 <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
@@ -84,6 +85,7 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                     {canSee('jobCreator') && <SidebarLink to="/creator" icon={<FileText size={18} />} text="Job Creator" isOpen={isOpen} />}
                     {canSee('qc') && <SidebarLink to="/qc" icon={<CheckSquare size={18} />} text="Quality Control" isOpen={isOpen} />}
                     {canSee('issues') && <SidebarLink to="/issues" icon={<AlertTriangle size={18} />} text="Issues" isOpen={isOpen} />}
+                    {canSee('adjustment') && <SidebarLink to="/adjustment" icon={<SlidersHorizontal size={18} />} text="Job Card Adjustment" isOpen={isOpen} />}
                 </NavGroup>
 
                 {canSee('stock') && (
@@ -103,7 +105,7 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                 </NavGroup>
 
             </div>
-            
+
             <div className="flex-shrink-0 border-t border-gray-700 pt-2">
                 <NavGroup title="Tools & Applets" icon={<Aperture size={22} />} isOpen={isOpen}>
                     <Applet icon={<NotebookText size={18}/>} text="Scratchpad" isOpen={isOpen}><NotesApplet /></Applet>

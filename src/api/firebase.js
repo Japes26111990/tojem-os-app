@@ -1,6 +1,9 @@
+// src/api/firebase.js
+
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions'; // Import getFunctions
 
 // Your web app's Firebase configuration from the .env.local file
 const firebaseConfig = {
@@ -18,5 +21,6 @@ const app = initializeApp(firebaseConfig);
 // Initialize and export Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app); // Initialize and export getFunctions
 
 export default app;

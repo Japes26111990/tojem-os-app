@@ -1,5 +1,3 @@
-// src/api/firestore.js (Consolidated & Updated for Dynamic Supplier Pricing)
-
 import {
     collection,
     getDocs,
@@ -17,9 +15,10 @@ import {
     setDoc,
     runTransaction,
     increment,
-    limit,
+    limit
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, functions } from './firebase';
+import { httpsCallable } from 'firebase/functions'; // THIS IS THE CORRECT IMPORT FOR httpsCallable
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -295,7 +294,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
             orderDate: orderDate,
             expectedArrivalDate: expectedArrivalDate,
             orderedQty: Number(orderQty),
-            orderedFromSupplierId: supplier.id, 
+            orderedFromSupplierId: supplier.id,
             orderedFromSupplierName: supplier.name
         });
     });
@@ -594,26 +593,26 @@ export const deleteUserWithRole = async (userId) => {
 // --- MARKETING & SALES API FUNCTIONS ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
 export const getCampaigns = async () => {
-  const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addCampaign = (campaignData) => {
-  return addDoc(marketingCampaignsCollection, {
-    ...campaignData,
-    leadsGenerated: 0,
-    createdAt: serverTimestamp()
-  });
+    return addDoc(marketingCampaignsCollection, {
+        ...campaignData,
+        leadsGenerated: 0,
+        createdAt: serverTimestamp()
+    });
 };
 export const updateCampaign = (campaignId, updatedData) => {
-  const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
-  if (updatedData.leadsGenerated !== undefined) {
-      updatedData.leadsGenerated = Number(updatedData.leadsGenerated) || 0;
-  }
-  return updateDoc(campaignDoc, updatedData);
+    const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
+    if (updatedData.leadsGenerated !== undefined) {
+        updatedData.leadsGenerated = Number(updatedData.leadsGenerated) || 0;
+    }
+    return updateDoc(campaignDoc, updatedData);
 };
 export const deleteCampaign = (campaignId) => {
-  const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
-  return deleteDoc(campaignDoc);
+    const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
+    return deleteDoc(campaignDoc);
 };
 
 // --- TRAINING RESOURCES API ---
@@ -664,6 +663,19 @@ export const giveKudosToJob = (jobId) => {
     return updateDoc(jobDocRef, {
         kudos: true
     });
+};
+
+// --- JOB CARD ADJUSTMENT API ---
+export const updateJobCardWithAdjustments = (jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId) => {
+    const updateFn = httpsCallable(functions, 'updateJobCardWithAdjustments');
+    return updateFn({ jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId });
+};
+
+// --- FETCH JOBS AWAITING QC ---
+export const getJobsAwaitingQC = async () => {
+    const q = query(jobCardsCollection, where('status', '==', 'Awaiting QC'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
