@@ -1,13 +1,16 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 06/28/2025 10:41:31
+Generated on: 06/30/2025 11:28:16
 
 
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firebase.js
 ==================================================
+// src/api/firebase.js
+
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions'; // Import getFunctions
 
 // Your web app's Firebase configuration from the .env.local file
 const firebaseConfig = {
@@ -25,6 +28,7 @@ const app = initializeApp(firebaseConfig);
 // Initialize and export Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app); // Initialize and export getFunctions
 
 export default app;
 
@@ -32,8 +36,6 @@ export default app;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firestore.js
 ==================================================
-// src/api/firestore.js (Consolidated & Updated for Dynamic Supplier Pricing)
-
 import {
     collection,
     getDocs,
@@ -51,9 +53,10 @@ import {
     setDoc,
     runTransaction,
     increment,
-    limit,
+    limit
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, functions } from './firebase';
+import { httpsCallable } from 'firebase/functions'; // THIS IS THE CORRECT IMPORT FOR httpsCallable
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -329,7 +332,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
             orderDate: orderDate,
             expectedArrivalDate: expectedArrivalDate,
             orderedQty: Number(orderQty),
-            orderedFromSupplierId: supplier.id, 
+            orderedFromSupplierId: supplier.id,
             orderedFromSupplierName: supplier.name
         });
     });
@@ -628,26 +631,26 @@ export const deleteUserWithRole = async (userId) => {
 // --- MARKETING & SALES API FUNCTIONS ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
 export const getCampaigns = async () => {
-  const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 export const addCampaign = (campaignData) => {
-  return addDoc(marketingCampaignsCollection, {
-    ...campaignData,
-    leadsGenerated: 0,
-    createdAt: serverTimestamp()
-  });
+    return addDoc(marketingCampaignsCollection, {
+        ...campaignData,
+        leadsGenerated: 0,
+        createdAt: serverTimestamp()
+    });
 };
 export const updateCampaign = (campaignId, updatedData) => {
-  const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
-  if (updatedData.leadsGenerated !== undefined) {
-      updatedData.leadsGenerated = Number(updatedData.leadsGenerated) || 0;
-  }
-  return updateDoc(campaignDoc, updatedData);
+    const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
+    if (updatedData.leadsGenerated !== undefined) {
+        updatedData.leadsGenerated = Number(updatedData.leadsGenerated) || 0;
+    }
+    return updateDoc(campaignDoc, updatedData);
 };
 export const deleteCampaign = (campaignId) => {
-  const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
-  return deleteDoc(campaignDoc);
+    const campaignDoc = doc(db, 'marketingCampaigns', campaignId);
+    return deleteDoc(campaignDoc);
 };
 
 // --- TRAINING RESOURCES API ---
@@ -700,9 +703,21 @@ export const giveKudosToJob = (jobId) => {
     });
 };
 
+// --- JOB CARD ADJUSTMENT API ---
+export const updateJobCardWithAdjustments = (jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId) => {
+    const updateFn = httpsCallable(functions, 'updateJobCardWithAdjustments');
+    return updateFn({ jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId });
+};
+
+// --- FETCH JOBS AWAITING QC ---
+export const getJobsAwaitingQC = async () => {
+    const q = query(jobCardsCollection, where('status', '==', 'Awaiting QC'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };
-
 
 
 ==================================================
@@ -1978,6 +1993,233 @@ export default JobCardCreator;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\StandardJobCreatorModal.jsx
+==================================================
+// src/components/features/job_cards/StandardJobCreatorModal.jsx (CORRECTED & ENHANCED)
+
+import React, { useState, useEffect } from 'react';
+import { getDepartments, getEmployees, addJobCard, getRecipeForProductDepartment, getProducts, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
+import { processConsumables } from '../../../utils/jobUtils';
+import Dropdown from '../../ui/Dropdown';
+import Button from '../../ui/Button';
+import { X, Package } from 'lucide-react';
+import QRCode from 'qrcode';
+
+const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
+    const [departments, setDepartments] = useState([]);
+    const [employees, setEmployees] = useState([]);
+    const [allProducts, setAllProducts] = useState([]);
+    const [allInventory, setAllInventory] = useState([]);
+    const [allTools, setAllTools] = useState([]);
+    const [allAccessories, setAllAccessories] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [selection, setSelection] = useState({ departmentId: '', employeeId: '' });
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [depts, emps, prods, inventory, tools, accessories] = await Promise.all([
+                    getDepartments(), 
+                    getEmployees(), 
+                    getProducts(),
+                    getAllInventoryItems(),
+                    getTools(),
+                    getToolAccessories()
+                ]);
+                setDepartments(depts);
+                setEmployees(emps);
+                setAllProducts(prods);
+                setAllInventory(inventory);
+                setAllTools(tools);
+                setAllAccessories(accessories);
+            } catch (error) {
+                alert("Failed to load necessary data for job creation.");
+                console.error(error);
+            }
+            setLoading(false);
+        };
+        fetchData();
+    }, []);
+
+    const handleSelectionChange = (e) => {
+        const { name, value } = e.target;
+        setSelection(prev => ({...prev, [name]: value}));
+    };
+
+    const handleSubmit = async () => {
+        if (!selection.departmentId) {
+            return alert("Please select a department.");
+        }
+        
+        const product = allProducts.find(p => p.id === lineItem.productId);
+        if (!product) {
+            return alert("Could not find the product details for this line item.");
+        }
+        
+        const recipe = await getRecipeForProductDepartment(lineItem.productId, selection.departmentId);
+        if (!recipe) {
+            return alert(`No recipe found for "${product.name}" in the selected department. Please define one in Settings first.`);
+        }
+        
+        const department = departments.find(d => d.id === selection.departmentId);
+        const employee = employees.find(e => e.id === selection.employeeId);
+        const newJobId = `JOB-${Date.now()}`;
+
+        const toolsForJobCard = allTools.filter(t => (recipe.tools || []).includes(t.id));
+        const accessoriesForJobCard = allAccessories.filter(a => (recipe.accessories || []).includes(a.id));
+        const processedConsumables = processConsumables(recipe.consumables, allInventory, 20);
+
+        const finalJobData = {
+            jobId: newJobId,
+            partName: product.name,
+            partId: product.id,
+            departmentId: selection.departmentId,
+            departmentName: department?.name || 'Unknown',
+            employeeId: selection.employeeId || 'unassigned',
+            employeeName: employee?.name || 'Unassigned',
+            status: 'Pending',
+            description: recipe.description,
+            estimatedTime: recipe.estimatedTime,
+            steps: recipe.steps.map(s => s.text || s),
+            tools: toolsForJobCard,
+            accessories: accessoriesForJobCard,
+            consumables: recipe.consumables,
+            processedConsumables: processedConsumables,
+            isCustomJob: false,
+            salesOrderId: salesOrder.id,
+            requiredSkills: recipe.requiredSkills || [],
+        };
+        
+        try {
+            const qrCodeDataUrl = await QRCode.toDataURL(newJobId, { width: 80 });
+
+            await addJobCard(finalJobData);
+            alert(`Job card created successfully for ${product.name}!`);
+            
+            // --- UPDATED: Full print logic to match other job cards ---
+            const imageSection = product.photoUrl
+                ? `<img src="${product.photoUrl}" alt="${product.name}" style="width: 100%; height: 200px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />`
+                : `<div style="border-radius: 8px; width: 100%; height: 200px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image Available</span></div>`;
+
+            const printContents = `
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                        <div>
+                            <h1 style="font-size: 28px; font-weight: bold; margin: 0;">Job Card</h1>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${finalJobData.partName}</span></p>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${finalJobData.departmentName}</span></p>
+                        </div>
+                        <div style="text-align: right;">
+                            <img src="${qrCodeDataUrl}" alt="QR Code" style="margin-bottom: 5px;"/>
+                            <p style="font-size: 10px; color: #999; margin: 0;">${newJobId}</p>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                        <div>
+                            ${imageSection}
+                            <div style="font-size: 13px; line-height: 1.6;">
+                                <p style="margin: 0;"><b>Employee:</b> ${finalJobData.employeeName}</p>
+                                <p style="margin: 0;"><b>Est. Time:</b> ${finalJobData.estimatedTime || 'N/A'} mins</p>
+                                <p style="margin: 0;"><b>Description:</b> ${finalJobData.description || 'No description.'}</p>
+                            </div>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            <div>
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Tools & Accessories</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${finalJobData.tools?.length > 0 ? finalJobData.tools.map(tool => `<li>${tool.name}</li>`).join('') : '<li>No tools required.</li>'}
+                                    ${finalJobData.accessories?.length > 0 ? finalJobData.accessories.map(acc => `<li style="margin-left: 15px;">${acc.name}</li>`).join('') : ''}
+                                </ul>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${finalJobData.processedConsumables?.length > 0 ? finalJobData.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity.toFixed(2)} ${c.unit}</li>`).join('') : '<li>No consumables required.</li>'}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                     <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Steps</h3>
+                        <ol style="list-style: decimal; padding-left: 20px; margin: 0;">
+                            ${finalJobData.steps?.length > 0 ? finalJobData.steps.map(step => `<li>${step}</li>`).join('') : '<li>No steps defined.</li>'}
+                        </ol>
+                    </div>
+                </div>
+            `;
+            
+            const printWindow = window.open('', '_blank', 'height=800,width=1000');
+            if (printWindow) {
+                printWindow.document.write(`<html><head><title>Job Card ${newJobId}</title></head><body>${printContents}</body></html>`);
+                printWindow.document.close();
+                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+            }
+
+            onClose();
+        } catch (error) {
+            console.error("Error creating job card:", error);
+            alert("Failed to create job card.");
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+                 <div className="relative bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-lg">
+                    <p className="text-center text-white">Loading data...</p>
+                 </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="relative bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-lg">
+                <Button onClick={onClose} variant="danger" className="absolute -top-3 -right-3 z-10 rounded-full h-8 w-8 p-1">
+                    <X size={16}/>
+                </Button>
+                
+                <div className="flex items-center gap-3 mb-4">
+                    <Package size={24} className="text-blue-400" />
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Create Standard Job</h3>
+                        <p className="text-gray-300">For Product: {lineItem.description}</p>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <Dropdown
+                        label="Assign to Department"
+                        name="departmentId"
+                        value={selection.departmentId}
+                        onChange={handleSelectionChange}
+                        options={departments}
+                        placeholder="Select a department..."
+                    />
+                    <Dropdown
+                        label="Assign to Employee (Optional)"
+                        name="employeeId"
+                        value={selection.employeeId}
+                        onChange={handleSelectionChange}
+                        options={employees.filter(e => e.departmentId === selection.departmentId)}
+                        placeholder="Select an employee..."
+                        disabled={!selection.departmentId}
+                    />
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                    <Button onClick={handleSubmit} variant="primary">Generate Job Card & Print</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default StandardJobCreatorModal;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\PermanentPayroll.jsx
 ==================================================
 // src/components/features/payroll/PermanentPayroll.jsx (Final Correct Version)
@@ -2613,6 +2855,91 @@ export default AddCustomWorkModal;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddPurchasedItemModal.jsx
+==================================================
+// src/components/features/quotes/AddPurchasedItemModal.jsx (New File)
+
+import React, { useState } from 'react';
+import Button from '../../ui/Button';
+import Input from '../../ui/Input';
+import { X, ShoppingBag } from 'lucide-react';
+
+const AddPurchasedItemModal = ({ onClose, onAdd }) => {
+    const [description, setDescription] = useState('');
+    const [estimatedCost, setEstimatedCost] = useState('');
+    const [quantity, setQuantity] = useState(1);
+
+    const handleAddItemToQuote = () => {
+        if (!description || !estimatedCost || !quantity) {
+            return alert("Please provide a description, estimated cost, and quantity.");
+        }
+        if (parseFloat(estimatedCost) <= 0 || parseInt(quantity, 10) <= 0) {
+            return alert("Cost and quantity must be greater than zero.");
+        }
+
+        // Add the item to the quote's line items
+        // We add 'isPurchasedItem: true' to identify it later
+        onAdd({
+            description,
+            cost: parseFloat(estimatedCost) * parseInt(quantity, 10), // The total cost for the quantity
+            isPurchasedItem: true,
+            quantity: parseInt(quantity, 10),
+            unitCost: parseFloat(estimatedCost)
+        });
+
+        onClose();
+    };
+
+    return (
+        <div onClick={onClose} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div onClick={(e) => e.stopPropagation()} className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-lg max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <ShoppingBag /> Add Purchased Item to Quote
+                    </h2>
+                    <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <Input 
+                        label="Item Description" 
+                        placeholder="e.g., 2x Hella Spotlights" 
+                        value={description} 
+                        onChange={e => setDescription(e.target.value)} 
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input 
+                            label="Estimated Cost (per item)" 
+                            type="number" 
+                            placeholder="e.g., 1500" 
+                            value={estimatedCost} 
+                            onChange={e => setEstimatedCost(e.target.value)} 
+                        />
+                        <Input 
+                            label="Quantity" 
+                            type="number" 
+                            placeholder="e.g., 1" 
+                            value={quantity} 
+                            onChange={e => setQuantity(e.target.value)} 
+                        />
+                    </div>
+                     <p className="text-xs text-gray-400">
+                        This is for items you will buy specifically for this job. The cost you enter here is an estimate for the quote. You will confirm the actual price later.
+                    </p>
+                </div>
+
+                <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-end">
+                    <Button onClick={handleAddItemToQuote} variant="primary">Add to Quote</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default AddPurchasedItemModal;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\QuoteCreator.jsx
 ==================================================
 // src/components/features/quotes/QuoteCreator.jsx (Final Version)
@@ -3020,6 +3347,220 @@ const CampaignManager = () => {
 
 export default CampaignManager;
 
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ComponentsManager.jsx
+==================================================
+// src/components/features/settings/ComponentsManager.jsx
+
+import React, { useState, useEffect } from 'react';
+import { getComponents, addComponent, deleteComponent, updateDocument, getSuppliers } from '../../../api/firestore';
+import Button from '../../ui/Button';
+import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
+
+const ComponentsManager = () => {
+    const [components, setComponents] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [formData, setFormData] = useState({
+        name: '',
+        itemCode: '',
+        supplierId: '',
+        price: '',
+        unit: 'Each',
+        currentStock: '',
+        reorderLevel: '',
+        standardStockLevel: '',
+        // NEW: Add new fields to the form state
+        countMethod: 'Quantity', // Default to Quantity
+        containerWeight: '',
+        unitWeight: '',
+    });
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [fetchedComponents, fetchedSuppliers] = await Promise.all([getComponents(), getSuppliers()]);
+        setComponents(fetchedComponents);
+        setSuppliers(fetchedSuppliers);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.name || !formData.supplierId) {
+            alert("Please provide a name and select a supplier.");
+            return;
+        }
+        try {
+            await addComponent(formData);
+            alert('Component added successfully!');
+            setFormData({
+                name: '', itemCode: '', supplierId: '', price: '', unit: 'Each',
+                currentStock: '', reorderLevel: '', standardStockLevel: '',
+                countMethod: 'Quantity', containerWeight: '', unitWeight: '' // Reset new fields
+            });
+            fetchData();
+        } catch (error) {
+            alert('Failed to add component.');
+            console.error(error);
+        }
+    };
+    
+    const handleUpdate = async (id, updatedData) => {
+        try {
+            await updateDocument('components', id, updatedData);
+            fetchData(); // Refresh data
+        } catch (error) {
+            console.error("Failed to update component: ", error);
+        }
+    };
+
+
+    const handleDelete = async (id) => {
+        if (window.confirm("Are you sure you want to delete this component?")) {
+            try {
+                await deleteComponent(id);
+                alert('Component deleted successfully!');
+                fetchData();
+            } catch (error) {
+                alert('Failed to delete component.');
+                console.error(error);
+            }
+        }
+    };
+
+    if (isLoading) return <p>Loading components...</p>;
+
+    return (
+        <div className="space-y-6">
+            <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg space-y-4">
+                <h3 className="text-lg font-bold text-white">Add New Component</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Input name="name" label="Component Name" value={formData.name} onChange={handleInputChange} placeholder="e.g., Mounting Bracket" />
+                    <Input name="itemCode" label="Item Code" value={formData.itemCode} onChange={handleInputChange} placeholder="e.g., MB-001" />
+                    <Dropdown name="supplierId" label="Supplier" value={formData.supplierId} onChange={handleInputChange} options={suppliers} placeholder="Select Supplier" />
+                    <Input name="price" label="Price" type="number" value={formData.price} onChange={handleInputChange} placeholder="e.g., 150.00" />
+                    <Input name="unit" label="Unit of Measure" value={formData.unit} onChange={handleInputChange} placeholder="e.g., Each, Box" />
+                    <Input name="currentStock" label="In Stock" type="number" value={formData.currentStock} onChange={handleInputChange} placeholder="e.g., 100" />
+                    <Input name="reorderLevel" label="Re-order At" type="number" value={formData.reorderLevel} onChange={handleInputChange} placeholder="e.g., 20" />
+                    <Input name="standardStockLevel" label="Standard Stock Level" type="number" value={formData.standardStockLevel} onChange={handleInputChange} placeholder="e.g., 120" />
+                    
+                    {/* NEW: Fields for Count Method */}
+                    <Dropdown 
+                        name="countMethod" 
+                        label="Count Method" 
+                        value={formData.countMethod} 
+                        onChange={handleInputChange}
+                    >
+                        <option value="Quantity">Quantity</option>
+                        <option value="Weight">Weight</option>
+                    </Dropdown>
+                    
+                    {/* NEW: Conditional fields for Weight */}
+                    {formData.countMethod === 'Weight' && (
+                        <>
+                            <Input name="containerWeight" label="Container Weight (g)" type="number" value={formData.containerWeight} onChange={handleInputChange} placeholder="e.g., 50" />
+                            <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={formData.unitWeight} onChange={handleInputChange} placeholder="e.g., 2.5" />
+                        </>
+                    )}
+                </div>
+                <Button type="submit" variant="primary">Add Component</Button>
+            </form>
+
+            <div className="bg-gray-800 p-4 rounded-lg">
+                <h3 className="text-lg font-bold text-white mb-4">Existing Components</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="text-xs text-gray-400 uppercase bg-gray-700">
+                            <tr>
+                                <th className="p-2">Name</th>
+                                <th className="p-2">Code</th>
+                                <th className="p-2">In Stock</th>
+                                <th className="p-2">Count Method</th>
+                                <th className="p-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {components.map(comp => (
+                                <EditableComponentRow 
+                                    key={comp.id} 
+                                    component={comp} 
+                                    suppliers={suppliers}
+                                    onUpdate={handleUpdate}
+                                    onDelete={handleDelete} 
+                                />
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// A new sub-component to make the rows editable
+const EditableComponentRow = ({ component, suppliers, onUpdate, onDelete }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState(component);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setEditData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSave = () => {
+        onUpdate(component.id, editData);
+        setIsEditing(false);
+    };
+
+    if (!isEditing) {
+        return (
+            <tr className="border-b border-gray-700">
+                <td className="p-2 text-white">{component.name}</td>
+                <td className="p-2">{component.itemCode}</td>
+                <td className="p-2">{component.currentStock}</td>
+                <td className="p-2">{component.countMethod || 'Quantity'}</td>
+                <td className="p-2 flex gap-2">
+                    <Button onClick={() => setIsEditing(true)} size="sm">Edit</Button>
+                    <Button onClick={() => onDelete(component.id)} variant="danger" size="sm">Delete</Button>
+                </td>
+            </tr>
+        )
+    }
+
+    // Editing View
+    return (
+        <tr className="bg-gray-900">
+            <td className="p-2"><Input name="name" value={editData.name} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="itemCode" value={editData.itemCode} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="currentStock" type="number" value={editData.currentStock} onChange={handleInputChange} /></td>
+            <td className="p-2">
+                <Dropdown name="countMethod" value={editData.countMethod} onChange={handleInputChange}>
+                    <option value="Quantity">Quantity</option>
+                    <option value="Weight">Weight</option>
+                </Dropdown>
+            </td>
+            <td className="p-2 flex gap-2">
+                <Button onClick={handleSave} variant="success" size="sm">Save</Button>
+                <Button onClick={() => setIsEditing(false)} variant="secondary" size="sm">Cancel</Button>
+            </td>
+        </tr>
+    );
+}
+
+export default ComponentsManager;
 
 
 ==================================================
@@ -4382,6 +4923,215 @@ export default OverheadsManager;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RawMaterialsManager.jsx
+==================================================
+import React, { useState, useEffect } from 'react';
+import { getRawMaterials, addRawMaterial, deleteRawMaterial, getSuppliers, updateDocument } from '../../../api/firestore';
+import Button from '../../ui/Button';
+import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
+
+const RawMaterialsManager = () => {
+    const [materials, setMaterials] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [formData, setFormData] = useState({
+        name: '',
+        itemCode: '',
+        supplierId: '',
+        price: '',
+        unit: 'kg',
+        currentStock: '',
+        reorderLevel: '',
+        standardStockLevel: '',
+        // NEW: Add new fields to the form state
+        countMethod: 'Weight', // Default to Weight for materials
+        containerWeight: '',
+        unitWeight: '',
+    });
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [fetchedMaterials, fetchedSuppliers] = await Promise.all([getRawMaterials(), getSuppliers()]);
+        setMaterials(fetchedMaterials);
+        setSuppliers(fetchedSuppliers);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.name || !formData.supplierId) {
+            alert("Please provide a name and select a supplier.");
+            return;
+        }
+        try {
+            await addRawMaterial(formData);
+            alert('Raw material added successfully!');
+            setFormData({
+                name: '', itemCode: '', supplierId: '', price: '', unit: 'kg',
+                currentStock: '', reorderLevel: '', standardStockLevel: '',
+                countMethod: 'Weight', containerWeight: '', unitWeight: '' // Reset new fields
+            });
+            fetchData();
+        } catch (error) {
+            alert('Failed to add raw material.');
+            console.error(error);
+        }
+    };
+
+    const handleUpdate = async (id, updatedData) => {
+        try {
+            await updateDocument('rawMaterials', id, updatedData);
+            fetchData();
+        } catch (error) {
+            console.error("Failed to update raw material: ", error);
+        }
+    };
+    
+    const handleDelete = async (id) => {
+        if (window.confirm("Are you sure you want to delete this raw material?")) {
+            try {
+                await deleteRawMaterial(id);
+                alert('Raw material deleted successfully!');
+                fetchData();
+            } catch (error) {
+                alert('Failed to delete raw material.');
+                console.error(error);
+            }
+        }
+    };
+
+    if (isLoading) return <p>Loading raw materials...</p>;
+
+    return (
+        <div className="space-y-6">
+            <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg space-y-4">
+                <h3 className="text-lg font-bold text-white">Add New Raw Material</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Input name="name" label="Material Name" value={formData.name} onChange={handleInputChange} placeholder="e.g., Mild Steel Sheet" />
+                    <Input name="itemCode" label="Item Code" value={formData.itemCode} onChange={handleInputChange} placeholder="e.g., STL-001" />
+                    <Dropdown name="supplierId" label="Supplier" value={formData.supplierId} onChange={handleInputChange} options={suppliers} placeholder="Select Supplier" />
+                    <Input name="price" label="Price" type="number" value={formData.price} onChange={handleInputChange} placeholder="e.g., 25.50" />
+                    <Input name="unit" label="Unit of Measure" value={formData.unit} onChange={handleInputChange} placeholder="e.g., kg, meter" />
+                    <Input name="currentStock" label="In Stock" type="number" value={formData.currentStock} onChange={handleInputChange} placeholder="e.g., 500" />
+                    <Input name="reorderLevel" label="Re-order At" type="number" value={formData.reorderLevel} onChange={handleInputChange} placeholder="e.g., 100" />
+                    <Input name="standardStockLevel" label="Standard Stock Level" type="number" value={formData.standardStockLevel} onChange={handleInputChange} placeholder="e.g., 600" />
+                    
+                    {/* NEW: Fields for Count Method */}
+                    <Dropdown 
+                        name="countMethod" 
+                        label="Count Method" 
+                        value={formData.countMethod} 
+                        onChange={handleInputChange}
+                    >
+                        <option value="Quantity">Quantity</option>
+                        <option value="Weight">Weight</option>
+                    </Dropdown>
+                    
+                    {/* NEW: Conditional fields for Weight */}
+                    {formData.countMethod === 'Weight' && (
+                        <>
+                            <Input name="containerWeight" label="Container Weight (g)" type="number" value={formData.containerWeight} onChange={handleInputChange} placeholder="e.g., 50" />
+                            <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={formData.unitWeight} onChange={handleInputChange} placeholder="e.g., 1" />
+                        </>
+                    )}
+                </div>
+                <Button type="submit" variant="primary">Add Raw Material</Button>
+            </form>
+
+            <div className="bg-gray-800 p-4 rounded-lg">
+                 <h3 className="text-lg font-bold text-white mb-4">Existing Raw Materials</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                         <thead className="text-xs text-gray-400 uppercase bg-gray-700">
+                            <tr>
+                                <th className="p-2">Name</th>
+                                <th className="p-2">Code</th>
+                                <th className="p-2">In Stock</th>
+                                <th className="p-2">Count Method</th>
+                                <th className="p-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {materials.map(mat => (
+                                <EditableMaterialRow 
+                                    key={mat.id} 
+                                    material={mat} 
+                                    onUpdate={handleUpdate}
+                                    onDelete={handleDelete} 
+                                />
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// A new sub-component to make the rows editable
+const EditableMaterialRow = ({ material, onUpdate, onDelete }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState(material);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setEditData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSave = () => {
+        onUpdate(material.id, editData);
+        setIsEditing(false);
+    };
+
+    if (!isEditing) {
+        return (
+            <tr className="border-b border-gray-700">
+                <td className="p-2 text-white">{material.name}</td>
+                <td className="p-2">{material.itemCode}</td>
+                <td className="p-2">{material.currentStock}</td>
+                <td className="p-2">{material.countMethod || 'Weight'}</td>
+                <td className="p-2 flex gap-2">
+                    <Button onClick={() => setIsEditing(true)} size="sm">Edit</Button>
+                    <Button onClick={() => onDelete(material.id)} variant="danger" size="sm">Delete</Button>
+                </td>
+            </tr>
+        )
+    }
+
+    // Editing View
+    return (
+        <tr className="bg-gray-900">
+            <td className="p-2"><Input name="name" value={editData.name} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="itemCode" value={editData.itemCode} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="currentStock" type="number" value={editData.currentStock} onChange={handleInputChange} /></td>
+            <td className="p-2">
+                <Dropdown name="countMethod" value={editData.countMethod} onChange={handleInputChange}>
+                    <option value="Quantity">Quantity</option>
+                    <option value="Weight">Weight</option>
+                </Dropdown>
+            </td>
+            <td className="p-2 flex gap-2">
+                <Button onClick={handleSave} variant="success" size="sm">Save</Button>
+                <Button onClick={() => setIsEditing(false)} variant="secondary" size="sm">Cancel</Button>
+            </td>
+        </tr>
+    );
+}
+
+export default RawMaterialsManager;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ReworkReasonsManager.jsx
 ==================================================
 // src/components/features/settings/ReworkReasonsManager.jsx (New File)
@@ -5513,6 +6263,215 @@ export default UnifiedProductManager;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\WorkshopSuppliesManager.jsx
+==================================================
+import React, { useState, useEffect } from 'react';
+import { getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, getSuppliers, updateDocument } from '../../../api/firestore';
+import Button from '../../ui/Button';
+import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
+
+const WorkshopSuppliesManager = () => {
+    const [supplies, setSupplies] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [formData, setFormData] = useState({
+        name: '',
+        itemCode: '',
+        supplierId: '',
+        price: '',
+        unit: 'Each',
+        currentStock: '',
+        reorderLevel: '',
+        standardStockLevel: '',
+        // NEW: Add new fields to the form state
+        countMethod: 'Quantity', // Default to Quantity
+        containerWeight: '',
+        unitWeight: '',
+    });
+    
+    const fetchData = async () => {
+        setIsLoading(true);
+        const [fetchedSupplies, fetchedSuppliers] = await Promise.all([getWorkshopSupplies(), getSuppliers()]);
+        setSupplies(fetchedSupplies);
+        setSuppliers(fetchedSuppliers);
+        setIsLoading(false);
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.name || !formData.supplierId) {
+            alert("Please provide a name and select a supplier.");
+            return;
+        }
+        try {
+            await addWorkshopSupply(formData);
+            alert('Supply added successfully!');
+            setFormData({
+                name: '', itemCode: '', supplierId: '', price: '', unit: 'Each',
+                currentStock: '', reorderLevel: '', standardStockLevel: '',
+                countMethod: 'Quantity', containerWeight: '', unitWeight: '' // Reset new fields
+            });
+            fetchData();
+        } catch (error) {
+            alert('Failed to add supply.');
+            console.error(error);
+        }
+    };
+    
+    const handleUpdate = async (id, updatedData) => {
+        try {
+            await updateDocument('workshopSupplies', id, updatedData);
+            fetchData();
+        } catch (error) {
+            console.error("Failed to update supply: ", error);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm("Are you sure you want to delete this supply?")) {
+            try {
+                await deleteWorkshopSupply(id);
+                alert('Supply deleted successfully!');
+                fetchData();
+            } catch (error) {
+                alert('Failed to delete supply.');
+                console.error(error);
+            }
+        }
+    };
+
+    if (isLoading) return <p>Loading supplies...</p>;
+
+    return (
+        <div className="space-y-6">
+            <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg space-y-4">
+                <h3 className="text-lg font-bold text-white">Add New Workshop Supply</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Input name="name" label="Supply Name" value={formData.name} onChange={handleInputChange} placeholder="e.g., Sanding Discs" />
+                    <Input name="itemCode" label="Item Code" value={formData.itemCode} onChange={handleInputChange} placeholder="e.g., SD-120" />
+                    <Dropdown name="supplierId" label="Supplier" value={formData.supplierId} onChange={handleInputChange} options={suppliers} placeholder="Select Supplier" />
+                    <Input name="price" label="Price" type="number" value={formData.price} onChange={handleInputChange} placeholder="e.g., 5.00" />
+                    <Input name="unit" label="Unit of Measure" value={formData.unit} onChange={handleInputChange} placeholder="e.g., Box of 100" />
+                    <Input name="currentStock" label="In Stock" type="number" value={formData.currentStock} onChange={handleInputChange} placeholder="e.g., 50" />
+                    <Input name="reorderLevel" label="Re-order At" type="number" value={formData.reorderLevel} onChange={handleInputChange} placeholder="e.g., 10" />
+                    <Input name="standardStockLevel" label="Standard Stock Level" type="number" value={formData.standardStockLevel} onChange={handleInputChange} placeholder="e.g., 60" />
+                    
+                    {/* NEW: Fields for Count Method */}
+                    <Dropdown 
+                        name="countMethod" 
+                        label="Count Method" 
+                        value={formData.countMethod} 
+                        onChange={handleInputChange}
+                    >
+                        <option value="Quantity">Quantity</option>
+                        <option value="Weight">Weight</option>
+                    </Dropdown>
+                    
+                    {/* NEW: Conditional fields for Weight */}
+                    {formData.countMethod === 'Weight' && (
+                        <>
+                            <Input name="containerWeight" label="Container Weight (g)" type="number" value={formData.containerWeight} onChange={handleInputChange} placeholder="e.g., 20" />
+                            <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={formData.unitWeight} onChange={handleInputChange} placeholder="e.g., 0.5" />
+                        </>
+                    )}
+                </div>
+                <Button type="submit" variant="primary">Add Supply</Button>
+            </form>
+
+            <div className="bg-gray-800 p-4 rounded-lg">
+                 <h3 className="text-lg font-bold text-white mb-4">Existing Workshop Supplies</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                         <thead className="text-xs text-gray-400 uppercase bg-gray-700">
+                            <tr>
+                                <th className="p-2">Name</th>
+                                <th className="p-2">Code</th>
+                                <th className="p-2">In Stock</th>
+                                <th className="p-2">Count Method</th>
+                                <th className="p-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {supplies.map(supply => (
+                                <EditableSupplyRow 
+                                    key={supply.id} 
+                                    supply={supply} 
+                                    onUpdate={handleUpdate}
+                                    onDelete={handleDelete} 
+                                />
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// A new sub-component to make the rows editable
+const EditableSupplyRow = ({ supply, onUpdate, onDelete }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editData, setEditData] = useState(supply);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setEditData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSave = () => {
+        onUpdate(supply.id, editData);
+        setIsEditing(false);
+    };
+
+    if (!isEditing) {
+        return (
+            <tr className="border-b border-gray-700">
+                <td className="p-2 text-white">{supply.name}</td>
+                <td className="p-2">{supply.itemCode}</td>
+                <td className="p-2">{supply.currentStock}</td>
+                <td className="p-2">{supply.countMethod || 'Quantity'}</td>
+                <td className="p-2 flex gap-2">
+                    <Button onClick={() => setIsEditing(true)} size="sm">Edit</Button>
+                    <Button onClick={() => onDelete(supply.id)} variant="danger" size="sm">Delete</Button>
+                </td>
+            </tr>
+        )
+    }
+
+    // Editing View
+    return (
+        <tr className="bg-gray-900">
+            <td className="p-2"><Input name="name" value={editData.name} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="itemCode" value={editData.itemCode} onChange={handleInputChange} /></td>
+            <td className="p-2"><Input name="currentStock" type="number" value={editData.currentStock} onChange={handleInputChange} /></td>
+            <td className="p-2">
+                <Dropdown name="countMethod" value={editData.countMethod} onChange={handleInputChange}>
+                    <option value="Quantity">Quantity</option>
+                    <option value="Weight">Weight</option>
+                </Dropdown>
+            </td>
+            <td className="p-2 flex gap-2">
+                <Button onClick={handleSave} variant="success" size="sm">Save</Button>
+                <Button onClick={() => setIsEditing(false)} variant="secondary" size="sm">Cancel</Button>
+            </td>
+        </tr>
+    );
+}
+
+export default WorkshopSuppliesManager;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\CalculatorApplet.jsx
 ==================================================
 import React, { useState } from 'react';
@@ -6384,6 +7343,82 @@ const StockControlDashboard = () => {
 };
 
 export default StockControlDashboard;
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeComponents.jsx
+==================================================
+// src/components/features/stock/StockTakeComponents.jsx (Corrected)
+
+import React from 'react';
+import Input from '../../ui/Input';
+import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+
+// REMOVED: The incorrect import for 'reconcileStockLevels' was here. This component should not call the API.
+
+export const Summary = ({ data }) => {
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h4 className="text-sm text-gray-400 font-medium">Total Items</h4>
+                <p className="text-2xl font-bold text-white">{data.totalItems}</p>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><CheckCircle size={16} className="text-green-500" />Counted</h4>
+                <p className="text-2xl font-bold text-white">{data.counted}</p>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><XCircle size={16} className="text-yellow-500" />Uncounted</h4>
+                <p className="text-2xl font-bold text-white">{data.uncounted}</p>
+            </div>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><AlertCircle size={16} className="text-red-500" />Discrepancies</h4>
+                <p className="text-2xl font-bold text-white">{data.discrepancies}</p>
+            </div>
+        </div>
+    );
+};
+
+export const StockCountList = ({ items, onCountChange }) => {
+    return (
+        <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead className="bg-gray-900/50">
+                        <tr>
+                            <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400">Item Code</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400 text-center">System Count</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400 text-center w-48">Physical Count</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400 text-center">Variance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {items.map(item => (
+                            <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/50">
+                                <td className="p-2 text-white font-medium">{item.name}</td>
+                                <td className="p-2 text-gray-400 font-mono">{item.itemCode || 'N/A'}</td>
+                                <td className="p-2 text-gray-300 font-mono text-center">{item.systemCount}</td>
+                                <td className="p-2">
+                                    <Input
+                                        type="number"
+                                        value={item.physicalCount}
+                                        onChange={(e) => onCountChange(item.id, e.target.value)}
+                                        className="text-center bg-gray-900"
+                                        placeholder="Enter count..."
+                                    />
+                                </td>
+                                <td className={`p-2 font-bold text-lg font-mono text-center ${item.variance > 0 ? 'text-green-400' : item.variance < 0 ? 'text-red-400' : 'text-gray-500'}`}>
+                                    {item.hasBeenCounted ? (item.variance > 0 ? `+${item.variance}` : item.variance) : '-'}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
 
 
 ==================================================
@@ -9615,9 +10650,9 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\Sidebar.jsx
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { 
-    LayoutDashboard, HardHat, Package, Truck, BarChart3, 
-    FileText, CheckSquare, AlertTriangle, ScanLine, 
+import {
+    LayoutDashboard, HardHat, Package, Truck, BarChart3,
+    FileText, CheckSquare, AlertTriangle, ScanLine,
     Calendar as CalendarIcon, SlidersHorizontal, ChevronDown, ChevronRight,
     Briefcase, Banknote, BrainCircuit, DollarSign,
     Aperture, Calculator, NotebookText, Sun,
@@ -9648,7 +10683,7 @@ const Applet = ({ icon, text, children, isOpen }) => {
 // --- MODIFIED TO ACCEPT MOUSE EVENT HANDLERS ---
 const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     const { user } = useAuth();
-    const userRole = user?.role || ''; 
+    const userRole = user?.role || '';
 
     const navConfig = {
         dashboard: { roles: ['Manager', 'QC Inspector', 'Workshop Employee', 'Office Manager', 'Marketing'] },
@@ -9665,20 +10700,21 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
         payroll: { roles: ['Manager', 'Office Manager'] },
         settings: { roles: ['Manager'] },
         marketing: { roles: ['Manager', 'Marketing'] },
-        quotes: { roles: ['Manager', 'Office Manager', 'Marketing'] }
+        quotes: { roles: ['Manager', 'Office Manager', 'Marketing'] },
+        adjustment: { roles: ['Manager'] },
     };
-    
+
     const canSee = (navItem) => navConfig[navItem]?.roles.includes(userRole);
     if (userRole === 'Floor Tablet') return null;
 
     return (
-        <div 
+        <div
             onMouseEnter={onMouseEnter}
             onMouseLeave={onMouseLeave}
             className={`bg-gray-800 border-r border-gray-700 p-2 flex flex-col transition-all duration-300 ${isOpen ? 'w-64' : 'w-20'}`}
         >
             <div className="flex-grow overflow-y-auto">
-                
+
                 {canSee('dashboard') && <SidebarLink to="/" icon={<LayoutDashboard size={22} />} text="Dashboard" isOpen={isOpen} />}
 
                 <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
@@ -9696,6 +10732,7 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                     {canSee('jobCreator') && <SidebarLink to="/creator" icon={<FileText size={18} />} text="Job Creator" isOpen={isOpen} />}
                     {canSee('qc') && <SidebarLink to="/qc" icon={<CheckSquare size={18} />} text="Quality Control" isOpen={isOpen} />}
                     {canSee('issues') && <SidebarLink to="/issues" icon={<AlertTriangle size={18} />} text="Issues" isOpen={isOpen} />}
+                    {canSee('adjustment') && <SidebarLink to="/adjustment" icon={<SlidersHorizontal size={18} />} text="Job Card Adjustment" isOpen={isOpen} />}
                 </NavGroup>
 
                 {canSee('stock') && (
@@ -9715,7 +10752,7 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                 </NavGroup>
 
             </div>
-            
+
             <div className="flex-shrink-0 border-t border-gray-700 pt-2">
                 <NavGroup title="Tools & Applets" icon={<Aperture size={22} />} isOpen={isOpen}>
                     <Applet icon={<NotebookText size={18}/>} text="Scratchpad" isOpen={isOpen}><NotesApplet /></Applet>
@@ -10155,6 +11192,121 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   };
 };
 
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useStockTakeData.js
+==================================================
+// src/hooks/useStockTakeData.js (New File from your app)
+
+import { useState, useEffect, useMemo } from 'react';
+import { getAllInventoryItems } from '../api/firestore';
+
+export const useStockTakeData = () => {
+    const [allItems, setAllItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [counts, setCounts] = useState({});
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filter, setFilter] = useState('all');
+
+    const fetchData = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const items = await getAllInventoryItems();
+            setAllItems(items);
+        } catch (err) {
+            setError("Failed to load inventory.");
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const handleCountChange = (itemId, value) => {
+        setCounts(prev => ({ ...prev, [itemId]: value }));
+    };
+
+    const processedItems = useMemo(() => {
+        return allItems.map(item => {
+            const systemCount = item.currentStock || 0;
+            const physicalCount = counts[item.id];
+            const hasBeenCounted = physicalCount !== undefined && physicalCount !== '';
+            const variance = hasBeenCounted ? Number(physicalCount) - systemCount : 0;
+            return {
+                ...item,
+                systemCount,
+                physicalCount: hasBeenCounted ? Number(physicalCount) : '',
+                variance,
+                hasBeenCounted
+            };
+        });
+    }, [allItems, counts]);
+
+    const filteredItems = useMemo(() => {
+        let items = processedItems;
+
+        if (filter === 'discrepancies') {
+            items = items.filter(item => item.hasBeenCounted && item.variance !== 0);
+        } else if (filter === 'uncounted') {
+            items = items.filter(item => !item.hasBeenCounted);
+        } else if (filter === 'counted') {
+            items = items.filter(item => item.hasBeenCounted);
+        }
+
+        if (searchTerm) {
+            const lowerCaseSearch = searchTerm.toLowerCase();
+            items = items.filter(item =>
+                item.name.toLowerCase().includes(lowerCaseSearch) ||
+                (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearch))
+            );
+        }
+        return items;
+    }, [processedItems, filter, searchTerm]);
+
+    const summary = useMemo(() => {
+        const countedItems = processedItems.filter(item => item.hasBeenCounted);
+        const discrepancies = countedItems.filter(item => item.variance !== 0);
+        return {
+            totalItems: allItems.length,
+            counted: countedItems.length,
+            uncounted: allItems.length - countedItems.length,
+            discrepancies: discrepancies.length
+        };
+    }, [allItems.length, processedItems]);
+
+    const getItemsToReconcile = () => {
+        return processedItems
+            .filter(item => item.hasBeenCounted)
+            .map(item => ({
+                id: item.id,
+                name: item.name,
+                category: item.category,
+                systemCount: item.systemCount,
+                newCount: item.physicalCount,
+            }));
+    };
+
+    return {
+        loading,
+        error,
+        filteredItems,
+        summary,
+        filter,
+        setFilter,
+        searchTerm,
+        setSearchTerm,
+        handleCountChange,
+        getItemsToReconcile,
+        fetchData,
+        resetCounts: () => setCounts({}),
+    };
+};
 
 
 ==================================================
@@ -11233,6 +12385,210 @@ export default IssuesPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCardAdjustmentPage.jsx
+==================================================
+// C:\Development\TOJEM-OS\tojem-os\src\pages\JobCardAdjustmentPage.jsx
+
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { getJobsAwaitingQC, updateJobCardWithAdjustments, getAllInventoryItems } from '../api/firestore';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
+import Dropdown from '../components/ui/Dropdown';
+import Textarea from '../components/ui/Textarea';
+import { ArrowLeft } from 'lucide-react';
+
+const JobCardAdjustmentPage = () => {
+    const navigate = useNavigate();
+    const { user } = useAuth();
+    const [jobsAwaitingQC, setJobsAwaitingQC] = useState([]);
+    const [selectedJobId, setSelectedJobId] = useState('');
+    const [selectedJob, setSelectedJob] = useState(null);
+    const [timeAdjustment, setTimeAdjustment] = useState(0);
+    const [consumableAdjustments, setConsumableAdjustments] = useState({});
+    const [newConsumable, setNewConsumable] = useState({ itemId: '', qtyChange: 0 });
+    const [allInventoryItems, setAllInventoryItems] = useState([]);
+    const [adjustmentReason, setAdjustmentReason] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchQCJobs = async () => {
+            setLoading(true);
+            const qcJobs = await getJobsAwaitingQC();
+            setJobsAwaitingQC(qcJobs);
+            setLoading(false);
+        };
+
+        fetchQCJobs();
+
+        const fetchInventory = async () => {
+            const inventory = await getAllInventoryItems();
+            setAllInventoryItems(inventory);
+        };
+        fetchInventory();
+    }, []);
+
+    useEffect(() => {
+        if (selectedJobId && jobsAwaitingQC.length > 0) {
+            const job = jobsAwaitingQC.find(j => j.id === selectedJobId);
+            setSelectedJob(job);
+        } else {
+            setSelectedJob(null);
+            setTimeAdjustment(0);
+            setConsumableAdjustments({});
+            setAdjustmentReason('');
+        }
+    }, [selectedJobId, jobsAwaitingQC]);
+
+    const handleTimeAdjustmentChange = (e) => setTimeAdjustment(parseInt(e.target.value) || 0);
+    const handleReasonChange = (e) => setAdjustmentReason(e.target.value);
+    const handleSelectJob = (e) => setSelectedJobId(e.target.value);
+
+    const handleQtyChange = (consumableId, e) => {
+        setConsumableAdjustments(prev => ({
+            ...prev,
+            [consumableId]: parseInt(e.target.value) || 0,
+        }));
+    };
+
+    const handleNewConsumableItemChange = (e) => {
+        setNewConsumable(prev => ({ ...prev, itemId: e.target.value }));
+    };
+
+    const handleNewConsumableQtyChange = (e) => {
+        setNewConsumable(prev => ({ ...prev, qtyChange: parseInt(e.target.value) || 0 }));
+    };
+
+    const handleAddConsumable = () => {
+        if (newConsumable.itemId && newConsumable.qtyChange !== 0) {
+            setConsumableAdjustments(prev => ({
+                ...prev,
+                [newConsumable.itemId]: (prev[newConsumable.itemId] || 0) + newConsumable.qtyChange,
+            }));
+            setNewConsumable({ itemId: '', qtyChange: 0 });
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!selectedJobId) {
+            alert('Please select a job to adjust.');
+            return;
+        }
+        if (!adjustmentReason.trim()) {
+            alert('Please provide a reason for the adjustment.');
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await updateJobCardWithAdjustments(selectedJobId, timeAdjustment, consumableAdjustments, adjustmentReason, user.uid);
+            alert('Job card adjustments submitted successfully!');
+            setSelectedJobId('');
+        } catch (error) {
+            console.error('Error submitting job card adjustments:', error);
+            alert('Failed to submit job card adjustments.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div>
+            <Button onClick={() => navigate(-1)} className="mb-4">
+                <ArrowLeft className="mr-2" /> Back
+            </Button>
+            <h2 className="text-2xl font-bold text-white mb-4">Job Card Adjustment</h2>
+
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4 max-w-xl">
+                <Dropdown
+                    label="Select Completed Job Card"
+                    name="jobId"
+                    value={selectedJobId}
+                    onChange={handleSelectJob}
+                    options={jobsAwaitingQC.map(job => ({ id: job.id, name: `${job.partName} (${job.jobId.substring(0, 8)})` }))}
+                    placeholder="Select a job..."
+                />
+
+                {selectedJob && (
+                    <div className="space-y-4">
+                        <div>
+                            <p className="text-gray-300">Original Estimated Time: {selectedJob.estimatedTime} minutes</p>
+                            <p className="text-gray-300">Current Actual Time: {/* Display initial or logged time here */} </p>
+                            <Input label="Adjust Time (minutes to add/subtract)" type="number" value={timeAdjustment} onChange={handleTimeAdjustmentChange} />
+                        </div>
+
+                        <div>
+                            <h3 className="text-lg font-semibold text-white mb-2">Adjust Consumables</h3>
+                            {selectedJob.consumablesUsedInitial && Object.keys(selectedJob.consumablesUsedInitial).map(consumableId => (
+                                <div key={consumableId} className="flex items-center space-x-2">
+                                    <p className="text-gray-300">{/* Display consumable name */} ({consumableId})</p>
+                                    <Input
+                                        type="number"
+                                        label={`Qty Change`}
+                                        onChange={(e) => handleQtyChange(consumableId, e)}
+                                    />
+                                </div>
+                            ))}
+                            <div className="flex items-center space-x-2">
+                                <Dropdown
+                                    label="Add New Consumable"
+                                    name="newConsumableItem"
+                                    value={newConsumable.itemId}
+                                    onChange={handleNewConsumableItemChange}
+                                    options={allInventoryItems.map(item => ({ id: item.id, name: item.name }))}
+                                    placeholder="Select consumable..."
+                                />
+                                <Input
+                                    type="number"
+                                    label="Qty Change"
+                                    value={newConsumable.qtyChange}
+                                    onChange={handleNewConsumableQtyChange}
+                                />
+                                <Button onClick={handleAddConsumable}>Add</Button>
+                            </div>
+                        </div>
+
+                        <Textarea label="Reason for Adjustment" value={adjustmentReason} onChange={handleReasonChange} rows={4} />
+
+                        <Button onClick={handleSubmit} variant="primary" disabled={isSubmitting}>
+                            {isSubmitting ? 'Submitting...' : 'Submit Adjustment'}
+                        </Button>
+                    </div>
+                )}
+
+                {!selectedJob && (
+                    <p className="text-gray-400">Select a completed job card to view and adjust its details.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+// Placeholder function - you'll need to implement this in your firestore.js or a cloud function
+// REMOVE THESE LINES:
+// const getJobsAwaitingQC = async () => {
+//     // Replace this with your actual Firestore query
+//     return [];
+// };
+//
+// // Placeholder function - you'll need to implement this in your firestore.js or a cloud function
+// const updateJobCardWithAdjustments = async (jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId) => {
+//     // Implement your Firestore update logic here
+//     console.log('Submitting adjustments:', jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId);
+// };
+//
+// // Placeholder function - you'll need to implement this in your firestore.js or a cloud function
+// const getAllInventoryItems = async () => {
+//     // Replace this with your actual Firestore query to get all inventory items
+//     return [];
+// };
+
+export default JobCardAdjustmentPage;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCreatorPage.jsx
 ==================================================
 // FILE: src/pages/JobCreatorPage.jsx (UPDATED)
@@ -12043,6 +13399,281 @@ export default ProductViabilityPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PurchasingPage.jsx
+==================================================
+// src/pages/PurchasingPage.jsx (REFACTORED & COMPLETED)
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+    listenToOneOffPurchases, 
+    markOneOffItemsAsOrdered, 
+    getPurchaseQueue, 
+    getSuppliers, 
+    markItemsAsOrdered 
+} from '../api/firestore';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import { Mail, ThumbsUp, Truck } from 'lucide-react';
+import InTransitOrders from '../components/features/stock/InTransitOrders'; // IMPORT InTransitOrders
+
+// --- Component for Job-Specific, One-Off Purchases ---
+const JobSpecificPurchases = ({ onAction }) => {
+    const [purchaseItems, setPurchaseItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [adminEmail, setAdminEmail] = useState('admin@tojem.co.za'); // Configurable email
+
+    useEffect(() => {
+        setLoading(true);
+        const unsubscribe = listenToOneOffPurchases((items) => {
+            setPurchaseItems(items.filter(item => item.status === 'Pending Purchase'));
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+    
+    const ordersToPurchaseFor = useMemo(() => {
+        return purchaseItems.reduce((acc, item) => {
+            const orderId = item.salesOrderId || 'Miscellaneous';
+            if (!acc[orderId]) {
+                acc[orderId] = {
+                    customerName: item.customerName,
+                    salesOrderId: item.salesOrderId,
+                    items: []
+                };
+            }
+            acc[orderId].items.push(item);
+            return acc;
+        }, {});
+    }, [purchaseItems]);
+
+    const handleGenerateEmail = (orderId) => {
+        const orderData = ordersToPurchaseFor[orderId];
+        if (!orderData) return;
+
+        const subject = `Purchase Request for Sales Order: ${orderData.salesOrderId}`;
+        let body = `Hi Admin,\n\nPlease order the following parts required for job SO: ${orderData.salesOrderId} for customer: ${orderData.customerName}.\n\n`;
+        
+        orderData.items.forEach(item => {
+            body += `- ${item.itemName} (Qty: ${item.quantity})\n`;
+        });
+
+        body += `\nThank you,\nTOJEM OS`;
+        window.location.href = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+        const itemIdsToUpdate = orderData.items.map(item => item.id);
+        markOneOffItemsAsOrdered(itemIdsToUpdate).then(() => {
+            if(onAction) onAction();
+        });
+    };
+
+    if (loading) return <div className="text-center text-gray-400 p-8">Loading job-specific purchase requests...</div>;
+
+    return (
+        <div className="space-y-6">
+            {Object.keys(ordersToPurchaseFor).length === 0 && (
+                <p className="text-center text-gray-500 p-8">No job-specific items are currently awaiting purchase.</p>
+            )}
+            {Object.entries(ordersToPurchaseFor).map(([orderId, orderData]) => (
+                <div key={orderId} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
+                    <div className="flex justify-between items-center mb-3">
+                        <div>
+                            <h4 className="font-bold text-white">Sales Order: {orderData.salesOrderId}</h4>
+                            <p className="text-sm text-gray-400">Customer: {orderData.customerName}</p>
+                        </div>
+                        <Button onClick={() => handleGenerateEmail(orderId)} variant="primary">
+                            <Mail size={16} className="mr-2"/>
+                            Generate Purchase Request Email
+                        </Button>
+                    </div>
+                    <ul className="space-y-2">
+                        {orderData.items.map(item => (
+                            <li key={item.id} className="flex justify-between items-center bg-gray-900/50 p-2 rounded-md text-sm">
+                                <span className="text-gray-200">{item.itemName}</span>
+                                <span className="font-mono text-white">Qty: {item.quantity}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+// --- Component for Standard Stock Re-ordering ---
+const StockReorderQueue = ({ items, suppliers, onAction }) => {
+    const [orderQuantities, setOrderQuantities] = useState({});
+
+    const handleQuantityChange = (itemId, qty) => {
+        setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
+    };
+
+    const groupedBySupplier = useMemo(() => {
+        return items.reduce((acc, item) => {
+            const supplierId = item.supplierId || 'unknown';
+            if (!acc[supplierId]) {
+                const supplierDetails = suppliers.find(s => s.id === supplierId);
+                acc[supplierId] = { supplierDetails: supplierDetails || { name: 'Unknown Supplier', email: '' }, items: [] };
+            }
+            acc[supplierId].items.push(item);
+            return acc;
+        }, {});
+    }, [items, suppliers]);
+
+    const handleGenerateEmail = (supplierDetails, items) => {
+        const supplierEmail = supplierDetails.email || '';
+        const subject = `Purchase Order - TOJEM`;
+        let body = `Hi ${supplierDetails.contactPerson || supplierDetails.name},\n\nPlease supply the following items:\n\n`;
+        
+        items.forEach(item => {
+            const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+            const orderQty = orderQuantities[item.id] || recommendedQty;
+            if (orderQty > 0) {
+                body += `- ${item.itemName} (Code: ${item.itemCode || 'N/A'}) --- Qty: ${orderQty}\n`;
+            }
+        });
+        
+        body += `\nThank you,\nTojem`;
+        window.location.href = `mailto:${supplierEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+        markItemsAsOrdered(supplierDetails, items, orderQuantities).then(() => {
+            alert("Items have been marked as ordered and will now appear in the 'In-Transit' list.");
+            if (onAction) onAction();
+        });
+    };
+
+    if (Object.keys(groupedBySupplier).length === 0) {
+        return <p className="text-center text-gray-500 p-8">The stock re-order queue is empty.</p>;
+    }
+
+    return (
+        <div className="space-y-6">
+            {Object.entries(groupedBySupplier).map(([supplierId, group]) => (
+                <div key={supplierId} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> Order for: {group.supplierDetails.name}</h3>
+                            <p className="text-sm text-gray-400">{group.supplierDetails.email}</p>
+                        </div>
+                        <Button onClick={() => handleGenerateEmail(group.supplierDetails, group.items)}>Generate Email & Mark as Ordered</Button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="border-b border-blue-400/30">
+                                <tr>
+                                    <th className="p-2 font-semibold text-gray-300">Item</th>
+                                    <th className="p-2 font-semibold text-gray-300 text-center">Current Stock</th>
+                                    <th className="p-2 font-semibold text-gray-300 text-center">Re-order At</th>
+                                    <th className="p-2 font-semibold text-gray-300 text-center" style={{width: '150px'}}>Order Qty</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {group.items.map(item => {
+                                    const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+                                    return (
+                                        <tr key={item.id} className="border-b border-blue-400/20">
+                                            <td className="p-2 text-gray-200">{item.itemName}</td>
+                                            <td className="p-2 text-white font-bold text-center">{item.currentStock}</td>
+                                            <td className="p-2 text-red-400 font-bold text-center">{item.reorderLevel}</td>
+                                            <td className="p-2">
+                                                <Input 
+                                                    type="number"
+                                                    value={orderQuantities[item.id] || recommendedQty}
+                                                    onChange={(e) => handleQuantityChange(item.id, e.target.value)}
+                                                />
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+
+// Main page component that holds the tabs and fetches all data
+const PurchasingPage = () => {
+    const [activeTab, setActiveTab] = useState('job-specific');
+    const [purchaseQueueItems, setPurchaseQueueItems] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = async () => {
+        setLoading(true);
+        try {
+            const [queue, supplierList] = await Promise.all([getPurchaseQueue(), getSuppliers()]);
+            setPurchaseQueueItems(queue);
+            setSuppliers(supplierList);
+        } catch (error) {
+            console.error("Error fetching purchasing data:", error);
+            alert("Could not load purchasing data.");
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const { pendingItems, orderedItems } = useMemo(() => ({
+        pendingItems: purchaseQueueItems.filter(i => i.status === 'pending'),
+        orderedItems: purchaseQueueItems.filter(i => i.status === 'ordered')
+    }), [purchaseQueueItems]);
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl font-bold text-white">Purchasing Hub</h2>
+            <div className="border-b border-gray-700">
+                <nav className="-mb-px flex space-x-6">
+                    <button
+                        onClick={() => setActiveTab('job-specific')}
+                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                            activeTab === 'job-specific' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
+                        }`}
+                    >
+                        Job-Specific Purchases
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('stock-reorder')}
+                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                            activeTab === 'stock-reorder' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
+                        }`}
+                    >
+                        Stock Re-order Queue
+                        {pendingItems.length > 0 && <span className="ml-2 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{pendingItems.length}</span>}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('in-transit')}
+                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
+                            activeTab === 'in-transit' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
+                        }`}
+                    >
+                        In-Transit Orders
+                        {orderedItems.length > 0 && <span className="ml-2 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{orderedItems.length}</span>}
+                    </button>
+                </nav>
+            </div>
+
+            <div className="mt-4">
+                {loading ? <p className="text-center text-gray-400 p-8">Loading...</p> : (
+                    <>
+                        {activeTab === 'job-specific' && <JobSpecificPurchases onAction={fetchData} />}
+                        {activeTab === 'stock-reorder' && <StockReorderQueue items={pendingItems} suppliers={suppliers} onAction={fetchData} />}
+                        {activeTab === 'in-transit' && <InTransitOrders items={orderedItems} suppliers={suppliers} onStockReceived={fetchData} />}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default PurchasingPage;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QcPage.jsx
 ==================================================
 // src/pages/QcPage.jsx (Corrected)
@@ -12332,6 +13963,180 @@ export default QuotingPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SalesOrderPage.jsx
+==================================================
+// src/pages/SalesOrderPage.jsx (REFACTORED)
+
+import React, { useState, useEffect } from 'react';
+import { listenToSalesOrders, addPurchasedItemToQueue, updateSalesOrderLineItemStatus } from '../api/firestore';
+import Button from '../components/ui/Button';
+import { ChevronDown, ChevronRight, Package, Wrench, ShoppingBag, X, CheckCircle } from 'lucide-react';
+import CustomJobCreator from '../components/features/job_cards/CustomJobCreator';
+import StandardJobCreatorModal from '../components/features/job_cards/StandardJobCreatorModal';
+
+// A single line item within an order
+const OrderLineItem = ({ item, order, onAction }) => {
+    const [isCustomModalOpen, setCustomModalOpen] = useState(false);
+    const [isStandardModalOpen, setStandardModalOpen] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleSendToPurchasing = async () => {
+        if (!window.confirm(`Are you sure you want to send "${item.description}" to the purchasing queue?`)) return;
+        setIsSubmitting(true);
+        try {
+            await addPurchasedItemToQueue(item, order);
+            // CORRECTED: Uses the line item's unique 'id' field for robust status updates
+            await updateSalesOrderLineItemStatus(order.id, item.id, 'In Purchasing');
+            onAction(); // This will trigger a re-render of the parent component
+        } catch (error) {
+            console.error("Error sending item to purchasing:", error);
+            alert("Failed to send item to purchasing.");
+        }
+        setIsSubmitting(false);
+    };
+
+    let icon, actionButton;
+
+    // Logic to determine which button or status to show
+    if (item.status === 'In Purchasing') {
+        icon = <ShoppingBag size={20} className="text-gray-500" />;
+        actionButton = <span className="flex items-center gap-1 text-xs text-green-400 font-semibold"><CheckCircle size={14} /> Queued for Purchase</span>;
+    } else if (item.isCatalogItem) {
+        icon = <Package size={20} className="text-blue-400" />;
+        actionButton = <Button variant="primary" className="text-xs py-1 px-2" onClick={() => setStandardModalOpen(true)}>Create Standard Job</Button>;
+    } else if (item.isPurchasedItem) {
+        icon = <ShoppingBag size={20} className="text-green-400" />;
+        actionButton = <Button variant="secondary" className="text-xs py-1 px-2" onClick={handleSendToPurchasing} disabled={isSubmitting}>{isSubmitting ? 'Sending...' : 'Send to Purchasing'}</Button>;
+    } else if (item.isCustomWork) {
+        icon = <Wrench size={20} className="text-purple-400" />;
+        actionButton = <Button variant="primary" className="text-xs py-1 px-2" onClick={() => setCustomModalOpen(true)}>Create Custom Job</Button>;
+    }
+
+    return (
+        <>
+            <div className="flex justify-between items-center p-3 bg-gray-900/50 rounded-md">
+                <div className="flex items-center gap-3">
+                    {icon}
+                    <p className="text-white">{item.description}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                    <p className="text-sm font-mono text-gray-400">Cost: R{item.cost.toFixed(2)}</p>
+                    {actionButton}
+                </div>
+            </div>
+
+            {isCustomModalOpen && (
+                <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+                    <div className="relative bg-gray-800 p-2 rounded-xl border border-gray-700 w-full max-w-4xl">
+                         <Button onClick={() => setCustomModalOpen(false)} variant="danger" className="absolute -top-3 -right-3 z-10 rounded-full h-8 w-8 p-1">
+                            <X size={16}/>
+                        </Button>
+                        <CustomJobCreator salesOrder={order} customLineItem={item} />
+                    </div>
+                </div>
+            )}
+
+            {isStandardModalOpen && (
+                <StandardJobCreatorModal 
+                    salesOrder={order}
+                    lineItem={item}
+                    onClose={() => setStandardModalOpen(false)}
+                />
+            )}
+        </>
+    );
+};
+
+// A single expandable Sales Order card
+const SalesOrderCard = ({ order, onAction }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Pending Production': return 'bg-yellow-500/20 text-yellow-300';
+            case 'In Production': return 'bg-blue-500/20 text-blue-300';
+            case 'Fulfilled': return 'bg-green-500/20 text-green-300';
+            default: return 'bg-gray-500/20 text-gray-300';
+        }
+    };
+
+    return (
+        <div className="bg-gray-800 rounded-lg border border-gray-700">
+            <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-700/50" onClick={() => setIsExpanded(!isExpanded)}>
+                <div className="flex items-center gap-4">
+                    {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                    <div>
+                        <p className="font-bold text-white text-lg">{order.salesOrderId}</p>
+                        <p className="text-sm text-gray-400">{order.customerName}</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-6">
+                     <p className="font-mono text-xl text-green-400">R {order.total.toFixed(2)}</p>
+                     <span className={`px-3 py-1 text-sm rounded-full font-semibold ${getStatusColor(order.status)}`}>
+                        {order.status}
+                    </span>
+                </div>
+            </div>
+
+            {isExpanded && (
+                <div className="p-4 border-t border-gray-700 space-y-3">
+                    <h4 className="font-semibold text-gray-200">Order Line Items:</h4>
+                    {order.lineItems.map((item, index) => (
+                        <OrderLineItem 
+                            key={item.id || index}
+                            item={item} 
+                            order={order} 
+                            onAction={onAction}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
+const SalesOrderPage = () => {
+    const [salesOrders, setSalesOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    const fetchData = () => {
+        const unsubscribe = listenToSalesOrders((orders) => {
+            setSalesOrders(orders);
+            if(loading) setLoading(false);
+        });
+        return unsubscribe;
+    };
+
+    useEffect(() => {
+        const unsubscribe = fetchData();
+        return () => unsubscribe();
+    }, []);
+
+    return (
+        <div className="space-y-8">
+            <h2 className="text-3xl font-bold text-white">Sales Order Dispatch</h2>
+            <p className="text-gray-400 -mt-6">This is your hub for converting approved customer orders into actionable tasks for your team.</p>
+            
+            <div className="space-y-4">
+                {loading && <p className="text-center p-8 text-gray-400">Loading sales orders...</p>}
+                {!loading && salesOrders.length === 0 && <p className="text-center p-8 text-gray-400">No sales orders found. Accept a quote to create one.</p>}
+                {!loading && salesOrders.map(order => (
+                    <SalesOrderCard 
+                        key={order.id} 
+                        order={order}
+                        onAction={fetchData}
+                    />
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export default SalesOrderPage;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ScannerPage.jsx
 ==================================================
 import React from 'react';
@@ -12539,6 +14344,110 @@ const StockControlPage = () => {
 };
 
 export default StockControlPage;
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
+==================================================
+// src/pages/StockTakePage.jsx (Refactored with your app's logic)
+
+import React, { useState } from 'react';
+import { reconcileStockLevels } from '../api/firestore';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import { ClipboardList, Save, Search } from 'lucide-react';
+import { useStockTakeData } from '../hooks/useStockTakeData';
+// UPDATED: Corrected the import path to match your file structure
+import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
+
+const StockTakePage = () => {
+    const {
+        loading,
+        error,
+        filteredItems,
+        summary,
+        filter,
+        setFilter,
+        searchTerm,
+        setSearchTerm,
+        handleCountChange,
+        getItemsToReconcile,
+        fetchData,
+        resetCounts,
+    } = useStockTakeData();
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleReconcile = async () => {
+        const itemsToUpdate = getItemsToReconcile();
+        if (itemsToUpdate.length === 0) {
+            return alert("You haven't counted any items yet.");
+        }
+
+        const varianceCount = itemsToUpdate.filter(item => item.newCount - item.systemCount !== 0).length;
+        if (!window.confirm(`You are about to finalize the stock-take. This will update your inventory levels for ${itemsToUpdate.length} counted items, ${varianceCount} of which have discrepancies. This action cannot be undone. Proceed?`)) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await reconcileStockLevels(itemsToUpdate);
+            alert("Stock levels reconciled successfully!");
+            resetCounts();
+            fetchData();
+        } catch (error) {
+            console.error("Error reconciling stock levels:", error);
+            alert("Failed to reconcile stock levels. Please check the console.");
+        }
+        setIsSubmitting(false);
+    };
+
+    if (error) {
+        return <p className="text-center text-red-500 p-8">{error}</p>;
+    }
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-bold text-white flex items-center gap-2"><ClipboardList/> Stock-Take</h2>
+                <Button onClick={handleReconcile} disabled={isSubmitting || loading} variant="primary">
+                    <Save size={16} className="mr-2" />
+                    {isSubmitting ? 'Finalizing...' : 'Finalize and Reconcile Stock'}
+                </Button>
+            </div>
+
+            <Summary data={summary} />
+
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-300">Filter:</span>
+                    <Button size="sm" variant={filter === 'all' ? 'secondary' : 'primary'} onClick={() => setFilter('all')}>All</Button>
+                    <Button size="sm" variant={filter === 'uncounted' ? 'secondary' : 'primary'} onClick={() => setFilter('uncounted')}>Uncounted</Button>
+                    <Button size="sm" variant={filter === 'counted' ? 'secondary' : 'primary'} onClick={() => setFilter('counted')}>Counted</Button>
+                    <Button size="sm" variant={filter === 'discrepancies' ? 'secondary' : 'primary'} onClick={() => setFilter('discrepancies')}>Discrepancies</Button>
+                </div>
+                <div className="relative w-1/3">
+                    <Input
+                        type="text"
+                        placeholder="Search items by name or code..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                    />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                </div>
+            </div>
+
+            {loading ? (
+                <p className="text-center text-gray-400 p-8">Loading inventory...</p>
+            ) : (
+                <StockCountList items={filteredItems} onCountChange={handleCountChange} />
+            )}
+        </div>
+    );
+};
+
+export default StockTakePage;
 
 
 ==================================================
@@ -13124,6 +15033,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
 ==================================================
+// src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
@@ -13151,49 +15061,49 @@ import ValuationPage from './pages/ValuationPage';
 import CalendarPage from './pages/CalendarPage';
 import MarketingPage from './pages/MarketingPage';
 import QuotingPage from './pages/QuotingPage';
+import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage'; // Import the new component
 
 
 function App() {
-  const { user } = useAuth();
+    const { user } = useAuth();
 
-  return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
-        <Route path="*" element={
-            <ProtectedRoute>
-              <MainLayout>
-                <Routes>
-                  <Route path="/" element={<DashboardPage />} />
-                  <Route path="/tracking" element={<LiveTrackingPage />} />
-                  <Route path="/scan" element={<ScannerPage />} />
-                  <Route path="/qc" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><QcPage /></RoleBasedRoute> } />
-                  <Route path="/stock" element={ <RoleBasedRoute roles={['Manager']}><StockControlPage /></RoleBasedRoute> } />
-                  <Route path="/creator" element={ <RoleBasedRoute roles={['Manager']}><JobCreatorPage /></RoleBasedRoute> } />
-                  <Route path="/issues" element={ <RoleBasedRoute roles={['Manager']}><IssuesPage /></RoleBasedRoute> } />
-                  <Route path="/performance" element={ <RoleBasedRoute roles={['Manager']}><PerformancePage /></RoleBasedRoute> } />
-                  <Route path="/employee/:employeeId" element={ <RoleBasedRoute roles={['Manager']}><EmployeeIntelligencePage /></RoleBasedRoute> } />
-                  <Route path="/profitability" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><ProductViabilityPage /></RoleBasedRoute> } />
-                  <Route path="/payroll" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PayrollPage /></RoleBasedRoute> } />
-                  <Route path="/valuation" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><ValuationPage /></RoleBasedRoute> } />
-                  <Route path="/calendar" element={ <RoleBasedRoute roles={['Manager', 'Workshop Employee']}><CalendarPage /></RoleBasedRoute> } />
-                  <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
-                  <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
-                  <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
-                  {/* Fallback route if no other route matches */}
-                  <Route path="*" element={<Navigate to="/" />} />
-                </Routes>
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </Router>
-  );
+    return (
+        <Router>
+            <Routes>
+                <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+                <Route path="*" element={
+                    <ProtectedRoute>
+                        <MainLayout>
+                            <Routes>
+                                <Route path="/" element={<DashboardPage />} />
+                                <Route path="/tracking" element={<LiveTrackingPage />} />
+                                <Route path="/scan" element={<ScannerPage />} />
+                                <Route path="/qc" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><QcPage /></RoleBasedRoute> } />
+                                <Route path="/stock" element={ <RoleBasedRoute roles={['Manager']}><StockControlPage /></RoleBasedRoute> } />
+                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager']}><JobCreatorPage /></RoleBasedRoute> } />
+                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager']}><IssuesPage /></RoleBasedRoute> } />
+                                <Route path="/performance" element={ <RoleBasedRoute roles={['Manager']}><PerformancePage /></RoleBasedRoute> } />
+                                <Route path="/employee/:employeeId" element={ <RoleBasedRoute roles={['Manager']}><EmployeeIntelligencePage /></RoleBasedRoute> } />
+                                <Route path="/profitability" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><ProductViabilityPage /></RoleBasedRoute> } />
+                                <Route path="/payroll" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PayrollPage /></RoleBasedRoute> } />
+                                <Route path="/valuation" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><ValuationPage /></RoleBasedRoute> } />
+                                <Route path="/calendar" element={ <RoleBasedRoute roles={['Manager', 'Workshop Employee']}><CalendarPage /></RoleBasedRoute> } />
+                                <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
+                                <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
+                                <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
+                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} /> {/* ADDED ROUTE */}
+                                {/* Fallback route if no other route matches */}
+                                <Route path="*" element={<Navigate to="/" />} />
+                            </Routes>
+                        </MainLayout>
+                    </ProtectedRoute>
+                } />
+            </Routes>
+        </Router>
+    );
 }
 
 export default App;
-
 
 
 ==================================================

@@ -1,12 +1,13 @@
-// src/components/features/quotes/QuoteCreator.jsx (Final Version)
+// src/components/features/quotes/QuoteCreator.jsx (Final Version with all buttons)
 
 import React, { useState, useMemo } from 'react';
 import { addQuote } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
-import { X, PlusCircle, Trash2, DollarSign, Percent, FileText, Package, Wrench } from 'lucide-react';
-import AddCustomWorkModal from './AddCustomWorkModal'; // Import the new modal
+import { X, PlusCircle, Trash2, DollarSign, Percent, FileText, Package, Wrench, ShoppingBag } from 'lucide-react';
+import AddCustomWorkModal from './AddCustomWorkModal';
+import AddPurchasedItemModal from './AddPurchasedItemModal'; // Import the modal
 
 const QuoteCreator = ({ onClose, calculationData }) => {
     const { products, allRecipes, inventoryItems, averageBurdenedRate } = calculationData;
@@ -16,13 +17,22 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     const [lineItems, setLineItems] = useState([]);
     const [margin, setMargin] = useState('40');
     
-    // State to control our new modal
     const [isCustomWorkModalOpen, setCustomWorkModalOpen] = useState(false);
+    const [isPurchasedItemModalOpen, setPurchasedItemModalOpen] = useState(false); // State for the new modal
 
     const [catalogProductId, setCatalogProductId] = useState('');
 
     const handleAddLineItem = (item) => {
-        setLineItems(prevItems => [...prevItems, { ...item, id: Date.now() }]);
+        // Add flags to differentiate line item types
+        const newItem = { ...item, id: Date.now() };
+        if (item.isCustomWork) {
+            newItem.isCustomWork = true;
+        } else if (item.isPurchasedItem) {
+            newItem.isPurchasedItem = true;
+        } else {
+            newItem.isCatalogItem = true;
+        }
+        setLineItems(prevItems => [...prevItems, newItem]);
     };
 
     const handleAddCatalogItem = () => {
@@ -44,7 +54,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
             totalLaborCost += (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
         });
         
-        handleAddLineItem({ description: product.name, cost: totalMaterialCost + totalLaborCost });
+        handleAddLineItem({ description: product.name, cost: totalMaterialCost + totalLaborCost, productId: product.id });
         setCatalogProductId('');
     };
 
@@ -101,13 +111,15 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                                 ))}
                             </div>
                             
-                            <div className="flex items-end gap-2 p-4 border-t border-gray-700 bg-gray-900/50 rounded-lg">
+                            <div className="flex flex-wrap items-end gap-2 p-4 border-t border-gray-700 bg-gray-900/50 rounded-lg">
                                 <div className="flex-grow">
                                     <Dropdown label="Add from Product Catalog" value={catalogProductId} onChange={e => setCatalogProductId(e.target.value)} options={products} placeholder="Select a product..."/>
                                 </div>
                                 <Button onClick={handleAddCatalogItem} variant="secondary"><Package size={16} className="mr-2"/>Add Product</Button>
                                 <div className="border-l border-gray-600 h-10 mx-2"></div>
                                 <Button onClick={() => setCustomWorkModalOpen(true)} variant="secondary"><Wrench size={16} className="mr-2"/>Add Custom Work</Button>
+                                {/* THIS IS THE NEW BUTTON */}
+                                <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
                             </div>
                         </div>
 
@@ -137,8 +149,15 @@ const QuoteCreator = ({ onClose, calculationData }) => {
             {isCustomWorkModalOpen && (
                 <AddCustomWorkModal 
                     onClose={() => setCustomWorkModalOpen(false)}
-                    onAdd={handleAddLineItem}
+                    onAdd={(item) => handleAddLineItem({ ...item, isCustomWork: true })}
                     calculationData={calculationData}
+                />
+            )}
+
+            {isPurchasedItemModalOpen && (
+                <AddPurchasedItemModal 
+                    onClose={() => setPurchasedItemModalOpen(false)}
+                    onAdd={(item) => handleAddLineItem({ ...item, isPurchasedItem: true })}
                 />
             )}
         </>

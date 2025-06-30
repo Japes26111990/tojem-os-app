@@ -1,4 +1,4 @@
-// src/components/layout/Sidebar.jsx (Updated)
+// src/components/layout/Sidebar.jsx (Updated with new navigation links)
 
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
@@ -9,7 +9,7 @@ import {
     Calendar as CalendarIcon, SlidersHorizontal, ChevronDown, ChevronRight,
     Briefcase, Banknote, BrainCircuit, DollarSign,
     Aperture, Calculator, NotebookText, Sun,
-    Megaphone
+    Megaphone, ShoppingCart, ClipboardList // Added new icons
 } from 'lucide-react';
 import NotesApplet from '../features/sidebar/NotesApplet';
 import WeatherApplet from '../features/sidebar/WeatherApplet';
@@ -33,20 +33,24 @@ const Applet = ({ icon, text, children, isOpen }) => {
     return(<div><button onClick={() => setAppletOpen(!isAppletOpen)} className="w-full flex items-center p-3 my-1 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors">{icon}{isOpen && <span className="ml-4 text-sm">{text}</span>}{isOpen && (isAppletOpen ? <ChevronDown size={16} className="ml-auto text-gray-500" /> : <ChevronRight size={16} className="ml-auto text-gray-500" />)}</button>{isAppletOpen && isOpen && (<div className="mt-1 border-l-2 border-blue-500/30 ml-5 pl-1 py-2">{children}</div>)}</div>);
 };
 
-// --- MODIFIED TO ACCEPT MOUSE EVENT HANDLERS ---
 const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     const { user } = useAuth();
     const userRole = user?.role || '';
 
+    // NEW: Updated navConfig with new pages and roles
     const navConfig = {
         dashboard: { roles: ['Manager', 'QC Inspector', 'Workshop Employee', 'Office Manager', 'Marketing'] },
         tracking: { roles: ['Manager', 'QC Inspector', 'Workshop Employee'] },
         scanner: { roles: ['Manager', 'Workshop Employee', 'Floor Tablet'] },
         calendar: { roles: ['Manager', 'Workshop Employee'] },
-        jobCreator: { roles: ['Manager'] },
+        jobCreator: { roles: ['Manager', 'Office Manager'] },
         qc: { roles: ['Manager', 'QC Inspector'] },
         issues: { roles: ['Manager', 'QC Inspector'] },
-        stock: { roles: ['Manager'] },
+        // NEW: Supply Chain section
+        orders: { roles: ['Manager', 'Office Manager'] },
+        purchasing: { roles: ['Manager', 'Office Manager'] },
+        stockTake: { roles: ['Manager', 'Office Manager'] },
+        // END NEW
         performance: { roles: ['Manager'] },
         profitability: { roles: ['Manager', 'Marketing'] },
         valuation: { roles: ['Manager', 'Office Manager'] },
@@ -71,8 +75,15 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                 {canSee('dashboard') && <SidebarLink to="/" icon={<LayoutDashboard size={22} />} text="Dashboard" isOpen={isOpen} />}
 
                 <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
-                    {canSee('marketing') && <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />}
                     {canSee('quotes') && <SidebarLink to="/quotes" icon={<DollarSign size={18} />} text="Sales Quotes" isOpen={isOpen} />}
+                    {canSee('marketing') && <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />}
+                </NavGroup>
+                
+                {/* NEW: Supply Chain Nav Group */}
+                <NavGroup title="Supply Chain" icon={<Truck size={22} />} isOpen={isOpen}>
+                    {canSee('orders') && <SidebarLink to="/orders" icon={<ShoppingCart size={18} />} text="Sales Orders" isOpen={isOpen} />}
+                    {canSee('purchasing') && <SidebarLink to="/purchasing" icon={<Package size={18} />} text="Purchasing Hub" isOpen={isOpen} />}
+                    {canSee('stockTake') && <SidebarLink to="/stock-take" icon={<ClipboardList size={18} />} text="Stock Take" isOpen={isOpen} />}
                 </NavGroup>
 
                 <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
@@ -87,12 +98,6 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                     {canSee('issues') && <SidebarLink to="/issues" icon={<AlertTriangle size={18} />} text="Issues" isOpen={isOpen} />}
                     {canSee('adjustment') && <SidebarLink to="/adjustment" icon={<SlidersHorizontal size={18} />} text="Job Card Adjustment" isOpen={isOpen} />}
                 </NavGroup>
-
-                {canSee('stock') && (
-                    <NavGroup title="Supply Chain" icon={<Truck size={22} />} isOpen={isOpen}>
-                        <SidebarLink to="/stock" icon={<Package size={18} />} text="Stock Control" isOpen={isOpen} />
-                    </NavGroup>
-                )}
 
                 <NavGroup title="Business Intelligence" icon={<BrainCircuit size={22} />} isOpen={isOpen}>
                     {canSee('performance') && <SidebarLink to="/performance" icon={<Briefcase size={18} />} text="Performance" isOpen={isOpen} />}

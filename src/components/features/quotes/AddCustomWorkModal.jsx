@@ -1,4 +1,4 @@
-// src/components/features/quotes/AddCustomWorkModal.jsx (New File)
+// src/components/features/quotes/AddCustomWorkModal.jsx (Updated for minutes)
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Button from '../../ui/Button';
@@ -9,7 +9,7 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
     const { inventoryItems, averageBurdenedRate } = calculationData;
 
     const [description, setDescription] = useState('');
-    const [estimatedHours, setEstimatedHours] = useState('');
+    const [estimatedMinutes, setEstimatedMinutes] = useState(''); // Changed from hours
     const [consumables, setConsumables] = useState([]);
 
     // State for the consumable search dropdown
@@ -52,9 +52,10 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
 
     const calculatedCost = useMemo(() => {
         const materialCost = consumables.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const laborCost = (parseFloat(estimatedHours) || 0) * averageBurdenedRate;
+        // UPDATED CALCULATION: Divide minutes by 60 to get hours for rate calculation
+        const laborCost = ((parseFloat(estimatedMinutes) || 0) / 60) * averageBurdenedRate;
         return materialCost + laborCost;
-    }, [consumables, estimatedHours, averageBurdenedRate]);
+    }, [consumables, estimatedMinutes, averageBurdenedRate]);
 
     const handleAddItemToQuote = () => {
         if (!description) return alert("Please provide a description for this custom work.");
@@ -77,7 +78,8 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
 
                 <div className="p-6 overflow-y-auto space-y-4">
                     <Input label="Line Item Description" placeholder="e.g., Repair and reinforce customer bracket" value={description} onChange={e => setDescription(e.target.value)} />
-                    <Input label="Estimated Labor (Hours)" type="number" placeholder="e.g., 4.5" value={estimatedHours} onChange={e => setEstimatedHours(e.target.value)} />
+                    {/* UPDATED LABEL */}
+                    <Input label="Estimated Labor (Minutes)" type="number" placeholder="e.g., 90" value={estimatedMinutes} onChange={e => setEstimatedMinutes(e.target.value)} />
 
                     {/* Consumables Section */}
                     <div>

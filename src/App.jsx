@@ -1,4 +1,4 @@
-// src/App.jsx
+// src/App.jsx (Updated with new routes)
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
@@ -11,7 +11,7 @@ import MainLayout from './components/layout/MainLayout';
 // Pages
 import LoginPage from './pages/Login';
 import DashboardPage from './pages/DashboardPage';
-import StockControlPage from './pages/StockControlPage';
+// REMOVED old StockControlPage import
 import JobCreatorPage from './pages/JobCreatorPage';
 import LiveTrackingPage from './pages/LiveTrackingPage';
 import ScannerPage from './pages/ScannerPage';
@@ -26,7 +26,12 @@ import ValuationPage from './pages/ValuationPage';
 import CalendarPage from './pages/CalendarPage';
 import MarketingPage from './pages/MarketingPage';
 import QuotingPage from './pages/QuotingPage';
-import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage'; // Import the new component
+import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage'; 
+
+// --- NEW PAGE IMPORTS ---
+import SalesOrderPage from './pages/SalesOrderPage';
+import PurchasingPage from './pages/PurchasingPage';
+import StockTakePage from './pages/StockTakePage';
 
 
 function App() {
@@ -44,9 +49,14 @@ function App() {
                                 <Route path="/tracking" element={<LiveTrackingPage />} />
                                 <Route path="/scan" element={<ScannerPage />} />
                                 <Route path="/qc" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><QcPage /></RoleBasedRoute> } />
-                                <Route path="/stock" element={ <RoleBasedRoute roles={['Manager']}><StockControlPage /></RoleBasedRoute> } />
-                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager']}><JobCreatorPage /></RoleBasedRoute> } />
-                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager']}><IssuesPage /></RoleBasedRoute> } />
+                                
+                                {/* --- NEW & UPDATED ROUTES --- */}
+                                <Route path="/orders" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><SalesOrderPage /></RoleBasedRoute>} />
+                                <Route path="/purchasing" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PurchasingPage /></RoleBasedRoute>} />
+                                <Route path="/stock-take" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><StockTakePage /></RoleBasedRoute>} />
+
+                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><JobCreatorPage /></RoleBasedRoute> } />
+                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><IssuesPage /></RoleBasedRoute> } />
                                 <Route path="/performance" element={ <RoleBasedRoute roles={['Manager']}><PerformancePage /></RoleBasedRoute> } />
                                 <Route path="/employee/:employeeId" element={ <RoleBasedRoute roles={['Manager']}><EmployeeIntelligencePage /></RoleBasedRoute> } />
                                 <Route path="/profitability" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><ProductViabilityPage /></RoleBasedRoute> } />
@@ -56,7 +66,8 @@ function App() {
                                 <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
                                 <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
                                 <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
-                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} /> {/* ADDED ROUTE */}
+                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} />
+                                
                                 {/* Fallback route if no other route matches */}
                                 <Route path="*" element={<Navigate to="/" />} />
                             </Routes>

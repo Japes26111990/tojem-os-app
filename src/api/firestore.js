@@ -18,7 +18,7 @@ import {
     limit
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
-import { httpsCallable } from 'firebase/functions'; // THIS IS THE CORRECT IMPORT FOR httpsCallable
+import { httpsCallable } from 'firebase/functions';
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -175,32 +175,27 @@ export const updateSupplier = (supplierId, updatedData) => {
     return updateDoc(supplierDoc, updatedData);
 };
 
-// --- NEW: SUPPLIER ITEM PRICING API ---
+// --- SUPPLIER ITEM PRICING API ---
 const supplierItemPricingCollection = collection(db, 'supplierItemPricing');
-
 export const getSupplierPricingForItem = async (itemId) => {
     if (!itemId) return [];
     const q = query(supplierItemPricingCollection, where('itemId', '==', itemId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 export const addSupplierPrice = (priceData) => {
     return addDoc(supplierItemPricingCollection, priceData);
 };
-
 export const updateSupplierPrice = (priceId, updatedData) => {
     const priceDoc = doc(db, 'supplierItemPricing', priceId);
     return updateDoc(priceDoc, updatedData);
 };
-
 export const deleteSupplierPrice = (priceId) => {
     const priceDoc = doc(db, 'supplierItemPricing', priceId);
     return deleteDoc(priceDoc);
 };
 
-
-// --- INVENTORY APIs (UPDATED FOR CASCADE DELETE) ---
+// --- INVENTORY APIs ---
 const workshopSuppliesCollection = collection(db, 'workshopSupplies');
 const componentsCollection = collection(db, 'components');
 const rawMaterialsCollection = collection(db, 'rawMaterials');
@@ -242,6 +237,18 @@ export const deleteRawMaterial = async (materialId) => {
     const pricingSnapshot = await getDocs(query(supplierItemPricingCollection, where('itemId', '==', materialId)));
     pricingSnapshot.forEach(priceDoc => batch.delete(priceDoc.ref));
     return batch.commit();
+};
+
+// --- MASTER INVENTORY API ---
+export const getAllInventoryItems = async () => {
+    const [components, rawMaterials, workshopSupplies] = await Promise.all([
+        getComponents(), getRawMaterials(), getWorkshopSupplies()
+    ]);
+    return [
+        ...components.map(item => ({ ...item, category: 'Component' })),
+        ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
+        ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
+    ];
 };
 
 // --- OVERHEADS API ---
@@ -338,18 +345,6 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     }
 };
 
-// --- MASTER INVENTORY API ---
-export const getAllInventoryItems = async () => {
-    const [components, rawMaterials, workshopSupplies] = await Promise.all([
-        getComponents(), getRawMaterials(), getWorkshopSupplies()
-    ]);
-    return [
-        ...components.map(item => ({ ...item, category: 'Component' })),
-        ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
-        ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
-    ];
-};
-
 // --- JOB STEP DETAILS API (RECIPES) ---
 const jobStepDetailsCollection = collection(db, 'jobStepDetails');
 export const getJobStepDetails = async () => {
@@ -360,6 +355,12 @@ export const setJobStepDetail = (productId, departmentId, data) => {
     const recipeId = `${productId}_${departmentId}`;
     const docRef = doc(db, 'jobStepDetails', recipeId);
     return setDoc(docRef, { ...data, productId, departmentId });
+};
+export const getRecipeForProductDepartment = async (productId, departmentId) => {
+    const recipeId = `${productId}_${departmentId}`;
+    const docRef = doc(db, 'jobStepDetails', recipeId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
 };
 
 // --- JOB CARDS API ---
@@ -505,10 +506,9 @@ export const deleteDocument = async (collectionName, docId) => {
     return deleteDoc(docRef);
 };
 
-// --- UNIFIED PRODUCT CATALOG API v3 ---
+// --- UNIFIED PRODUCT CATALOG API ---
 const productsCollection = collection(db, 'products');
 const productCategoriesCollection = collection(db, 'productCategories');
-const fitmentCollection = collection(db, 'fitment');
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
 export const getProductCategories = async () => {
     const snapshot = await getDocs(query(productCategoriesCollection, orderBy('name')));
@@ -530,21 +530,10 @@ export const updateProduct = (productId, updatedData) => updateDoc(doc(db, 'prod
 export const deleteProduct = async (productId) => {
     const batch = writeBatch(db);
     batch.delete(doc(db, 'products', productId));
-    const fitmentSnapshot = await getDocs(query(fitmentCollection, where('productId', '==', productId)));
-    fitmentSnapshot.forEach(doc => batch.delete(doc.ref));
     const recipeLinkSnapshot = await getDocs(query(productRecipeLinksCollection, where('productId', '==', productId)));
     recipeLinkSnapshot.forEach(doc => batch.delete(doc.ref));
     return batch.commit();
 };
-export const getFitmentForProduct = async (productId) => {
-    const q = query(fitmentCollection, where('productId', '==', productId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-export const addFitment = (productId, modelId, modelName, makeName, manufacturerName) => {
-    return addDoc(fitmentCollection, { productId, modelId, modelName, makeName, manufacturerName });
-};
-export const removeFitment = (fitmentId) => deleteDoc(doc(db, 'fitment', fitmentId));
 export const getLinkedRecipesForProduct = async (productId) => {
     const q = query(productRecipeLinksCollection, where('productId', '==', productId));
     const snapshot = await getDocs(q);
@@ -553,7 +542,7 @@ export const getLinkedRecipesForProduct = async (productId) => {
 export const linkRecipeToProduct = (linkData) => addDoc(productRecipeLinksCollection, linkData);
 export const unlinkRecipeFromProduct = (linkId) => deleteDoc(doc(db, 'productRecipeLinks', linkId));
 
-// --- PAYROLL & REPORTING API FUNCTIONS ---
+// --- PAYROLL & REPORTING API ---
 export const getCompletedJobsInRange = async (startDate, endDate) => {
     const q = query(jobCardsCollection, where('status', '==', 'Complete'), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
     const snapshot = await getDocs(q);
@@ -566,7 +555,7 @@ export const getCompletedJobsForEmployee = async (employeeId) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-// --- USER MANAGEMENT API FUNCTIONS ---
+// --- USER MANAGEMENT API ---
 const usersCollection = collection(db, 'users');
 export const getAllUsers = async () => {
     const snapshot = await getDocs(usersCollection);
@@ -590,7 +579,7 @@ export const deleteUserWithRole = async (userId) => {
     return data;
 };
 
-// --- MARKETING & SALES API FUNCTIONS ---
+// --- MARKETING & SALES API ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
 export const getCampaigns = async () => {
     const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
@@ -660,9 +649,7 @@ export const getReworkReasons = async () => {
 // --- KUDOS API ---
 export const giveKudosToJob = (jobId) => {
     const jobDocRef = doc(db, 'createdJobCards', jobId);
-    return updateDoc(jobDocRef, {
-        kudos: true
-    });
+    return updateDoc(jobDocRef, { kudos: true });
 };
 
 // --- JOB CARD ADJUSTMENT API ---
@@ -677,6 +664,118 @@ export const getJobsAwaitingQC = async () => {
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+
+
+// --- SALES ORDERS & ONE-OFF PURCHASES ---
+const salesOrdersCollection = collection(db, 'salesOrders');
+const oneOffPurchasesCollection = collection(db, 'oneOffPurchases');
+
+export const createSalesOrderFromQuote = async (quote) => {
+    const batch = writeBatch(db);
+    const salesOrderRef = doc(salesOrdersCollection);
+    const salesOrderData = {
+        salesOrderId: `SO-${quote.quoteId.replace('Q-', '')}`,
+        customerName: quote.customerName,
+        customerEmail: quote.customerEmail,
+        total: quote.total,
+        status: 'Pending Production',
+        createdAt: serverTimestamp(),
+        lineItems: quote.lineItems.map(item => ({
+            ...item,
+            id: doc(collection(db, '_')).id,
+            status: 'Pending'
+        }))
+    };
+    batch.set(salesOrderRef, salesOrderData);
+    const quoteRef = doc(db, 'quotes', quote.id);
+    batch.update(quoteRef, { status: 'Accepted' });
+    return batch.commit();
+};
+
+export const listenToSalesOrders = (callback) => {
+    const q = query(salesOrdersCollection, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(orders);
+    });
+};
+
+export const listenToOneOffPurchases = (callback) => {
+    const q = query(oneOffPurchasesCollection, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(items);
+    });
+};
+
+export const addPurchasedItemToQueue = (lineItem, salesOrder) => {
+    return addDoc(oneOffPurchasesCollection, {
+        itemName: lineItem.description,
+        quantity: lineItem.quantity,
+        estimatedCost: lineItem.unitCost,
+        salesOrderId: salesOrder.salesOrderId,
+        customerName: salesOrder.customerName,
+        status: 'Pending Purchase',
+        createdAt: serverTimestamp()
+    });
+};
+
+export const markOneOffItemsAsOrdered = async (itemIds) => {
+    const batch = writeBatch(db);
+    itemIds.forEach(id => {
+        const docRef = doc(db, 'oneOffPurchases', id);
+        batch.update(docRef, { status: 'Ordered' });
+    });
+    return batch.commit();
+};
+
+export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newStatus) => {
+    const orderRef = doc(db, 'salesOrders', orderId);
+    const orderDoc = await getDoc(orderRef);
+    if (!orderDoc.exists()) {
+        throw new Error("Sales Order not found");
+    }
+    const orderData = orderDoc.data();
+    const updatedLineItems = orderData.lineItems.map(item =>
+        item.id === lineItemId ? { ...item, status: newStatus } : item
+    );
+    return updateDoc(orderRef, { lineItems: updatedLineItems });
+};
+
+// --- STOCK TAKE API (NEW) ---
+/**
+ * Reconciles stock levels after a physical count.
+ * @param {Array<Object>} itemsToReconcile - An array of objects with item details.
+ * Each object should have: id, category, and newCount.
+ */
+export const reconcileStockLevels = async (itemsToReconcile) => {
+    const batch = writeBatch(db);
+
+    for (const item of itemsToReconcile) {
+        let collectionName;
+        // Determine the correct collection based on the item's category
+        switch (item.category) {
+            case 'Component':
+                collectionName = 'components';
+                break;
+            case 'Raw Material':
+                collectionName = 'rawMaterials';
+                break;
+            case 'Workshop Supply':
+                collectionName = 'workshopSupplies';
+                break;
+            default:
+                console.warn(`Unknown category "${item.category}" for item ${item.name}. Skipping.`);
+                continue; // Skip this item if the category is unknown
+        }
+
+        const itemRef = doc(db, collectionName, item.id);
+        batch.update(itemRef, { currentStock: item.newCount });
+    }
+
+    return batch.commit();
+};
+
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };
