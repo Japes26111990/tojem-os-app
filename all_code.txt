@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 06/30/2025 11:28:16
+Generated on: 06/30/2025 14:49:40
 
 
 ==================================================
@@ -56,7 +56,27 @@ import {
     limit
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
-import { httpsCallable } from 'firebase/functions'; // THIS IS THE CORRECT IMPORT FOR httpsCallable
+import { httpsCallable } from 'firebase/functions';
+
+// --- SYSTEM STATUS API (NEW) ---
+/**
+ * Listens for real-time updates to the system status document.
+ * This is used for features like the real-time bottleneck display.
+ * @param {function} callback - The function to call with the status data.
+ * @returns {import("firebase/firestore").Unsubscribe} A function to unsubscribe from updates.
+ */
+export const listenToSystemStatus = (callback) => {
+    const statusDocRef = doc(db, 'systemStatus', 'latest');
+    return onSnapshot(statusDocRef, (doc) => {
+        if (doc.exists()) {
+            callback(doc.data());
+        } else {
+            // Provide a default object if the document doesn't exist yet
+            callback({ bottleneckToolName: 'N/A', bottleneckUtilization: 0 });
+        }
+    });
+};
+
 
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
@@ -213,32 +233,27 @@ export const updateSupplier = (supplierId, updatedData) => {
     return updateDoc(supplierDoc, updatedData);
 };
 
-// --- NEW: SUPPLIER ITEM PRICING API ---
+// --- SUPPLIER ITEM PRICING API ---
 const supplierItemPricingCollection = collection(db, 'supplierItemPricing');
-
 export const getSupplierPricingForItem = async (itemId) => {
     if (!itemId) return [];
     const q = query(supplierItemPricingCollection, where('itemId', '==', itemId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-
 export const addSupplierPrice = (priceData) => {
     return addDoc(supplierItemPricingCollection, priceData);
 };
-
 export const updateSupplierPrice = (priceId, updatedData) => {
     const priceDoc = doc(db, 'supplierItemPricing', priceId);
     return updateDoc(priceDoc, updatedData);
 };
-
 export const deleteSupplierPrice = (priceId) => {
     const priceDoc = doc(db, 'supplierItemPricing', priceId);
     return deleteDoc(priceDoc);
 };
 
-
-// --- INVENTORY APIs (UPDATED FOR CASCADE DELETE) ---
+// --- INVENTORY APIs ---
 const workshopSuppliesCollection = collection(db, 'workshopSupplies');
 const componentsCollection = collection(db, 'components');
 const rawMaterialsCollection = collection(db, 'rawMaterials');
@@ -282,6 +297,18 @@ export const deleteRawMaterial = async (materialId) => {
     return batch.commit();
 };
 
+// --- MASTER INVENTORY API ---
+export const getAllInventoryItems = async () => {
+    const [components, rawMaterials, workshopSupplies] = await Promise.all([
+        getComponents(), getRawMaterials(), getWorkshopSupplies()
+    ]);
+    return [
+        ...components.map(item => ({ ...item, category: 'Component' })),
+        ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
+        ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
+    ];
+};
+
 // --- OVERHEADS API ---
 const overheadsCategoriesCollection = collection(db, 'overheadsCategories');
 export const getOverheadCategories = async () => {
@@ -312,6 +339,14 @@ const purchaseQueueCollection = collection(db, 'purchaseQueue');
 export const getPurchaseQueue = async () => {
     const snapshot = await getDocs(purchaseQueueCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+// NEW: Real-time listener for the purchase queue
+export const listenToPurchaseQueue = (callback) => {
+    const q = query(purchaseQueueCollection, orderBy('queuedAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(items);
+    });
 };
 export const addToPurchaseQueue = (itemData) => {
     return addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
@@ -376,18 +411,6 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     }
 };
 
-// --- MASTER INVENTORY API ---
-export const getAllInventoryItems = async () => {
-    const [components, rawMaterials, workshopSupplies] = await Promise.all([
-        getComponents(), getRawMaterials(), getWorkshopSupplies()
-    ]);
-    return [
-        ...components.map(item => ({ ...item, category: 'Component' })),
-        ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
-        ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
-    ];
-};
-
 // --- JOB STEP DETAILS API (RECIPES) ---
 const jobStepDetailsCollection = collection(db, 'jobStepDetails');
 export const getJobStepDetails = async () => {
@@ -398,6 +421,12 @@ export const setJobStepDetail = (productId, departmentId, data) => {
     const recipeId = `${productId}_${departmentId}`;
     const docRef = doc(db, 'jobStepDetails', recipeId);
     return setDoc(docRef, { ...data, productId, departmentId });
+};
+export const getRecipeForProductDepartment = async (productId, departmentId) => {
+    const recipeId = `${productId}_${departmentId}`;
+    const docRef = doc(db, 'jobStepDetails', recipeId);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
 };
 
 // --- JOB CARDS API ---
@@ -419,12 +448,16 @@ export const getJobByJobId = async (jobId) => {
     const jobDoc = querySnapshot.docs[0];
     return { id: jobDoc.id, ...jobDoc.data() };
 };
-export const updateJobStatus = async (docId, newStatus) => {
+
+export const updateJobStatus = async (docId, newStatus, options = {}) => {
     const jobDocRef = doc(db, 'createdJobCards', docId);
     const jobDoc = await getDoc(jobDocRef);
     if (!jobDoc.exists()) throw new Error("Job not found!");
+
     const currentData = jobDoc.data();
     const dataToUpdate = { status: newStatus };
+    const { haltReason } = options;
+
     if (newStatus === 'In Progress') {
         if (!currentData.startedAt) dataToUpdate.startedAt = serverTimestamp();
         else if (currentData.status === 'Paused' && currentData.pausedAt) {
@@ -435,20 +468,43 @@ export const updateJobStatus = async (docId, newStatus) => {
         dataToUpdate.pausedAt = serverTimestamp();
     } else if (newStatus === 'Awaiting QC') {
         dataToUpdate.completedAt = serverTimestamp();
+    } else if (newStatus === 'Halted - Issue') {
+        dataToUpdate.haltedAt = serverTimestamp();
+        dataToUpdate.issueLog = [
+            ...(currentData.issueLog || []),
+            { reason: haltReason, timestamp: serverTimestamp(), user: 'SYSTEM' } 
+        ];
     }
+
     const scanEventRef = doc(collection(db, 'scanEvents'));
     const scanEventData = {
         employeeId: currentData.employeeId,
         employeeName: currentData.employeeName,
         jobId: currentData.jobId,
         statusUpdatedTo: newStatus,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        notes: haltReason ? `Halted: ${haltReason}` : ''
     };
     const batch = writeBatch(db);
     batch.update(jobDocRef, dataToUpdate);
     batch.set(scanEventRef, scanEventData);
+    
+    if (newStatus === 'Halted - Issue') {
+        const notificationRef = doc(collection(db, 'notifications'));
+        const notificationData = {
+            message: `Job ${currentData.jobId} (${currentData.partName}) was halted. Reason: ${haltReason}`,
+            type: 'job_halted',
+            targetRole: 'Manager',
+            jobId: currentData.jobId,
+            createdAt: serverTimestamp(),
+            read: false,
+        };
+        batch.set(notificationRef, notificationData);
+    }
+    
     return batch.commit();
 };
+
 export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
     const allTools = await getTools();
     const toolsMap = new Map(allTools.map(t => [t.id, t]));
@@ -543,10 +599,9 @@ export const deleteDocument = async (collectionName, docId) => {
     return deleteDoc(docRef);
 };
 
-// --- UNIFIED PRODUCT CATALOG API v3 ---
+// --- UNIFIED PRODUCT CATALOG API ---
 const productsCollection = collection(db, 'products');
 const productCategoriesCollection = collection(db, 'productCategories');
-const fitmentCollection = collection(db, 'fitment');
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
 export const getProductCategories = async () => {
     const snapshot = await getDocs(query(productCategoriesCollection, orderBy('name')));
@@ -568,21 +623,10 @@ export const updateProduct = (productId, updatedData) => updateDoc(doc(db, 'prod
 export const deleteProduct = async (productId) => {
     const batch = writeBatch(db);
     batch.delete(doc(db, 'products', productId));
-    const fitmentSnapshot = await getDocs(query(fitmentCollection, where('productId', '==', productId)));
-    fitmentSnapshot.forEach(doc => batch.delete(doc.ref));
     const recipeLinkSnapshot = await getDocs(query(productRecipeLinksCollection, where('productId', '==', productId)));
     recipeLinkSnapshot.forEach(doc => batch.delete(doc.ref));
     return batch.commit();
 };
-export const getFitmentForProduct = async (productId) => {
-    const q = query(fitmentCollection, where('productId', '==', productId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-export const addFitment = (productId, modelId, modelName, makeName, manufacturerName) => {
-    return addDoc(fitmentCollection, { productId, modelId, modelName, makeName, manufacturerName });
-};
-export const removeFitment = (fitmentId) => deleteDoc(doc(db, 'fitment', fitmentId));
 export const getLinkedRecipesForProduct = async (productId) => {
     const q = query(productRecipeLinksCollection, where('productId', '==', productId));
     const snapshot = await getDocs(q);
@@ -591,7 +635,7 @@ export const getLinkedRecipesForProduct = async (productId) => {
 export const linkRecipeToProduct = (linkData) => addDoc(productRecipeLinksCollection, linkData);
 export const unlinkRecipeFromProduct = (linkId) => deleteDoc(doc(db, 'productRecipeLinks', linkId));
 
-// --- PAYROLL & REPORTING API FUNCTIONS ---
+// --- PAYROLL & REPORTING API ---
 export const getCompletedJobsInRange = async (startDate, endDate) => {
     const q = query(jobCardsCollection, where('status', '==', 'Complete'), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
     const snapshot = await getDocs(q);
@@ -604,7 +648,7 @@ export const getCompletedJobsForEmployee = async (employeeId) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-// --- USER MANAGEMENT API FUNCTIONS ---
+// --- USER MANAGEMENT API ---
 const usersCollection = collection(db, 'users');
 export const getAllUsers = async () => {
     const snapshot = await getDocs(usersCollection);
@@ -628,7 +672,7 @@ export const deleteUserWithRole = async (userId) => {
     return data;
 };
 
-// --- MARKETING & SALES API FUNCTIONS ---
+// --- MARKETING & SALES API ---
 const marketingCampaignsCollection = collection(db, 'marketingCampaigns');
 export const getCampaigns = async () => {
     const snapshot = await getDocs(query(marketingCampaignsCollection, orderBy('startDate', 'desc')));
@@ -698,9 +742,7 @@ export const getReworkReasons = async () => {
 // --- KUDOS API ---
 export const giveKudosToJob = (jobId) => {
     const jobDocRef = doc(db, 'createdJobCards', jobId);
-    return updateDoc(jobDocRef, {
-        kudos: true
-    });
+    return updateDoc(jobDocRef, { kudos: true });
 };
 
 // --- JOB CARD ADJUSTMENT API ---
@@ -716,8 +758,121 @@ export const getJobsAwaitingQC = async () => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
+
+// --- SALES ORDERS & ONE-OFF PURCHASES ---
+const salesOrdersCollection = collection(db, 'salesOrders');
+const oneOffPurchasesCollection = collection(db, 'oneOffPurchases');
+
+export const createSalesOrderFromQuote = async (quote) => {
+    const batch = writeBatch(db);
+    const salesOrderRef = doc(salesOrdersCollection);
+    const salesOrderData = {
+        salesOrderId: `SO-${quote.quoteId.replace('Q-', '')}`,
+        customerName: quote.customerName,
+        customerEmail: quote.customerEmail,
+        total: quote.total,
+        status: 'Pending Production',
+        createdAt: serverTimestamp(),
+        lineItems: quote.lineItems.map(item => ({
+            ...item,
+            id: doc(collection(db, '_')).id,
+            status: 'Pending'
+        }))
+    };
+    batch.set(salesOrderRef, salesOrderData);
+    const quoteRef = doc(db, 'quotes', quote.id);
+    batch.update(quoteRef, { status: 'Accepted' });
+    return batch.commit();
+};
+
+export const listenToSalesOrders = (callback) => {
+    const q = query(salesOrdersCollection, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(orders);
+    });
+};
+
+export const listenToOneOffPurchases = (callback) => {
+    const q = query(oneOffPurchasesCollection, orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(items);
+    });
+};
+
+export const addPurchasedItemToQueue = (lineItem, salesOrder) => {
+    return addDoc(oneOffPurchasesCollection, {
+        itemName: lineItem.description,
+        quantity: lineItem.quantity,
+        estimatedCost: lineItem.unitCost,
+        salesOrderId: salesOrder.salesOrderId,
+        customerName: salesOrder.customerName,
+        status: 'Pending Purchase',
+        createdAt: serverTimestamp()
+    });
+};
+
+export const markOneOffItemsAsOrdered = async (itemIds) => {
+    const batch = writeBatch(db);
+    itemIds.forEach(id => {
+        const docRef = doc(db, 'oneOffPurchases', id);
+        batch.update(docRef, { status: 'Ordered' });
+    });
+    return batch.commit();
+};
+
+export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newStatus) => {
+    const orderRef = doc(db, 'salesOrders', orderId);
+    const orderDoc = await getDoc(orderRef);
+    if (!orderDoc.exists()) {
+        throw new Error("Sales Order not found");
+    }
+    const orderData = orderDoc.data();
+    const updatedLineItems = orderData.lineItems.map(item =>
+        item.id === lineItemId ? { ...item, status: newStatus } : item
+    );
+    return updateDoc(orderRef, { lineItems: updatedLineItems });
+};
+
+// --- STOCK TAKE API (NEW) ---
+/**
+ * Reconciles stock levels after a physical count.
+ * @param {Array<Object>} itemsToReconcile - An array of objects with item details.
+ * Each object should have: id, category, and newCount.
+ */
+export const reconcileStockLevels = async (itemsToReconcile) => {
+    const batch = writeBatch(db);
+
+    for (const item of itemsToReconcile) {
+        let collectionName;
+        // Determine the correct collection based on the item's category
+        switch (item.category) {
+            case 'Component':
+                collectionName = 'components';
+                break;
+            case 'Raw Material':
+                collectionName = 'rawMaterials';
+                break;
+            case 'Workshop Supply':
+                collectionName = 'workshopSupplies';
+                break;
+            default:
+                console.warn(`Unknown category "${item.category}" for item ${item.name}. Skipping.`);
+                continue; // Skip this item if the category is unknown
+        }
+
+        const itemRef = doc(db, collectionName, item.id);
+        batch.update(itemRef, { currentStock: item.newCount });
+    }
+
+    return batch.commit();
+};
+
+
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };
+
 
 
 ==================================================
@@ -2726,7 +2881,7 @@ export default QcQueue;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddCustomWorkModal.jsx
 ==================================================
-// src/components/features/quotes/AddCustomWorkModal.jsx (New File)
+// src/components/features/quotes/AddCustomWorkModal.jsx (Updated for minutes)
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Button from '../../ui/Button';
@@ -2737,7 +2892,7 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
     const { inventoryItems, averageBurdenedRate } = calculationData;
 
     const [description, setDescription] = useState('');
-    const [estimatedHours, setEstimatedHours] = useState('');
+    const [estimatedMinutes, setEstimatedMinutes] = useState(''); // Changed from hours
     const [consumables, setConsumables] = useState([]);
 
     // State for the consumable search dropdown
@@ -2780,9 +2935,10 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
 
     const calculatedCost = useMemo(() => {
         const materialCost = consumables.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const laborCost = (parseFloat(estimatedHours) || 0) * averageBurdenedRate;
+        // UPDATED CALCULATION: Divide minutes by 60 to get hours for rate calculation
+        const laborCost = ((parseFloat(estimatedMinutes) || 0) / 60) * averageBurdenedRate;
         return materialCost + laborCost;
-    }, [consumables, estimatedHours, averageBurdenedRate]);
+    }, [consumables, estimatedMinutes, averageBurdenedRate]);
 
     const handleAddItemToQuote = () => {
         if (!description) return alert("Please provide a description for this custom work.");
@@ -2805,7 +2961,8 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
 
                 <div className="p-6 overflow-y-auto space-y-4">
                     <Input label="Line Item Description" placeholder="e.g., Repair and reinforce customer bracket" value={description} onChange={e => setDescription(e.target.value)} />
-                    <Input label="Estimated Labor (Hours)" type="number" placeholder="e.g., 4.5" value={estimatedHours} onChange={e => setEstimatedHours(e.target.value)} />
+                    {/* UPDATED LABEL */}
+                    <Input label="Estimated Labor (Minutes)" type="number" placeholder="e.g., 90" value={estimatedMinutes} onChange={e => setEstimatedMinutes(e.target.value)} />
 
                     {/* Consumables Section */}
                     <div>
@@ -2942,15 +3099,16 @@ export default AddPurchasedItemModal;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\QuoteCreator.jsx
 ==================================================
-// src/components/features/quotes/QuoteCreator.jsx (Final Version)
+// src/components/features/quotes/QuoteCreator.jsx (Final Version with all buttons)
 
 import React, { useState, useMemo } from 'react';
 import { addQuote } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
-import { X, PlusCircle, Trash2, DollarSign, Percent, FileText, Package, Wrench } from 'lucide-react';
-import AddCustomWorkModal from './AddCustomWorkModal'; // Import the new modal
+import { X, PlusCircle, Trash2, DollarSign, Percent, FileText, Package, Wrench, ShoppingBag } from 'lucide-react';
+import AddCustomWorkModal from './AddCustomWorkModal';
+import AddPurchasedItemModal from './AddPurchasedItemModal'; // Import the modal
 
 const QuoteCreator = ({ onClose, calculationData }) => {
     const { products, allRecipes, inventoryItems, averageBurdenedRate } = calculationData;
@@ -2960,13 +3118,22 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     const [lineItems, setLineItems] = useState([]);
     const [margin, setMargin] = useState('40');
     
-    // State to control our new modal
     const [isCustomWorkModalOpen, setCustomWorkModalOpen] = useState(false);
+    const [isPurchasedItemModalOpen, setPurchasedItemModalOpen] = useState(false); // State for the new modal
 
     const [catalogProductId, setCatalogProductId] = useState('');
 
     const handleAddLineItem = (item) => {
-        setLineItems(prevItems => [...prevItems, { ...item, id: Date.now() }]);
+        // Add flags to differentiate line item types
+        const newItem = { ...item, id: Date.now() };
+        if (item.isCustomWork) {
+            newItem.isCustomWork = true;
+        } else if (item.isPurchasedItem) {
+            newItem.isPurchasedItem = true;
+        } else {
+            newItem.isCatalogItem = true;
+        }
+        setLineItems(prevItems => [...prevItems, newItem]);
     };
 
     const handleAddCatalogItem = () => {
@@ -2988,7 +3155,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
             totalLaborCost += (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
         });
         
-        handleAddLineItem({ description: product.name, cost: totalMaterialCost + totalLaborCost });
+        handleAddLineItem({ description: product.name, cost: totalMaterialCost + totalLaborCost, productId: product.id });
         setCatalogProductId('');
     };
 
@@ -3045,13 +3212,15 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                                 ))}
                             </div>
                             
-                            <div className="flex items-end gap-2 p-4 border-t border-gray-700 bg-gray-900/50 rounded-lg">
+                            <div className="flex flex-wrap items-end gap-2 p-4 border-t border-gray-700 bg-gray-900/50 rounded-lg">
                                 <div className="flex-grow">
                                     <Dropdown label="Add from Product Catalog" value={catalogProductId} onChange={e => setCatalogProductId(e.target.value)} options={products} placeholder="Select a product..."/>
                                 </div>
                                 <Button onClick={handleAddCatalogItem} variant="secondary"><Package size={16} className="mr-2"/>Add Product</Button>
                                 <div className="border-l border-gray-600 h-10 mx-2"></div>
                                 <Button onClick={() => setCustomWorkModalOpen(true)} variant="secondary"><Wrench size={16} className="mr-2"/>Add Custom Work</Button>
+                                {/* THIS IS THE NEW BUTTON */}
+                                <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
                             </div>
                         </div>
 
@@ -3081,8 +3250,15 @@ const QuoteCreator = ({ onClose, calculationData }) => {
             {isCustomWorkModalOpen && (
                 <AddCustomWorkModal 
                     onClose={() => setCustomWorkModalOpen(false)}
-                    onAdd={handleAddLineItem}
+                    onAdd={(item) => handleAddLineItem({ ...item, isCustomWork: true })}
                     calculationData={calculationData}
+                />
+            )}
+
+            {isPurchasedItemModalOpen && (
+                <AddPurchasedItemModal 
+                    onClose={() => setPurchasedItemModalOpen(false)}
+                    onAdd={(item) => handleAddLineItem({ ...item, isPurchasedItem: true })}
                 />
             )}
         </>
@@ -3100,19 +3276,29 @@ import React, { useState } from 'react';
 import { getJobByJobId, updateJobStatus } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
+import { ShieldAlert } from 'lucide-react';
 
+/**
+ * The Scanner component provides a simple interface for workshop staff 
+ * to find jobs via their ID and update their status, including the new "Andon Cord" feature.
+ */
 const Scanner = () => {
   const [jobIdInput, setJobIdInput] = useState('');
   const [foundJob, setFoundJob] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Fetches a job from Firestore based on the entered Job ID.
+   */
   const handleFindJob = async (e) => {
     e.preventDefault();
     if (!jobIdInput.trim()) return;
+    
     setLoading(true);
     setError('');
     setFoundJob(null);
+
     try {
       const job = await getJobByJobId(jobIdInput);
       setFoundJob(job);
@@ -3123,6 +3309,10 @@ const Scanner = () => {
     }
   };
 
+  /**
+   * Updates the status of the currently found job.
+   * @param {string} newStatus The new status (e.g., 'In Progress', 'Paused').
+   */
   const handleUpdateStatus = async (newStatus) => {
     if (!foundJob) return;
     try {
@@ -3135,6 +3325,34 @@ const Scanner = () => {
     } catch (err) {
       setError("Failed to update status. Please try again.");
       console.error(err);
+    }
+  };
+  
+  /**
+   * NEW: Handler for the "Andon Cord" feature.
+   * Halts a job and prompts for a reason.
+   */
+  const handleFlagIssue = async () => {
+    if (!foundJob) return;
+
+    const reason = prompt("Please provide a reason for halting this job (e.g., material defect, tool problem):");
+    
+    if (reason && reason.trim()) {
+        try {
+            // Call the updated updateJobStatus function with the new status and the reason
+            await updateJobStatus(foundJob.id, 'Halted - Issue', { haltReason: reason.trim() });
+            alert(`Job ${foundJob.jobId} has been halted. Management has been notified.`);
+            // Reset the scanner after successfully halting
+            setFoundJob(null);
+            setJobIdInput('');
+            setError('');
+        } catch (err) {
+            setError("Failed to halt job. Please try again.");
+            console.error(err);
+        }
+    } else {
+        // This will trigger if the user clicks cancel or enters an empty reason
+        alert("A reason is required to halt a job.");
     }
   };
 
@@ -3162,10 +3380,15 @@ const Scanner = () => {
           <p className="text-gray-400">Current Status: <span className="font-semibold text-yellow-300">{foundJob.status}</span></p>
 
           <div className="mt-6 grid grid-cols-2 gap-4">
-            {/* We can add more logic here later to show/hide buttons based on current status */}
-            <Button onClick={() => handleUpdateStatus('In Progress')}>Start Job</Button>
+            <Button onClick={() => handleUpdateStatus('In Progress')}>Start / Resume</Button>
             <Button onClick={() => handleUpdateStatus('Paused')} variant="secondary">Pause</Button>
             <Button onClick={() => handleUpdateStatus('Awaiting QC')} >Complete Job</Button>
+            
+            {/* NEW "Andon Cord" Button */}
+            <Button onClick={handleFlagIssue} variant="danger">
+              <ShieldAlert size={16} className="mr-2" />
+              Flag Issue
+            </Button>
           </div>
         </div>
       )}
@@ -5657,14 +5880,14 @@ export default ToolAccessoriesManager;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolsManager.jsx
 ==================================================
-// src/components/features/settings/ToolsManager.jsx (UPGRADED for ABC)
+// src/components/features/settings/ToolsManager.jsx (UPGRADED for ABC & TOC)
 
 import React, { useState, useEffect } from 'react';
 import { getTools, addTool, deleteTool, updateDocument, getSkills } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Wrench, PlusCircle, Save, DollarSign } from 'lucide-react';
+import { Wrench, PlusCircle, Save, DollarSign, Clock } from 'lucide-react';
 
 const ToolsManager = () => {
     const [tools, setTools] = useState([]);
@@ -5674,7 +5897,8 @@ const ToolsManager = () => {
     // State for the form, now an object to hold all tool properties
     const [formData, setFormData] = useState({
         name: '',
-        hourlyRate: '', // <-- NEW: state for hourly rate
+        hourlyRate: '', 
+        capacityMinutesPerDay: '', // <-- NEW: state for daily capacity
         associatedSkills: [],
     });
     const [editingToolId, setEditingToolId] = useState(null);
@@ -5735,7 +5959,7 @@ const ToolsManager = () => {
     };
 
     const resetForm = () => {
-        setFormData({ name: '', hourlyRate: '', associatedSkills: [] });
+        setFormData({ name: '', hourlyRate: '', capacityMinutesPerDay: '', associatedSkills: [] });
         setEditingToolId(null);
     };
 
@@ -5749,9 +5973,11 @@ const ToolsManager = () => {
             const filteredAssociatedSkills = (formData.associatedSkills || []).filter(s =>
                 s.defaultMinimumProficiency > 0 || s.importanceWeight > 0
             );
+            // NEW: Add capacityMinutesPerDay to the saved data
             const toolDataToSave = {
                 name: formData.name.trim(),
-                hourlyRate: Number(formData.hourlyRate) || 0, // <-- NEW: save hourly rate
+                hourlyRate: Number(formData.hourlyRate) || 0,
+                capacityMinutesPerDay: Number(formData.capacityMinutesPerDay) || 0, // <-- NEW
                 associatedSkills: filteredAssociatedSkills,
             };
             
@@ -5772,18 +5998,20 @@ const ToolsManager = () => {
 
     const handleEdit = (tool) => {
         setEditingToolId(tool.id);
+        // NEW: Populate all form fields, including capacity, when editing
         setFormData({
             name: tool.name,
             hourlyRate: tool.hourlyRate || '',
+            capacityMinutesPerDay: tool.capacityMinutesPerDay || '', // <-- NEW
             associatedSkills: tool.associatedSkills || [],
         });
     };
 
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Manage Tools & Machine Rates</h3>
+            <h3 className="text-xl font-bold text-white mb-4">Manage Tools, Machine Rates & Capacity</h3>
             <form onSubmit={handleAddOrUpdate} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="md:col-span-2">
                         <Input
                             label="Tool Name"
@@ -5794,7 +6022,6 @@ const ToolsManager = () => {
                         />
                     </div>
                     <div>
-                        {/* --- NEW HOURLY RATE INPUT --- */}
                         <Input
                             label="Hourly Rate (R)"
                             name="hourlyRate"
@@ -5804,16 +6031,77 @@ const ToolsManager = () => {
                             placeholder="e.g., 25.50"
                         />
                     </div>
+                     {/* --- NEW CAPACITY INPUT --- */}
+                    <div>
+                        <Input
+                            label="Capacity (minutes/day)"
+                            name="capacityMinutesPerDay"
+                            type="number"
+                            value={formData.capacityMinutesPerDay}
+                            onChange={handleInputChange}
+                            placeholder="e.g., 450 for 8hr day"
+                        />
+                    </div>
                 </div>
 
                 {formData.name.trim() && (
                     <div className="border-t border-gray-700 pt-4 mt-4">
                          <h4 className="text-lg font-semibold text-white mb-3">Associated Skills for "{formData.name}"</h4>
-                         {/* ... Associated skills JSX remains unchanged ... */}
+                         <div className="space-y-4 max-h-60 overflow-y-auto pr-2">
+                            {allSkills.map(skill => {
+                                const currentAssociatedSkill = formData.associatedSkills?.find(s => s.skillId === skill.id);
+                                const isIncluded = !!currentAssociatedSkill;
+
+                                return (
+                                    <div key={skill.id} className="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={isIncluded}
+                                                onChange={(e) => handleToggleSkillAssociation(skill.id, e.target.checked)}
+                                                className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                            />
+                                            <label className="font-bold text-white flex-grow">{skill.name}</label>
+                                        </div>
+
+                                        {isIncluded && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-400 mb-1">Default Min. Proficiency (0-5)</label>
+                                                    <input
+                                                        type="range"
+                                                        min="0"
+                                                        max="5"
+                                                        step="1"
+                                                        value={currentAssociatedSkill.defaultMinimumProficiency || 0}
+                                                        onChange={(e) => handleAssociatedSkillChange(skill.id, 'defaultMinimumProficiency', e.target.value)}
+                                                        className="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer range-lg accent-blue-600"
+                                                    />
+                                                    <p className="text-center text-sm text-gray-400 mt-1">
+                                                        {getProficiencyLabel(currentAssociatedSkill.defaultMinimumProficiency || 0)}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <Input
+                                                        label="Importance Weight (0-10)"
+                                                        type="number"
+                                                        min="0"
+                                                        max="10"
+                                                        value={currentAssociatedSkill.importanceWeight || 0}
+                                                        onChange={(e) => handleAssociatedSkillChange(skill.id, 'importanceWeight', e.target.value)}
+                                                        placeholder="e.g., 5"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
                 
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2 pt-4 border-t border-gray-700">
                     {editingToolId && <Button type="button" variant="secondary" onClick={resetForm}>Cancel</Button>}
                     <Button type="submit" variant="primary">
                         {editingToolId ? <><Save size={16} className="mr-2"/> Update Tool</> : <><PlusCircle size={16} className="mr-2"/> Add Tool</>}
@@ -5827,17 +6115,25 @@ const ToolsManager = () => {
                         <p className="text-gray-200 flex items-center gap-3">
                             <Wrench size={18} className="text-gray-400"/> 
                             {tool.name}
-                            {/* --- DISPLAY THE HOURLY RATE --- */}
+                        </p>
+                        <div className="flex items-center gap-4">
+                             {/* --- DISPLAY THE HOURLY RATE AND CAPACITY --- */}
+                             {tool.capacityMinutesPerDay > 0 && (
+                                <span className="text-xs flex items-center gap-1 bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
+                                    <Clock size={12}/>
+                                    {`${tool.capacityMinutesPerDay} min/day`}
+                                </span>
+                            )}
                             {tool.hourlyRate > 0 && (
                                 <span className="text-xs flex items-center gap-1 bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">
                                     <DollarSign size={12}/>
                                     {`R${tool.hourlyRate.toFixed(2)}/hr`}
                                 </span>
                             )}
-                        </p>
-                        <div className="flex space-x-2">
-                            <Button onClick={() => handleEdit(tool)} variant="secondary" className="py-1 px-3 text-xs">Edit</Button>
-                            <Button onClick={() => deleteTool(tool.id)} variant="danger" className="py-1 px-3 text-xs">Delete</Button>
+                            <div className="flex space-x-2">
+                                <Button onClick={() => handleEdit(tool)} variant="secondary" className="py-1 px-3 text-xs">Manage</Button>
+                                <Button onClick={() => deleteTool(tool.id)} variant="danger" className="py-1 px-3 text-xs">Delete</Button>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -6733,8 +7029,6 @@ export default WeatherApplet;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\FutureDemandAnalyzer.jsx
 ==================================================
-// src/components/features/stock/FutureDemandAnalyzer.jsx (New File)
-
 import React, { useState, useMemo } from 'react';
 import { listenToJobCards, getAllInventoryItems } from '../../../api/firestore';
 import Button from '../../ui/Button';
@@ -6742,7 +7036,7 @@ import Input from '../../ui/Input';
 import { X, TrendingDown, Check, AlertTriangle } from 'lucide-react';
 
 const FutureDemandAnalyzer = ({ onClose }) => {
-    const [daysToAnalyze, setDaysToAnalyze] = useState(14);
+    const [daysToAnalyze, setDaysToAnalyze] = useState(30); // Default to 30 days for a better forecast
     const [analysis, setAnalysis] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -6751,6 +7045,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
         setAnalysis(null);
 
         try {
+            // We can still use listenToJobCards, but we only need the data once for this manual analysis.
             const allJobs = await new Promise(resolve => {
                 const unsubscribe = listenToJobCards(jobs => {
                     unsubscribe();
@@ -6765,6 +7060,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
             const futureDate = new Date();
             futureDate.setDate(now.getDate() + Number(daysToAnalyze));
 
+            // Filter for jobs scheduled within the analysis window
             const scheduledJobs = allJobs.filter(job => {
                 const scheduled = job.scheduledDate?.toDate();
                 return scheduled && scheduled >= now && scheduled <= futureDate;
@@ -6772,11 +7068,15 @@ const FutureDemandAnalyzer = ({ onClose }) => {
 
             const requiredMaterials = new Map();
 
+            // Aggregate all required materials from the scheduled jobs
             for (const job of scheduledJobs) {
+                // Ensure we use processedConsumables which includes calculated quantities
                 const consumables = job.processedConsumables || [];
                 for (const consumable of consumables) {
-                    const requiredQty = requiredMaterials.get(consumable.id) || 0;
-                    requiredMaterials.set(consumable.id, requiredQty + consumable.quantity);
+                    if (consumable.id) { // Ensure the consumable has a valid ID
+                         const requiredQty = requiredMaterials.get(consumable.id) || 0;
+                         requiredMaterials.set(consumable.id, requiredQty + consumable.quantity);
+                    }
                 }
             }
 
@@ -6793,6 +7093,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
                 }
             }
 
+            // Sort results to show the most critical items first
             analysisResults.sort((a,b) => a.projectedStock - b.projectedStock);
             setAnalysis(analysisResults);
 
@@ -6858,6 +7159,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
                                         </tr>
                                     );
                                 })}
+                                {analysis.length === 0 && <p className="text-center text-gray-400 py-6">No material demand found for the scheduled jobs in this period.</p>}
                             </tbody>
                         </table>
                     )}
@@ -6868,6 +7170,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
 };
 
 export default FutureDemandAnalyzer;
+
 
 
 ==================================================
@@ -7348,13 +7651,11 @@ export default StockControlDashboard;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeComponents.jsx
 ==================================================
-// src/components/features/stock/StockTakeComponents.jsx (Corrected)
+// src/components/features/stock/StockTakeComponents.jsx (UPGRADED for dynamic counting)
 
 import React from 'react';
 import Input from '../../ui/Input';
-import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
-
-// REMOVED: The incorrect import for 'reconcileStockLevels' was here. This component should not call the API.
+import { CheckCircle, AlertCircle, XCircle, Hash, Scale } from 'lucide-react';
 
 export const Summary = ({ data }) => {
     return (
@@ -7379,6 +7680,7 @@ export const Summary = ({ data }) => {
     );
 };
 
+// This component now conditionally renders the correct input fields
 export const StockCountList = ({ items, onCountChange }) => {
     return (
         <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
@@ -7387,9 +7689,10 @@ export const StockCountList = ({ items, onCountChange }) => {
                     <thead className="bg-gray-900/50">
                         <tr>
                             <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
-                            <th className="p-3 text-sm font-semibold text-gray-400">Item Code</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400">Method</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center">System Count</th>
-                            <th className="p-3 text-sm font-semibold text-gray-400 text-center w-48">Physical Count</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400 text-center w-64">Physical Count Input</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400 text-center">Calculated Qty</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center">Variance</th>
                         </tr>
                     </thead>
@@ -7397,16 +7700,36 @@ export const StockCountList = ({ items, onCountChange }) => {
                         {items.map(item => (
                             <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/50">
                                 <td className="p-2 text-white font-medium">{item.name}</td>
-                                <td className="p-2 text-gray-400 font-mono">{item.itemCode || 'N/A'}</td>
+                                <td className="p-2 text-gray-400 font-mono">
+                                    <div className="flex items-center gap-2" title={`Unit Weight: ${item.unitWeight}g, Tare: ${item.tareWeight}g`}>
+                                        {item.stockTakeMethod === 'weight' ? <Scale size={16}/> : <Hash size={16}/>}
+                                        <span>{item.stockTakeMethod === 'weight' ? 'Weight' : 'Quantity'}</span>
+                                    </div>
+                                </td>
                                 <td className="p-2 text-gray-300 font-mono text-center">{item.systemCount}</td>
                                 <td className="p-2">
-                                    <Input
-                                        type="number"
-                                        value={item.physicalCount}
-                                        onChange={(e) => onCountChange(item.id, e.target.value)}
-                                        className="text-center bg-gray-900"
-                                        placeholder="Enter count..."
-                                    />
+                                    {item.stockTakeMethod === 'weight' ? (
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                value={item.countedValues?.grossWeight || ''}
+                                                onChange={(e) => onCountChange(item.id, 'grossWeight', e.target.value)}
+                                                className="text-center bg-gray-900"
+                                                placeholder="Gross Wt. (g)"
+                                            />
+                                        </div>
+                                    ) : (
+                                        <Input
+                                            type="number"
+                                            value={item.countedValues?.quantity || ''}
+                                            onChange={(e) => onCountChange(item.id, 'quantity', e.target.value)}
+                                            className="text-center bg-gray-900"
+                                            placeholder="Enter quantity..."
+                                        />
+                                    )}
+                                </td>
+                                <td className="p-2 font-bold text-lg font-mono text-center text-blue-400">
+                                     {item.hasBeenCounted ? item.physicalCount : '-'}
                                 </td>
                                 <td className={`p-2 font-bold text-lg font-mono text-center ${item.variance > 0 ? 'text-green-400' : item.variance < 0 ? 'text-red-400' : 'text-gray-500'}`}>
                                     {item.hasBeenCounted ? (item.variance > 0 ? `+${item.variance}` : item.variance) : '-'}
@@ -7419,6 +7742,7 @@ export const StockCountList = ({ items, onCountChange }) => {
         </div>
     );
 };
+
 
 
 ==================================================
@@ -8082,6 +8406,134 @@ export default LiveTrackingTable;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\AssetPerformanceWidget.jsx
+==================================================
+import React from 'react';
+import { Clock, DollarSign, ShieldCheck, Zap } from 'lucide-react';
+
+const KpiCard = ({ icon, title, value, color }) => (
+    <div className={`bg-gray-900/50 p-4 rounded-lg border-l-4 ${color}`}>
+        <div className="flex items-center gap-3">
+            {icon}
+            <div>
+                <p className="text-sm text-gray-400">{title}</p>
+                <p className="text-xl font-bold text-white">{value}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const AssetPerformanceWidget = ({ assetData }) => {
+    if (!assetData) {
+        return (
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 text-center text-gray-500">
+                <p>Select an asset from the list to view its performance analysis.</p>
+            </div>
+        );
+    }
+
+    const {
+        name,
+        totalRunHours,
+        totalOperatingCost,
+        jobsContributed,
+        qualityRate
+    } = assetData;
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-6">
+            <h3 className="text-2xl font-bold text-white">Performance Analysis: {name}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <KpiCard icon={<Clock size={24} />} title="Total Run Time" value={`${totalRunHours.toFixed(1)} hrs`} color="border-blue-500" />
+                <KpiCard icon={<DollarSign size={24} />} title="Total Operating Cost" value={`R ${totalOperatingCost.toFixed(2)}`} color="border-yellow-500" />
+                <KpiCard icon={<Zap size={24} />} title="Jobs Contributed" value={jobsContributed} color="border-purple-500" />
+                <KpiCard icon={<ShieldCheck size={24} />} title="Quality Rate" value={`${qualityRate.toFixed(1)}%`} color="border-green-500" />
+            </div>
+            <div>
+                {/* This section can be expanded in the future with more detailed charts */}
+                <p className="text-sm text-gray-400 text-center">Further analysis charts can be added here.</p>
+            </div>
+        </div>
+    );
+};
+
+export default AssetPerformanceWidget;
+
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BottleneckWidget.jsx
+==================================================
+import React from 'react';
+import { Gauge, AlertTriangle } from 'lucide-react';
+import { RadialBarChart, RadialBar, ResponsiveContainer, PolarAngleAxis } from 'recharts';
+
+/**
+ * A widget to display the current system bottleneck identified by the TOC engine.
+ * It visualizes the utilization percentage of the most constrained tool.
+ */
+const BottleneckWidget = ({ bottleneck }) => {
+    // Set default data in case the bottleneck is not yet calculated or available
+    const bottleneckName = bottleneck?.bottleneckToolName || "Calculating...";
+    const utilization = bottleneck?.bottleneckUtilization || 0;
+
+    // Determine color based on utilization percentage
+    const scoreColor = utilization > 95 ? '#ef4444' : utilization > 80 ? '#f59e0b' : '#22c55e';
+    
+    // Data for the radial bar chart
+    const data = [{ name: 'Utilization', value: utilization }];
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col items-center justify-center">
+            <h3 className="font-bold text-white mb-2 flex items-center gap-2">
+                <AlertTriangle size={20} className="text-orange-400"/>
+                System Bottleneck
+            </h3>
+            <p className="text-lg font-semibold text-white mb-2">{bottleneckName}</p>
+
+            {/* Chart visualization for the utilization percentage */}
+            <ResponsiveContainer width="100%" height={200}>
+                <RadialBarChart 
+                    cx="50%" 
+                    cy="50%" 
+                    innerRadius="60%" 
+                    outerRadius="80%" 
+                    barSize={20} 
+                    data={data}
+                    startAngle={180}
+                    endAngle={0}
+                >
+                    <PolarAngleAxis
+                        type="number"
+                        domain={[0, 100]}
+                        angleAxisId={0}
+                        tick={false}
+                    />
+                    <RadialBar
+                        minAngle={15}
+                        background
+                        clockWise
+                        dataKey="value"
+                        cornerRadius={10}
+                        fill={scoreColor}
+                    />
+                    <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" className="text-4xl font-bold fill-white">
+                        {Math.round(utilization)}%
+                    </text>
+                     <text x="50%" y="70%" textAnchor="middle" dominantBaseline="middle" className="text-sm font-semibold fill-gray-400">
+                        Utilization
+                    </text>
+                </RadialBarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+export default BottleneckWidget;
+
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BreakEvenCalculator.jsx
 ==================================================
 // src/components/intelligence/BreakEvenCalculator.jsx (FIXED)
@@ -8123,13 +8575,12 @@ export default BreakEvenCalculator;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\CapacityGauge.jsx
 ==================================================
-// src/components/intelligence/CapacityGauge.jsx (NEW FILE)
+// src/components/intelligence/CapacityGauge.jsx
 import React from 'react';
 import { Gauge } from 'lucide-react';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
 
 const CapacityGauge = ({ utilization }) => {
-    // This component is UI-only for now, logic will be in DashboardPage.jsx
     const scoreColor = utilization > 85 ? '#ef4444' : utilization > 70 ? '#f59e0b' : '#22c55e';
     const data = [{ name: 'Capacity', value: utilization }];
 
@@ -8177,7 +8628,7 @@ export default CapacityGauge;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyAnalysisModal.jsx
 ==================================================
-// FILE: src/components/intelligence/EfficiencyAnalysisModal.jsx (NEW FILE - NO CHANGES HERE)
+// src/components/intelligence/EfficiencyAnalysisModal.jsx
 
 import React, { useMemo } from 'react';
 import { X } from 'lucide-react';
@@ -8282,10 +8733,11 @@ const EfficiencyAnalysisModal = ({ jobs, employeeName, onClose }) => {
 export default EfficiencyAnalysisModal;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyChart.jsx
 ==================================================
-// src/components/intelligence/EfficiencyChart.jsx (New File)
+// src/components/intelligence/EfficiencyChart.jsx
 
 import React, { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -8316,13 +8768,13 @@ const EfficiencyChart = ({ jobs }) => {
         const efficiency = ((job.estimatedTime * 60) / actualSeconds) * 100;
 
         return {
-          date: new Date(job.completedAt.toDate()).toLocaleDateString('en-ZA'), // Use a consistent date format
+          date: new Date(job.completedAt.toDate()).toLocaleDateString('en-ZA'),
           efficiency: efficiency,
           partName: job.partName,
         };
       })
-      .filter(Boolean) // Remove any null entries
-      .sort((a, b) => new Date(a.date) - new Date(b.date)); // Sort by date to connect the line properly
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [jobs]);
 
   if (chartData.length === 0) {
@@ -8356,6 +8808,7 @@ const EfficiencyChart = ({ jobs }) => {
 };
 
 export default EfficiencyChart;
+
 
 
 ==================================================
@@ -8602,7 +9055,7 @@ export default JobCompletionAnalysisWidget;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MonthlySalesTrend.jsx
 ==================================================
-// src/components/intelligence/MonthlySalesTrend.jsx (NEW FILE)
+// src/components/intelligence/MonthlySalesTrend.jsx
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
 
@@ -8654,7 +9107,7 @@ export default MonthlySalesTrend;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MultiYearSalesGraph.jsx
 ==================================================
-// src/components/intelligence/MultiYearSalesGraph.jsx (NEW FILE)
+// src/components/intelligence/MultiYearSalesGraph.jsx
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp } from 'lucide-react';
@@ -8676,7 +9129,6 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const MultiYearSalesGraph = ({ salesData, years }) => {
-    // A dynamic color palette for the lines
     const colors = ['#8884d8', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
 
     return (
@@ -8716,11 +9168,11 @@ export default MultiYearSalesGraph;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceLeaderboard.jsx
 ==================================================
-// src/components/intelligence/PerformanceLeaderboard.jsx (Final Version)
+// src/components/intelligence/PerformanceLeaderboard.jsx
 
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Zap, DollarSign, ShieldCheck, CheckCircle } from 'lucide-react'; // Import Star icon
+import { Star } from 'lucide-react';
 
 const SortButton = ({ label, active, onClick }) => (
     <button
@@ -8746,7 +9198,7 @@ const getRankColor = (rank) => {
 
 const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) => {
     const sortConfig = {
-        ops: { direction: 'desc', label: 'OPS', unit: '' }, // <-- ADD OPS
+        ops: { direction: 'desc', label: 'OPS', unit: '' },
         netValueAdded: { direction: 'desc', label: 'Net Value', unit: 'R' },
         avgEfficiency: { direction: 'desc', label: 'Efficiency', unit: '%' },
         reworkRate: { direction: 'asc', label: 'Rework Rate', unit: '%' },
@@ -8763,18 +9215,16 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
     }, [employees, activeSortKey]);
 
     const formatValue = (value, unit) => {
+        if (typeof value !== 'number') return 'N/A';
         if (unit === '%') return `${Math.round(value)}%`;
         if (unit === 'R') return `R ${value.toFixed(2)}`;
-        if (unit === '') return value.toFixed(1); // For OPS
+        if (unit === '') return value.toFixed(1);
         return value;
     };
 
     return (
-        <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Performance Leaderboard</h3>
-            
+        <div>
             <div className="flex flex-wrap gap-2 mb-4">
-                {/* ADD new sort button for OPS */}
                 <SortButton label={<><Star size={16}/> Rank by OPS</>} active={activeSortKey === 'ops'} onClick={() => setActiveSortKey('ops')} />
                 <SortButton label="Rank by Net Value" active={activeSortKey === 'netValueAdded'} onClick={() => setActiveSortKey('netValueAdded')} />
                 <SortButton label="Rank by Efficiency" active={activeSortKey === 'avgEfficiency'} onClick={() => setActiveSortKey('avgEfficiency')} />
@@ -8805,6 +9255,11 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
                         </div>
                     );
                 })}
+                 {sortedEmployees.length === 0 && (
+                    <div className="text-center py-10 text-gray-500">
+                        No employee data to display for the selected filter.
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -8813,13 +9268,14 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
 export default PerformanceLeaderboard;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceSnapshot.jsx
 ==================================================
-// src/components/intelligence/PerformanceSnapshot.jsx (New File)
+// src/components/intelligence/PerformanceSnapshot.jsx
 
 import React, { useMemo } from 'react';
-import { TrendingUp, TrendingDown, Users, Target, AlertTriangle } from 'lucide-react';
+import { TrendingUp, AlertTriangle } from 'lucide-react';
 
 const Insight = ({ text, type }) => {
     const config = {
@@ -8853,21 +9309,18 @@ const PerformanceSnapshot = ({ metrics }) => {
 
         const results = [];
 
-        // Efficiency Insight
         if (individual.efficiency > team.efficiency * 1.1) {
             results.push({ text: `Efficiency (${individual.efficiency.toFixed(0)}%) is significantly above the team average of ${team.efficiency.toFixed(0)}%.`, type: 'opportunity' });
         } else if (individual.efficiency < team.efficiency * 0.9) {
             results.push({ text: `Efficiency (${individual.efficiency.toFixed(0)}%) is below the team average of ${team.efficiency.toFixed(0)}%.`, type: 'alert' });
         }
 
-        // Rework Rate Insight
-        if (individual.reworkRate > team.reworkRate + 5) { // If rework is 5% or more higher
+        if (individual.reworkRate > team.reworkRate + 5) {
             results.push({ text: `Rework Rate (${individual.reworkRate.toFixed(1)}%) is higher than the team average of ${team.reworkRate.toFixed(1)}%.`, type: 'alert' });
-        } else if (individual.reworkRate < Math.max(team.reworkRate / 2, 0.5)) { // If it's less than half the team average
+        } else if (individual.reworkRate < Math.max(team.reworkRate / 2, 0.5)) {
             results.push({ text: `This employee maintains an excellent quality score with a Rework Rate of just ${individual.reworkRate.toFixed(1)}%.`, type: 'opportunity' });
         }
 
-        // Net Value Insight
         if (individual.netValueAdded > team.netValueAdded * 1.2) {
             results.push({ text: `This employee is a top value generator, adding R ${individual.netValueAdded.toFixed(0)} compared to the team average of R ${team.netValueAdded.toFixed(0)}.`, type: 'opportunity' });
         } else if (individual.netValueAdded < team.netValueAdded * 0.8) {
@@ -8895,6 +9348,7 @@ const PerformanceSnapshot = ({ metrics }) => {
 };
 
 export default PerformanceSnapshot;
+
 
 
 ==================================================
@@ -8994,13 +9448,12 @@ export default ProfitTargetMatrix;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\RealTimeValueWidget.jsx
 ==================================================
-// src/components/intelligence/RealTimeValueWidget.jsx (New File)
+// src/components/intelligence/RealTimeValueWidget.jsx
 
 import React, { useMemo } from 'react';
-import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
-    // Memoize the calculation to avoid re-running on every render
     const metrics = useMemo(() => {
         if (!employee || !jobs || jobs.length === 0) {
             return {
@@ -9024,7 +9477,6 @@ const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
             };
         }
 
-        // 1. Calculate the total value generated and hours worked from completed jobs
         const { totalValue, totalSeconds } = completedJobs.reduce(
             (acc, job) => {
                 const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -9036,14 +9488,8 @@ const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
         );
 
         const totalHours = totalSeconds / 3600;
-
-        // 2. Calculate the employee's burdened hourly rate
         const burdenedRate = (employee.hourlyRate || 0) + overheadCostPerHour;
-
-        // 3. Calculate the value they generate per hour
         const valueGeneratedPerHour = totalHours > 0 ? totalValue / totalHours : 0;
-
-        // 4. Calculate the final profitability ratio
         const profitabilityRatio = burdenedRate > 0 ? valueGeneratedPerHour / burdenedRate : 0;
 
         return {
@@ -9108,11 +9554,11 @@ const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
 export default RealTimeValueWidget;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReliabilityReport.jsx
 ==================================================
-// src/components/intelligence/ReliabilityReport.jsx (Corrected & Completed)
-
+// src/components/intelligence/ReliabilityReport.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../api/firebase';
@@ -9128,10 +9574,8 @@ const KpiCard = ({ title, value, unit }) => (
     </div>
 );
 
-// Helper function to check punctuality, adapted from PermanentPayroll.jsx
 const checkPunctuality = (date, startTime, endTime) => {
-    const dayOfWeek = date.getDay(); // Sunday = 0, Friday = 5
-    // Skip checks for weekends
+    const dayOfWeek = date.getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
         return { isLate: false, leftEarly: false, minutesLate: 0 };
     }
@@ -9140,10 +9584,8 @@ const checkPunctuality = (date, startTime, endTime) => {
     standardStartTime.setHours(7, 0, 0, 0);
 
     const standardEndTime = new Date(date.getTime());
-    // Monday to Thursday
     if (dayOfWeek >= 1 && dayOfWeek <= 4) { 
         standardEndTime.setHours(17, 0, 0, 0);
-    // Friday
     } else { 
         standardEndTime.setHours(15, 45, 0, 0);
     }
@@ -9163,14 +9605,13 @@ const checkPunctuality = (date, startTime, endTime) => {
 const ReliabilityReport = ({ employeeId }) => {
     const [timeEntries, setTimeEntries] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('month'); // 'week', 'month', 'year'
+    const [filter, setFilter] = useState('month');
 
     useEffect(() => {
         const fetchScanEventData = async () => {
             if (!employeeId) return;
             setLoading(true);
             try {
-                // 1. Query the correct 'scanEvents' collection
                 const scanEventsQuery = query(
                     collection(db, 'scanEvents'),
                     where('employeeId', '==', employeeId),
@@ -9179,7 +9620,6 @@ const ReliabilityReport = ({ employeeId }) => {
                 const snapshot = await getDocs(scanEventsQuery);
                 const events = snapshot.docs.map(doc => ({ ...doc.data(), timestamp: doc.data().timestamp.toDate() }));
 
-                // 2. Group scans by day
                 const dailyScans = {};
                 for (const event of events) {
                     const dateStr = event.timestamp.toISOString().split('T')[0];
@@ -9192,7 +9632,6 @@ const ReliabilityReport = ({ employeeId }) => {
                     dailyScans[dateStr].scans.push(event.timestamp);
                 }
 
-                // 3. Process each day to get start/end times and punctuality
                 const processedEntries = Object.values(dailyScans).map(dayData => {
                     if (dayData.scans.length === 0) return null;
                     const firstScan = dayData.scans[0];
@@ -9202,7 +9641,7 @@ const ReliabilityReport = ({ employeeId }) => {
                         date: dayData.date,
                         ...punctuality
                     };
-                }).filter(Boolean); // Filter out any null entries
+                }).filter(Boolean);
 
                 setTimeEntries(processedEntries);
 
@@ -9225,7 +9664,7 @@ const ReliabilityReport = ({ employeeId }) => {
             startDate.setHours(0, 0, 0, 0);
         } else if (filter === 'month') {
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        } else { // year
+        } else {
             startDate = new Date(now.getFullYear(), 0, 1);
         }
 
@@ -9283,7 +9722,7 @@ export default ReliabilityReport;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReworkAnalysisModal.jsx
 ==================================================
-// src/components/intelligence/ReworkAnalysisModal.jsx (New File)
+// src/components/intelligence/ReworkAnalysisModal.jsx
 
 import React, { useMemo } from 'react';
 import { X } from 'lucide-react';
@@ -9301,7 +9740,6 @@ const ReworkAnalysisModal = ({ jobs, employeeName, onClose }) => {
             return acc;
         }, {});
 
-        // Sort reasons from most frequent to least
         return Object.entries(reasons).sort(([, a], [, b]) => b - a);
 
     }, [jobs]);
@@ -9343,6 +9781,7 @@ const ReworkAnalysisModal = ({ jobs, employeeName, onClose }) => {
 };
 
 export default ReworkAnalysisModal;
+
 
 
 ==================================================
@@ -9474,8 +9913,8 @@ export default SalesTrendWidget;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SkillProgressionWidget.jsx
 ==================================================
+// src/components/intelligence/SkillProgressionWidget.jsx
 import React, { useState, useEffect } from 'react';
-// 1. IMPORT THE GENERIC deleteDocument FUNCTION and an icon
 import { getSkillHistoryForEmployee, getSkills, deleteDocument } from '../../api/firestore';
 import Button from '../ui/Button';
 import { Trash2 } from 'lucide-react';
@@ -9486,7 +9925,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
     const [selectedSkillId, setSelectedSkillId] = useState('');
     const [loading, setLoading] = useState(true);
 
-    // Encapsulate fetch logic to be reusable
     const fetchData = async () => {
         if (!employeeId) return;
         setLoading(true);
@@ -9496,11 +9934,10 @@ const SkillProgressionWidget = ({ employeeId }) => {
                 getSkills()
             ]);
 
-            // 2. SORT THE DATA IN THE BROWSER (client-side) after fetching
             const sortedHistory = history.sort((a, b) => {
                 const dateA = a.assessmentDate?.toDate() || 0;
                 const dateB = b.assessmentDate?.toDate() || 0;
-                return dateB - dateA; // Sort descending (newest first)
+                return dateB - dateA;
             });
 
             setSkillHistory(sortedHistory);
@@ -9516,7 +9953,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
             }
         } catch (error) {
             console.error("Error fetching skill progression data:", error);
-            alert("Could not load skill history.");
         }
         setLoading(false);
     };
@@ -9525,17 +9961,13 @@ const SkillProgressionWidget = ({ employeeId }) => {
         fetchData();
     }, [employeeId]);
 
-    // 3. ADD A HANDLER FOR DELETING A HISTORY RECORD
     const handleDeleteHistory = async (recordId) => {
-        if (window.confirm("Are you sure you want to permanently delete this history record? This action cannot be undone.")) {
+        if (window.confirm("Are you sure you want to permanently delete this history record?")) {
             try {
                 await deleteDocument('skillHistory', recordId);
-                // Refresh the data from local state for an instant UI update
                 setSkillHistory(prev => prev.filter(record => record.id !== recordId));
-                alert("History record deleted.");
             } catch (error) {
                 console.error("Error deleting history record:", error);
-                alert("Failed to delete history record.");
             }
         }
     };
@@ -9581,7 +10013,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
                                             {record.assessmentDate ? new Date(record.assessmentDate.toDate()).toLocaleString() : 'Date unknown'}
                                         </p>
                                     </div>
-                                    {/* 4. ADD THE DELETE BUTTON TO EACH RECORD */}
                                     <Button onClick={() => handleDeleteHistory(record.id)} variant="icon" className="text-red-500 hover:text-red-400">
                                         <Trash2 size={18} />
                                     </Button>
@@ -9600,16 +10031,15 @@ const SkillProgressionWidget = ({ employeeId }) => {
 export default SkillProgressionWidget;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TopReworkCausesWidget.jsx
 ==================================================
-// src/components/intelligence/TopReworkCausesWidget.jsx (New File)
-
+// src/components/intelligence/TopReworkCausesWidget.jsx
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
 
 const TopReworkCausesWidget = ({ data }) => {
-    // Handle the case where there are no issue jobs to analyze
     if (!data || data.length === 0) {
         return (
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col">
@@ -9624,7 +10054,6 @@ const TopReworkCausesWidget = ({ data }) => {
         );
     }
 
-    // Find the highest count to make the bar widths proportional
     const maxCount = Math.max(...data.map(([, count]) => count), 1);
 
     return (
@@ -9656,11 +10085,11 @@ const TopReworkCausesWidget = ({ data }) => {
 export default TopReworkCausesWidget;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TrophyCase.jsx
 ==================================================
-// src/components/intelligence/TrophyCase.jsx (New File)
-
+// src/components/intelligence/TrophyCase.jsx
 import React from 'react';
 import { Award, Zap, ShieldCheck, Star, Gem } from 'lucide-react';
 
@@ -9675,7 +10104,7 @@ const Badge = ({ icon, label, color, description }) => (
 
 const TrophyCase = ({ badges }) => {
     if (badges.length === 0) {
-        return null; // Don't render the component if there are no badges to show
+        return null;
     }
 
     return (
@@ -9696,9 +10125,11 @@ const TrophyCase = ({ badges }) => {
 export default TrophyCase;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ValueWasteAnalysis.jsx
 ==================================================
+// src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -9723,7 +10154,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
 
             if (actualWorkSeconds < 0) return;
 
-            // Categorize the time
             if (job.status === 'Complete') {
                 valueAddedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
@@ -9743,7 +10173,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
     const chartData = [
         {
             name: 'Time Allocation',
-            // Use keys that are simple and will match the dataKey prop in the <Bar> components
             valueAdded: timeAnalysisData.valueAddedHours,
             paused: timeAnalysisData.nonValueHours,
             wasted: timeAnalysisData.wastedHours,
@@ -9772,7 +10201,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563' }}
                     />
                     <Legend
-                        // THIS IS THE CORRECTED FORMATTER LOGIC
                         formatter={(value, entry) => {
                             const { dataKey, color } = entry;
                             const hours = chartData[0][dataKey];
@@ -9780,7 +10208,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
                         }}
                         iconType="circle"
                     />
-                    {/* The dataKey here now perfectly matches the keys in chartData */}
                     <Bar dataKey="valueAdded" name="Value-Added Time" stackId="a" fill="#22c55e" />
                     <Bar dataKey="paused" name="Non-Value Time (Paused)" stackId="a" fill="#eab308" />
                     <Bar dataKey="wasted" name="Wasted Time (Issues)" stackId="a" fill="#ef4444" />
@@ -9791,6 +10218,7 @@ const ValueWasteAnalysis = ({ jobs }) => {
 };
 
 export default ValueWasteAnalysis;
+
 
 
 ==================================================
@@ -10040,7 +10468,7 @@ export default WorkshopThroughputGraph;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YearToDateComparison.jsx
 ==================================================
-// src/components/intelligence/YearToDateComparison.jsx (NEW FILE)
+// src/components/intelligence/YearToDateComparison.jsx
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
 
@@ -10645,23 +11073,21 @@ export default RoleBasedRoute;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\Sidebar.jsx
 ==================================================
-// src/components/layout/Sidebar.jsx (Updated)
-
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext.jsx';
 import {
     LayoutDashboard, HardHat, Package, Truck, BarChart3,
     FileText, CheckSquare, AlertTriangle, ScanLine,
     Calendar as CalendarIcon, SlidersHorizontal, ChevronDown, ChevronRight,
     Briefcase, Banknote, BrainCircuit, DollarSign,
     Aperture, Calculator, NotebookText, Sun,
-    Megaphone
+    Megaphone, ShoppingCart, ClipboardList, Cpu // Added Cpu icon for assets
 } from 'lucide-react';
-import NotesApplet from '../features/sidebar/NotesApplet';
-import WeatherApplet from '../features/sidebar/WeatherApplet';
-import CalendarApplet from '../features/sidebar/CalendarApplet';
-import CalculatorApplet from '../features/sidebar/CalculatorApplet';
+import NotesApplet from '../features/sidebar/NotesApplet.jsx';
+import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
+import CalendarApplet from '../features/sidebar/CalendarApplet.jsx';
+import CalculatorApplet from '../features/sidebar/CalculatorApplet.jsx';
 
 const SidebarLink = ({ to, icon, text, isOpen }) => {
     const commonClasses = "flex items-center p-3 my-1 rounded-lg transition-colors";
@@ -10680,7 +11106,6 @@ const Applet = ({ icon, text, children, isOpen }) => {
     return(<div><button onClick={() => setAppletOpen(!isAppletOpen)} className="w-full flex items-center p-3 my-1 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors">{icon}{isOpen && <span className="ml-4 text-sm">{text}</span>}{isOpen && (isAppletOpen ? <ChevronDown size={16} className="ml-auto text-gray-500" /> : <ChevronRight size={16} className="ml-auto text-gray-500" />)}</button>{isAppletOpen && isOpen && (<div className="mt-1 border-l-2 border-blue-500/30 ml-5 pl-1 py-2">{children}</div>)}</div>);
 };
 
-// --- MODIFIED TO ACCEPT MOUSE EVENT HANDLERS ---
 const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     const { user } = useAuth();
     const userRole = user?.role || '';
@@ -10690,13 +11115,16 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
         tracking: { roles: ['Manager', 'QC Inspector', 'Workshop Employee'] },
         scanner: { roles: ['Manager', 'Workshop Employee', 'Floor Tablet'] },
         calendar: { roles: ['Manager', 'Workshop Employee'] },
-        jobCreator: { roles: ['Manager'] },
+        jobCreator: { roles: ['Manager', 'Office Manager'] },
         qc: { roles: ['Manager', 'QC Inspector'] },
         issues: { roles: ['Manager', 'QC Inspector'] },
-        stock: { roles: ['Manager'] },
+        orders: { roles: ['Manager', 'Office Manager'] },
+        purchasing: { roles: ['Manager', 'Office Manager'] },
+        stockTake: { roles: ['Manager', 'Office Manager'] },
         performance: { roles: ['Manager'] },
         profitability: { roles: ['Manager', 'Marketing'] },
         valuation: { roles: ['Manager', 'Office Manager'] },
+        assets: { roles: ['Manager'] }, // <-- NEW
         payroll: { roles: ['Manager', 'Office Manager'] },
         settings: { roles: ['Manager'] },
         marketing: { roles: ['Manager', 'Marketing'] },
@@ -10718,8 +11146,14 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                 {canSee('dashboard') && <SidebarLink to="/" icon={<LayoutDashboard size={22} />} text="Dashboard" isOpen={isOpen} />}
 
                 <NavGroup title="Sales & Marketing" icon={<Megaphone size={22} />} isOpen={isOpen}>
-                    {canSee('marketing') && <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />}
                     {canSee('quotes') && <SidebarLink to="/quotes" icon={<DollarSign size={18} />} text="Sales Quotes" isOpen={isOpen} />}
+                    {canSee('marketing') && <SidebarLink to="/marketing" icon={<BarChart3 size={18} />} text="Marketing Dashboard" isOpen={isOpen} />}
+                </NavGroup>
+                
+                <NavGroup title="Supply Chain" icon={<Truck size={22} />} isOpen={isOpen}>
+                    {canSee('orders') && <SidebarLink to="/orders" icon={<ShoppingCart size={18} />} text="Sales Orders" isOpen={isOpen} />}
+                    {canSee('purchasing') && <SidebarLink to="/purchasing" icon={<Package size={18} />} text="Purchasing Hub" isOpen={isOpen} />}
+                    {canSee('stockTake') && <SidebarLink to="/stock-take" icon={<ClipboardList size={18} />} text="Stock Take" isOpen={isOpen} />}
                 </NavGroup>
 
                 <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
@@ -10735,16 +11169,11 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
                     {canSee('adjustment') && <SidebarLink to="/adjustment" icon={<SlidersHorizontal size={18} />} text="Job Card Adjustment" isOpen={isOpen} />}
                 </NavGroup>
 
-                {canSee('stock') && (
-                    <NavGroup title="Supply Chain" icon={<Truck size={22} />} isOpen={isOpen}>
-                        <SidebarLink to="/stock" icon={<Package size={18} />} text="Stock Control" isOpen={isOpen} />
-                    </NavGroup>
-                )}
-
                 <NavGroup title="Business Intelligence" icon={<BrainCircuit size={22} />} isOpen={isOpen}>
                     {canSee('performance') && <SidebarLink to="/performance" icon={<Briefcase size={18} />} text="Performance" isOpen={isOpen} />}
                     {canSee('profitability') && <SidebarLink to="/profitability" icon={<DollarSign size={18} />} text="Profitability" isOpen={isOpen} />}
                     {canSee('valuation') && <SidebarLink to="/valuation" icon={<Banknote size={18} />} text="Valuation" isOpen={isOpen} />}
+                    {canSee('assets') && <SidebarLink to="/assets" icon={<Cpu size={18} />} text="Asset Intelligence" isOpen={isOpen} />} {/* <-- NEW LINK */}
                 </NavGroup>
 
                 <NavGroup title="Administration" icon={<Briefcase size={22} />} isOpen={isOpen}>
@@ -10768,6 +11197,7 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
 };
 
 export default Sidebar;
+
 
 
 ==================================================
@@ -11197,7 +11627,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useStockTakeData.js
 ==================================================
-// src/hooks/useStockTakeData.js (New File from your app)
+// src/hooks/useStockTakeData.js (UPGRADED for dynamic counting)
 
 import { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems } from '../api/firestore';
@@ -11206,7 +11636,8 @@ export const useStockTakeData = () => {
     const [allItems, setAllItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [counts, setCounts] = useState({});
+    // counts state now stores raw input values, which could be quantity or weight
+    const [counts, setCounts] = useState({}); 
     const [searchTerm, setSearchTerm] = useState('');
     const [filter, setFilter] = useState('all');
 
@@ -11228,29 +11659,62 @@ export const useStockTakeData = () => {
         fetchData();
     }, []);
 
-    const handleCountChange = (itemId, value) => {
-        setCounts(prev => ({ ...prev, [itemId]: value }));
+    const handleCountChange = (itemId, field, value) => {
+        setCounts(prev => ({
+            ...prev,
+            [itemId]: {
+                ...prev[itemId],
+                [field]: value
+            }
+        }));
     };
 
     const processedItems = useMemo(() => {
         return allItems.map(item => {
             const systemCount = item.currentStock || 0;
-            const physicalCount = counts[item.id];
-            const hasBeenCounted = physicalCount !== undefined && physicalCount !== '';
-            const variance = hasBeenCounted ? Number(physicalCount) - systemCount : 0;
+            const countedValues = counts[item.id] || {};
+            let physicalCount = '';
+            let hasBeenCounted = false;
+
+            // NEW: Calculate physicalCount based on the item's stockTakeMethod
+            if (item.stockTakeMethod === 'weight') {
+                const grossWeight = parseFloat(countedValues.grossWeight);
+                // Check if a valid gross weight has been entered
+                if (!isNaN(grossWeight)) {
+                    hasBeenCounted = true;
+                    const tareWeight = parseFloat(item.tareWeight) || 0;
+                    const unitWeight = parseFloat(item.unitWeight) || 1; // Prevent division by zero
+                    if (unitWeight > 0) {
+                        const netWeight = grossWeight - tareWeight;
+                        physicalCount = Math.round(netWeight / unitWeight);
+                    } else {
+                        physicalCount = 0;
+                    }
+                }
+            } else { // Default to 'quantity'
+                const qty = countedValues.quantity;
+                if (qty !== undefined && qty !== '') {
+                    hasBeenCounted = true;
+                    physicalCount = Number(qty);
+                }
+            }
+            
+            const variance = hasBeenCounted ? physicalCount - systemCount : 0;
+            
             return {
                 ...item,
                 systemCount,
-                physicalCount: hasBeenCounted ? Number(physicalCount) : '',
+                physicalCount,
                 variance,
-                hasBeenCounted
+                hasBeenCounted,
+                // Pass raw input values for display in the component
+                countedValues, 
             };
         });
     }, [allItems, counts]);
 
     const filteredItems = useMemo(() => {
         let items = processedItems;
-
         if (filter === 'discrepancies') {
             items = items.filter(item => item.hasBeenCounted && item.variance !== 0);
         } else if (filter === 'uncounted') {
@@ -11258,7 +11722,6 @@ export const useStockTakeData = () => {
         } else if (filter === 'counted') {
             items = items.filter(item => item.hasBeenCounted);
         }
-
         if (searchTerm) {
             const lowerCaseSearch = searchTerm.toLowerCase();
             items = items.filter(item =>
@@ -11280,6 +11743,7 @@ export const useStockTakeData = () => {
         };
     }, [allItems.length, processedItems]);
 
+    // NEW: Function now prepares data in the correct format for the API
     const getItemsToReconcile = () => {
         return processedItems
             .filter(item => item.hasBeenCounted)
@@ -11307,6 +11771,120 @@ export const useStockTakeData = () => {
         resetCounts: () => setCounts({}),
     };
 };
+
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\AssetIntelligencePage.jsx
+==================================================
+import React, { useState, useEffect, useMemo } from 'react';
+import { getTools, listenToJobCards, getJobStepDetails } from '../api/firestore';
+import Dropdown from '../components/ui/Dropdown';
+import AssetPerformanceWidget from '../components/intelligence/AssetPerformanceWidget.jsx';
+
+const AssetIntelligencePage = () => {
+    const [tools, setTools] = useState([]);
+    const [jobs, setJobs] = useState([]);
+    const [recipes, setRecipes] = useState([]);
+    const [selectedToolId, setSelectedToolId] = useState('');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const [fetchedTools, fetchedRecipes] = await Promise.all([
+                    getTools(),
+                    getJobStepDetails()
+                ]);
+                setTools(fetchedTools.filter(t => t.hourlyRate > 0));
+                setRecipes(fetchedRecipes);
+                
+                const unsubscribeJobs = listenToJobCards(setJobs);
+                setLoading(false);
+                
+                return unsubscribeJobs;
+            } catch (error) {
+                console.error("Error fetching data for Asset Intelligence:", error);
+                setLoading(false);
+            }
+        };
+
+        const unsubscribePromise = fetchData();
+        return () => { unsubscribePromise.then(unsub => unsub && unsub()); };
+    }, []);
+
+    const analysisData = useMemo(() => {
+        if (!selectedToolId) return null;
+
+        const selectedTool = tools.find(t => t.id === selectedToolId);
+        if (!selectedTool) return null;
+
+        let totalRunMinutes = 0;
+        const contributingJobIds = new Set();
+        
+        recipes.forEach(recipe => {
+            if(recipe.steps && Array.isArray(recipe.steps)) {
+                recipe.steps.forEach(step => {
+                    if (step.toolId === selectedToolId) {
+                        const completedJobsWithRecipe = jobs.filter(job => 
+                            job.status === 'Complete' &&
+                            job.partId === recipe.productId &&
+                            job.departmentId === recipe.departmentId
+                        );
+
+                        completedJobsWithRecipe.forEach(job => {
+                            totalRunMinutes += step.time || 0;
+                            contributingJobIds.add(job.id);
+                        });
+                    }
+                });
+            }
+        });
+        
+        const jobsContributed = contributingJobIds.size;
+        const totalRunHours = totalRunMinutes / 60;
+        const totalOperatingCost = totalRunHours * (selectedTool.hourlyRate || 0);
+
+        const jobsWithTool = jobs.filter(job => contributingJobIds.has(job.id));
+        const issueJobsWithTool = jobsWithTool.filter(job => job.status === 'Issue' || job.status === 'Archived - Issue').length;
+        const qualityRate = jobsContributed > 0 ? ((jobsContributed - issueJobsWithTool) / jobsContributed) * 100 : 100;
+
+        return {
+            name: selectedTool.name,
+            totalRunHours,
+            totalOperatingCost,
+            jobsContributed,
+            qualityRate
+        };
+
+    }, [selectedToolId, tools, jobs, recipes]);
+
+    if (loading) {
+        return <p className="text-center text-gray-400">Loading Asset Intelligence Engine...</p>;
+    }
+
+    return (
+        <div className="space-y-8">
+            <h2 className="text-3xl font-bold text-white">Asset Intelligence & ROI</h2>
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-lg">
+                <Dropdown
+                    label="Select an Asset to Analyze"
+                    value={selectedToolId}
+                    onChange={(e) => setSelectedToolId(e.target.value)}
+                    options={tools}
+                    placeholder="Choose a machine..."
+                />
+                 <p className="text-xs text-gray-500 mt-2">Only assets with an hourly rate configured in Settings will appear here.</p>
+            </div>
+
+            <AssetPerformanceWidget assetData={analysisData} />
+        </div>
+    );
+};
+
+export default AssetIntelligencePage;
+
 
 
 ==================================================
@@ -11598,88 +12176,66 @@ export default CalendarPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\DashboardPage.jsx
 ==================================================
-// src/pages/DashboardPage.jsx (MODIFIED)
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, getAllInventoryItems, getProducts, getEmployees, collection, getDocs } from '../api/firestore';
+import { listenToJobCards, getAllInventoryItems, getProducts, getEmployees, collection, getDocs, listenToSystemStatus } from '../api/firestore';
 import { db } from '../api/firebase';
-import { NavLink } from 'react-router-dom';
-import { Activity, Clock, AlertCircle, ShoppingCart, HeartPulse, Zap, Percent } from 'lucide-react';
-import { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } from 'recharts';
+import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
-// Import all widgets for the new layout
-import YearToDateComparison from '../components/intelligence/YearToDateComparison';
-import MonthlySalesTrend from '../components/intelligence/MonthlySalesTrend';
-import CapacityGauge from '../components/intelligence/CapacityGauge';
-import WorkshopThroughputGraph from '../components/intelligence/WorkshopThroughputGraph';
-import MultiYearSalesGraph from '../components/intelligence/MultiYearSalesGraph';
-import TopReworkCausesWidget from '../components/intelligence/TopReworkCausesWidget'; // <-- 1. IMPORT NEW WIDGET
+// Import all the intelligence widgets with explicit .jsx extension and absolute paths
+import YearToDateComparison from '/src/components/intelligence/YearToDateComparison.jsx';
+import MonthlySalesTrend from '/src/components/intelligence/MonthlySalesTrend.jsx';
+import MultiYearSalesGraph from '/src/components/intelligence/MultiYearSalesGraph.jsx';
+import TopReworkCausesWidget from '/src/components/intelligence/TopReworkCausesWidget.jsx';
+import CapacityGauge from '/src/components/intelligence/CapacityGauge.jsx';
+import BottleneckWidget from '/src/components/intelligence/BottleneckWidget.jsx';
 
+// A small component for the KPI cards in the header
 const KpiCard = ({ icon, title, value, color }) => (
-    <div className="bg-gray-900/50 p-4 rounded-lg flex items-center space-x-3">
-        <div className={`p-2 rounded-full ${color}`}>{icon}</div>
-        <div><p className="text-gray-400 text-xs">{title}</p><p className="text-xl font-bold text-white">{value}</p></div>
+    <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
+        <div className={`p-3 rounded-full ${color}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-gray-400 text-sm">{title}</p>
+            <p className="text-xl font-bold text-white">{value}</p>
+        </div>
     </div>
 );
 
-const HealthScoreGauge = ({ score }) => {
-    const scoreColor = score > 80 ? '#22c55e' : score > 60 ? '#f59e0b' : '#ef4444';
-    const data = [{ name: 'Health', value: score }];
-    return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col justify-center items-center">
-            <h3 className="font-bold text-white mb-2 flex items-center gap-2">
-                <HeartPulse size={20} className="text-red-400"/>
-                Company Health Score
-            </h3>
-            <ResponsiveContainer width="100%" height={150}>
-                <PieChart>
-                    <Pie 
-                        data={data} 
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%" 
-                        cy="100%" 
-                        startAngle={180} 
-                        endAngle={0} 
-                        innerRadius={60} 
-                        outerRadius={90} 
-                        fill={scoreColor} 
-                        paddingAngle={2}
-                        labelLine={false}
-                    >
-                         <Cell key={`cell-0`} fill={scoreColor} cornerRadius={10} />
-                    </Pie>
-                     <text x="50%" y="85%" textAnchor="middle" dominantBaseline="middle" className="text-4xl font-bold fill-white">
-                        {Math.round(score)}
-                    </text>
-                </PieChart>
-            </ResponsiveContainer>
-        </div>
-    );
-};
 
 const DashboardPage = () => {
+    // State for all raw data
     const [jobs, setJobs] = useState([]);
-    const [inventory, setInventory] = useState([]);
-    const [products, setProducts] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
+    const [systemStatus, setSystemStatus] = useState(null); // <-- NEW: State for bottleneck data
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        setLoading(true);
         const fetchData = async () => {
-            setLoading(true);
             try {
-                const [inventoryItems, productItems, employeeItems, historicalSalesSnapshot] = await Promise.all([
-                    getAllInventoryItems(), getProducts(), getEmployees(), getDocs(collection(db, 'historicalSales'))
+                // Fetch static data once
+                const [employeeItems, historicalSalesSnapshot] = await Promise.all([
+                    getEmployees(), 
+                    getDocs(collection(db, 'historicalSales'))
                 ]);
-                setInventory(inventoryItems);
-                setProducts(productItems);
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
+
+                // Set up real-time listeners
                 const unsubscribeJobs = listenToJobCards(setJobs);
+                const unsubscribeStatus = listenToSystemStatus(setSystemStatus); // <-- NEW: Listen to system status
+                
                 setLoading(false); 
-                return unsubscribeJobs;
+                
+                // Return a cleanup function to unsubscribe from all listeners
+                return () => {
+                    unsubscribeJobs();
+                    unsubscribeStatus();
+                };
+
             } catch (error) {
                 console.error("Failed to fetch dashboard data:", error);
                 setLoading(false);
@@ -11687,12 +12243,14 @@ const DashboardPage = () => {
         }
         
         const unsubscribePromise = fetchData();
-        return () => { unsubscribePromise.then(unsubscribe => { if (unsubscribe) unsubscribe(); }); };
+        // This is the correct way to handle cleanup for async effects
+        return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
     }, []);
 
     const dashboardData = useMemo(() => {
         if (loading) return null;
 
+        // --- Sales Trend Calculations ---
         const now = new Date();
         const currentMonthIndex = now.getMonth();
         const currentYear = now.getFullYear();
@@ -11732,51 +12290,19 @@ const DashboardPage = () => {
                 const record = historicalSales.find(d => d.year === year && d.month === (index + 1));
                 monthData[year] = record ? record.totalSales : 0;
             });
-            if (uniqueYears.includes(currentYear) && index === currentMonthIndex) {
-                 monthData[currentYear] = currentMonthSales;
-            }
             return monthData;
         });
+        
+        // --- Rework & KPI Calculations ---
+        const issueJobs = jobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue');
+        const reworkRate = jobs.length > 0 ? (issueJobs.length / jobs.length) * 100 : 0;
 
-        const totalDemandMinutes = jobs.filter(j => ['Pending', 'In Progress'].includes(j.status)).reduce((sum, j) => sum + (j.estimatedTime || 0), 0);
-        const totalAvailableMinutes = (employees.length || 1) * 40 * 60;
+        const totalDemandMinutes = jobs.filter(j => ['Pending', 'In Progress', 'Halted - Issue'].includes(j.status)).reduce((sum, j) => sum + (j.estimatedTime || 0), 0);
+        const totalAvailableMinutes = (employees.length || 1) * 40 * 60 * 4.33;
         const capacityUtilization = totalAvailableMinutes > 0 ? (totalDemandMinutes / totalAvailableMinutes) * 100 : 0;
         
-        const issues = jobs.filter(j => j.status === 'Issue');
-        const lowStockItems = inventory.filter(item => Number(item.currentStock) < Number(item.reorderLevel)).slice(0, 5);
-
-        const pieChartData = Object.entries(jobs.reduce((acc, job) => {
-            acc[job.status] = (acc[job.status] || 0) + 1; return acc;
-        }, {})).map(([name, value]) => ({ name, value }));
-        
-        const PIE_CHART_COLORS = { 'Complete': '#22c55e', 'In Progress': '#3b82f6', 'Awaiting QC': '#a855f7', 'Issue': '#ef4444', 'Pending': '#eab308' };
-        
-        const completedJobs = jobs.filter(j => j.status === 'Complete');
-        let totalEfficiencyRatio = 0, jobsWithTime = 0, totalRevenue = 0, totalCogs = 0;
-        
-        completedJobs.forEach(job => {
-            if (job.estimatedTime > 0 && job.startedAt && job.completedAt) {
-                const durationSeconds = (job.completedAt.seconds - job.startedAt.seconds) - (job.totalPausedMilliseconds / 1000 || 0);
-                if (durationSeconds > 0) {
-                    totalEfficiencyRatio += ((job.estimatedTime * 60) / durationSeconds);
-                    jobsWithTime++;
-                }
-            }
-            const product = products.find(p => p.id === job.partId);
-            if (product && product.sellingPrice > 0) {
-                totalRevenue += product.sellingPrice;
-                totalCogs += job.totalCost || 0;
-            }
-        });
-
-        const overallEfficiency = jobsWithTime > 0 ? (totalEfficiencyRatio / jobsWithTime) * 100 : 0;
-        const profitMargin = totalRevenue > 0 ? ((totalRevenue - totalCogs) / totalRevenue) * 100 : 0;
-        const reworkRate = jobs.length > 0 ? (issues.length / jobs.length) * 100 : 0;
-        const healthScore = (Math.min(100, overallEfficiency) * 0.4) + (Math.max(0, profitMargin) * 0.4) + ((100 - reworkRate) * 0.2);
-
-        // --- 2. NEW LOGIC: Calculate Top Rework Causes ---
-        const reworkCauses = jobs
-            .filter(j => j.status === 'Issue' && j.issueReason)
+        const reworkCauses = issueJobs
+            .filter(j => j.issueReason)
             .reduce((acc, job) => {
                 const reason = job.issueReason.trim();
                 acc[reason] = (acc[reason] || 0) + 1;
@@ -11789,17 +12315,11 @@ const DashboardPage = () => {
 
         return {
             monthlyPercentageChange, ytdPercentageChange, multiYearSalesData, uniqueYears,
-            capacityUtilization, healthScore,
-            liveKPIs: { jobsInProgress: jobs.filter(j => j.status === 'In Progress').length, awaitingQc: jobs.filter(j => j.status === 'Awaiting QC').length, issues: issues.length },
-            performanceKPIs: { avgEfficiency: `${Math.round(overallEfficiency)}%`, profitMargin: `${Math.round(profitMargin)}%`, reworkRate: `${reworkRate.toFixed(1)}%` },
-            actionableItems: { lowStockItems, jobsWithIssues: issues.slice(0, 5) },
-            charts: { 
-                pieChartData, 
-                PIE_CHART_COLORS,
-                topReworkCauses, // <-- Add new data to the return object
-            }
+            capacityUtilization, topReworkCauses, reworkRate: reworkRate.toFixed(1),
+            activeJobs: jobs.filter(j => ['In Progress', 'Halted - Issue'].includes(j.status)).length,
+            jobsInQc: jobs.filter(j => j.status === 'Awaiting QC').length,
         };
-    }, [jobs, inventory, products, loading, employees, historicalSales]);
+    }, [jobs, employees, historicalSales, loading]);
 
     if (loading || !dashboardData) {
         return <p className="text-center text-gray-400">Loading Mission Control...</p>;
@@ -11808,13 +12328,20 @@ const DashboardPage = () => {
     return (
         <div className="space-y-8">
             <h2 className="text-3xl font-bold text-white">Mission Control</h2>
+
+            {/* KPI Header */}
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <KpiCard icon={<HeartPulse size={24} />} title="Company Health" value={`${(100 - parseFloat(dashboardData.reworkRate)).toFixed(0)} / 100`} color="bg-red-500/20 text-red-400" />
+                <KpiCard icon={<HardHat size={24} />} title="Active Jobs" value={dashboardData.activeJobs} color="bg-blue-500/20 text-blue-400" />
+                <KpiCard icon={<CheckCircle2 size={24} />} title="Jobs in QC" value={dashboardData.jobsInQc} color="bg-purple-500/20 text-purple-400" />
+                <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
+            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
                      <MultiYearSalesGraph 
                         salesData={dashboardData.multiYearSalesData} 
                         years={dashboardData.uniqueYears}
-                        percentageChange={dashboardData.monthlyPercentageChange} 
                     />
                 </div>
                 <div className="lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
@@ -11823,34 +12350,11 @@ const DashboardPage = () => {
                 </div>
             </div>
             
-             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <HealthScoreGauge score={dashboardData.healthScore} />
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* NEW: Bottleneck Widget added to the dashboard */}
+                <BottleneckWidget bottleneck={systemStatus} />
                 <CapacityGauge utilization={dashboardData.capacityUtilization} />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                 <div className="lg:col-span-1 bg-gray-800 p-6 rounded-xl border border-gray-700">
-                     <h3 className="font-bold text-white mb-4">Live Job Status</h3>
-                      <ResponsiveContainer width="100%" height={250}>
-                        <PieChart>
-                            <Pie data={dashboardData.charts.pieChartData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} fill="#8884d8">
-                             {dashboardData.charts.pieChartData.map((entry, index) => (<Cell key={`cell-${index}`} fill={dashboardData.charts.PIE_CHART_COLORS[entry.name] || '#6b7280'} />))}
-                            </Pie>
-                            <Tooltip contentStyle={{backgroundColor: '#1f2937', border: '1px solid #4b5563'}}/>
-                            <Legend iconSize={10} wrapperStyle={{fontSize: '12px'}} />
-                         </PieChart>
-                     </ResponsiveContainer>
-                </div>
-                <div className="lg:col-span-1 bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-4">
-                     <h3 className="font-bold text-white">Team Performance Averages</h3>
-                     <KpiCard icon={<Zap size={20} />} title="Overall Efficiency" value={dashboardData.performanceKPIs.avgEfficiency} color="bg-teal-500/20 text-teal-400" />
-                     <KpiCard icon={<Percent size={20} />} title="Profit Margin (Live Jobs)" value={dashboardData.performanceKPIs.profitMargin} color="bg-green-500/20 text-green-400" />
-                     <KpiCard icon={<AlertCircle size={20} />} title="Rework Rate" value={dashboardData.performanceKPIs.reworkRate} color="bg-orange-500/20 text-orange-400" />
-                </div>
-                {/* --- 3. WIDGET REPLACEMENT --- */}
-                <div className="lg:col-span-1">
-                    <TopReworkCausesWidget data={dashboardData.charts.topReworkCauses} />
-                </div>
+                <TopReworkCausesWidget data={dashboardData.topReworkCauses} />
             </div>
         </div>
     );
@@ -11859,10 +12363,11 @@ const DashboardPage = () => {
 export default DashboardPage;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\EmployeeIntelligencePage.jsx
 ==================================================
-// src/pages/EmployeeIntelligencePage.jsx (Corrected, Optimized & Expanded)
+// src/pages/EmployeeIntelligencePage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -11878,10 +12383,9 @@ import ValueWasteAnalysis from '../components/intelligence/ValueWasteAnalysis';
 import ReworkAnalysisModal from '../components/intelligence/ReworkAnalysisModal';
 import RealTimeValueWidget from '../components/intelligence/RealTimeValueWidget';
 import SkillProgressionWidget from '../components/intelligence/SkillProgressionWidget';
-import JobCompletionAnalysisWidget from '../components/intelligence/JobCompletionAnalysisWidget';
 import EfficiencyAnalysisModal from '../components/intelligence/EfficiencyAnalysisModal';
 import TrophyCase from '../components/intelligence/TrophyCase';
-import ReliabilityReport from '../components/intelligence/ReliabilityReport'; // <-- Import the newly completed component
+import ReliabilityReport from '../components/intelligence/ReliabilityReport';
 
 const KpiCard = ({ icon, title, value, teamAverage, color, onClick, buttonText }) => (
     <div className={`bg-gray-800 p-5 rounded-lg border border-gray-700 flex flex-col justify-between`}>
@@ -12197,7 +12701,6 @@ const EmployeeIntelligencePage = () => {
                     <ValueWasteAnalysis jobs={jobs} />
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* The component is now correctly placed here */}
                     <ReliabilityReport employeeId={employeeId} />
                     <SkillProgressionWidget employeeId={employeeId} />
                 </div>
@@ -12217,11 +12720,11 @@ export default EmployeeIntelligencePage;
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\IssuesPage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
-// MainLayout import removed
-import { listenToJobCards, updateJobStatus, getEmployees, getAllInventoryItems, getTools, getToolAccessories, deleteDocument } from '../api/firestore';
+import { listenToJobCards, updateJobStatus, getEmployees, getAllInventoryItems, getTools, getToolAccessories, deleteDocument, updateDocument } from '../api/firestore';
 import JobDetailsModal from '../components/features/tracking/JobDetailsModal';
 import Button from '../components/ui/Button';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { AlertTriangle, HardHat } from 'lucide-react'; // Import icons
 
 const IssuesPage = () => {
     const [jobs, setJobs] = useState([]);
@@ -12281,12 +12784,18 @@ const IssuesPage = () => {
         }
     }, [searchParams, loading, jobs]);
 
-    const issueJobs = useMemo(() => jobs.filter(job => job.status === 'Issue'), [jobs]);
+    // UPDATED: useMemo now separates jobs into two distinct lists
+    const { haltedJobs, qcRejectedJobs } = useMemo(() => {
+        const halted = jobs.filter(job => job.status === 'Halted - Issue');
+        const rejected = jobs.filter(job => job.status === 'Issue');
+        return { haltedJobs: halted, qcRejectedJobs: rejected };
+    }, [jobs]);
 
     const handleArchive = async (jobId) => {
         if (window.confirm("Are you sure you want to archive this issue? This action cannot be undone.")) {
             try {
-                await updateJobStatus(jobId, 'Archived - Issue');
+                // We now use updateDocument, which is cleaner
+                await updateDocument('createdJobCards', jobId, { status: 'Archived - Issue' });
                 alert("Issue has been archived.");
             } catch (error) {
                 console.error("Failed to archive issue:", error);
@@ -12326,41 +12835,84 @@ const IssuesPage = () => {
     return (
         <>
             <div className="space-y-8">
-                <h2 className="text-3xl font-bold text-white">Jobs Requiring Attention</h2>
-
-                <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="border-b border-gray-600 bg-gray-900/50">
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Reason for Rejection</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loading ? (
-                                    <tr><td colSpan="4" className="text-center p-8 text-gray-400">Loading issues...</td></tr>
-                                ) : issueJobs.length === 0 ? (
-                                    <tr><td colSpan="4" className="text-center p-8 text-gray-400">No jobs require attention.</td></tr>
-                                ) : (
-                                    issueJobs.map(job => (
-                                        <tr key={job.id} className="border-b border-gray-700">
-                                            <td className="p-3 text-gray-200">{job.partName} <span className="text-xs text-gray-500 block">{job.jobId}</span></td>
-                                            <td className="p-3 text-gray-300">{job.employeeName}</td>
-                                            <td className="p-3 text-red-400 italic">{job.issueReason || 'No reason provided.'}</td>
-                                            <td className="p-3 text-right flex gap-2 justify-end">
-                                                <Button variant="secondary" onClick={() => setSelectedJob(job)}>View Details</Button>
-                                                <Button variant="danger" onClick={() => handleArchive(job.id)}>Archive</Button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                <h2 className="text-3xl font-bold text-white">Issues & Halts</h2>
+                
+                {/* NEW: Table for Halted Jobs */}
+                <div>
+                    <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><HardHat className="text-yellow-400"/> Live Halted Jobs (Andon Cord)</h3>
+                    <div className="bg-gray-800 rounded-lg border border-yellow-500/50 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-600 bg-gray-900/50">
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Reason for Halt</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {loading ? (
+                                        <tr><td colSpan="4" className="text-center p-8 text-gray-400">Loading...</td></tr>
+                                    ) : haltedJobs.length === 0 ? (
+                                        <tr><td colSpan="4" className="text-center p-8 text-gray-400">No jobs are currently halted on the floor.</td></tr>
+                                    ) : (
+                                        haltedJobs.map(job => (
+                                            <tr key={job.id} className="border-b border-gray-700">
+                                                <td className="p-3 text-gray-200">{job.partName} <span className="text-xs text-gray-500 block">{job.jobId}</span></td>
+                                                <td className="p-3 text-gray-300">{job.employeeName}</td>
+                                                <td className="p-3 text-yellow-400 italic">{(job.issueLog && job.issueLog.length > 0) ? job.issueLog[job.issueLog.length - 1].reason : 'No reason provided.'}</td>
+                                                <td className="p-3 text-right flex gap-2 justify-end">
+                                                    <Button variant="secondary" onClick={() => setSelectedJob(job)}>Review & Resolve</Button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
+
+
+                {/* Existing Table for QC Rejected Jobs */}
+                <div>
+                     <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><AlertTriangle className="text-red-400"/> QC Rejected Jobs</h3>
+                    <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-600 bg-gray-900/50">
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400">Reason for Rejection</th>
+                                        <th className="p-3 text-sm font-semibold text-gray-400 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {loading ? (
+                                        <tr><td colSpan="4" className="text-center p-8 text-gray-400">Loading...</td></tr>
+                                    ) : qcRejectedJobs.length === 0 ? (
+                                        <tr><td colSpan="4" className="text-center p-8 text-gray-400">No jobs rejected at QC.</td></tr>
+                                    ) : (
+                                        qcRejectedJobs.map(job => (
+                                            <tr key={job.id} className="border-b border-gray-700">
+                                                <td className="p-3 text-gray-200">{job.partName} <span className="text-xs text-gray-500 block">{job.jobId}</span></td>
+                                                <td className="p-3 text-gray-300">{job.employeeName}</td>
+                                                <td className="p-3 text-red-400 italic">{job.issueReason || 'No reason provided.'}</td>
+                                                <td className="p-3 text-right flex gap-2 justify-end">
+                                                    <Button variant="secondary" onClick={() => setSelectedJob(job)}>View Details</Button>
+                                                    <Button variant="danger" onClick={() => handleArchive(job.id)}>Archive</Button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             {selectedJob && (
@@ -12382,6 +12934,7 @@ const IssuesPage = () => {
 };
 
 export default IssuesPage;
+
 
 
 ==================================================
@@ -13036,14 +13589,12 @@ export default PayrollPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PerformancePage.jsx
 ==================================================
-// src/pages/PerformancePage.jsx (Corrected)
+// src/pages/PerformancePage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses, getDepartments } from '../api/firestore';
-import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
-import { CheckCircle2, Clock, DollarSign, Zap, Star } from 'lucide-react';
+import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
 
 const KpiCard = ({ icon, title, value, color }) => (
@@ -13102,20 +13653,15 @@ const PerformancePage = () => {
     
     const performanceData = useMemo(() => {
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
-        // Use a safe default for number of employees to avoid division by zero
         const employeeCount = employees.length > 0 ? employees.length : 1;
         const overheadCostPerProductiveHour = totalMonthlyOverheads / (employeeCount * 173.2);
 
-        // --- THIS IS THE CORRECTED LOGIC BLOCK ---
-        
-        // First, filter for jobs that are actually completed and have valid time data
         const validCompletedJobs = jobs.filter(job => 
             job.status === 'Complete' && 
             job.startedAt && 
             job.completedAt
         );
 
-        // Now, perform all calculations on this clean, valid data set
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
             return acc + (durationSeconds > 0 ? durationSeconds / 60 : 0);
@@ -13126,29 +13672,32 @@ const PerformancePage = () => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
             if (durationSeconds <= 0) return null;
             return ((job.estimatedTime * 60) / durationSeconds) * 100;
-        }).filter(Boolean); // Filter out nulls
+        }).filter(Boolean);
 
         const overallAvgEfficiency = efficiencyData.length > 0 ? efficiencyData.reduce((sum, eff) => sum + eff, 0) / efficiencyData.length : 0;
         const overallTotalJobValue = validCompletedJobs.reduce((acc, job) => acc + (job.totalCost || 0), 0);
-
-        // --- END OF CORRECTION ---
 
         let employeeMetrics = (employees || []).map(emp => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
             const empJobsCompleted = empJobs.length;
             const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
             
-            let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0;
+            let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0, jobsWithTime = 0;
             empJobs.forEach(job => {
                 if (job.startedAt && job.completedAt) {
                     const durationSeconds = Math.max(0, (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000);
-                    if (durationSeconds > 0) empTotalWorkMinutes += durationSeconds / 60;
-                    if (job.estimatedTime > 0 && durationSeconds > 0) empTotalEfficiencyRatioSum += (job.estimatedTime * 60) / durationSeconds;
+                    if (durationSeconds > 0) {
+                        empTotalWorkMinutes += durationSeconds / 60;
+                        if(job.estimatedTime > 0) {
+                           empTotalEfficiencyRatioSum += (job.estimatedTime * 60) / durationSeconds;
+                           jobsWithTime++;
+                        }
+                    }
                 }
                 if (typeof job.totalCost === 'number') empTotalJobValue += job.totalCost;
             });
 
-            const empAvgEfficiency = empJobsCompleted > 0 ? (empTotalEfficiencyRatioSum / empJobsCompleted) * 100 : 0;
+            const empAvgEfficiency = jobsWithTime > 0 ? (empTotalEfficiencyRatioSum / jobsWithTime) * 100 : 0;
             const burdenedRate = (emp.hourlyRate || 0) + overheadCostPerProductiveHour;
             const totalLaborCost = (empTotalWorkMinutes / 60) * burdenedRate;
             
@@ -13175,7 +13724,7 @@ const PerformancePage = () => {
         return {
             overallKpis: {
                 jobsCompleted: validCompletedJobs.length,
-                totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1), // Convert minutes to hours
+                totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1),
                 avgEfficiency: `${Math.round(overallAvgEfficiency)}%`,
                 totalJobValue: `R ${overallTotalJobValue.toFixed(2)}`,
             },
@@ -13223,11 +13772,13 @@ const PerformancePage = () => {
 export default PerformancePage;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductViabilityPage.jsx
 ==================================================
+// src/pages/ProductViabilityPage.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
-// MainLayout import removed
 import { getProducts, getLinkedRecipesForProduct, getJobStepDetails, getAllInventoryItems, getEmployees, getOverheadCategories, getOverheadExpenses } from '../api/firestore';
 import Dropdown from '../components/ui/Dropdown';
 import Input from '../components/ui/Input';
@@ -13290,50 +13841,64 @@ const ProductViabilityPage = () => {
     }, []);
 
     useEffect(() => {
-        if (selectedProductId) {
-            const product = products.find(p => p.id === selectedProductId);
-            if (product) {
-                setSellingPrice(product.sellingPrice || '');
-            }
-            const fetchLinks = async () => {
+        const fetchLinks = async () => {
+            if (selectedProductId) {
+                const product = products.find(p => p.id === selectedProductId);
+                if (product) {
+                    setSellingPrice(product.sellingPrice || '');
+                }
                 const links = await getLinkedRecipesForProduct(selectedProductId);
-                setLinkedRecipes(links);
-            };
-            fetchLinks();
-        } else {
-            setLinkedRecipes([]);
-        }
-    }, [selectedProductId, products]);
+                
+                // For each link, find the corresponding full recipe details
+                const detailedRecipes = links.map(link => {
+                    return allRecipes.find(r => r.id === link.jobStepDetailId);
+                }).filter(Boolean); // Filter out any undefined recipes
+
+                setLinkedRecipes(detailedRecipes);
+            } else {
+                setLinkedRecipes([]);
+            }
+        };
+        fetchLinks();
+    }, [selectedProductId, products, allRecipes]);
 
     const analysis = useMemo(() => {
-        // ... (memoized logic remains the same)
         const inventoryMap = new Map(inventoryItems.map(item => [item.id, item]));
         let totalMaterialCost = 0;
         let totalLaborCost = 0;
         const detailedCosts = [];
 
-        linkedRecipes.forEach(link => {
-            const recipe = allRecipes.find(r => r.productId === link.productId && r.departmentId === link.departmentId);
-            if (recipe) {
-                const recipeMaterialCost = (recipe.consumables || []).reduce((sum, consumable) => {
-                    const inventoryItem = inventoryMap.get(consumable.itemId);
-                    const price = inventoryItem?.price || 0;
-                    const quantity = consumable.quantity || 0;
-                    return sum + (price * quantity);
-                }, 0);
-
-                const recipeLaborCost = (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
+        linkedRecipes.forEach(recipe => {
+            const recipeMaterialCost = (recipe.consumables || []).reduce((sum, consumable) => {
+                const inventoryItem = inventoryMap.get(consumable.itemId);
+                const price = inventoryItem?.price || 0;
                 
-                totalMaterialCost += recipeMaterialCost;
-                totalLaborCost += recipeLaborCost;
+                // Handle both fixed and dimensional consumables
+                let quantity = 0;
+                if(consumable.type === 'fixed') {
+                    quantity = consumable.quantity || 0;
+                } else if (consumable.type === 'dimensional') {
+                    // This is a simplified cost for dimensional - a better model could be built
+                    // For now, let's assume the 'quantity' field is stored for cost estimation
+                    quantity = consumable.quantity || 1; 
+                } else {
+                    quantity = consumable.quantity || 0;
+                }
 
-                detailedCosts.push({
-                    id: link.id,
-                    partName: recipe.description || 'Recipe Step', // Use recipe description
-                    departmentName: link.departmentName,
-                    cost: recipeMaterialCost + recipeLaborCost
-                });
-            }
+                return sum + (price * quantity);
+            }, 0);
+
+            const recipeLaborCost = (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
+            
+            totalMaterialCost += recipeMaterialCost;
+            totalLaborCost += recipeLaborCost;
+
+            detailedCosts.push({
+                id: recipe.id,
+                partName: recipe.description || 'Recipe Step',
+                departmentName: products.find(p=>p.id === recipe.productId)?.name || 'N/A',
+                cost: recipeMaterialCost + recipeLaborCost
+            });
         });
         
         const totalCost = totalMaterialCost + totalLaborCost;
@@ -13342,7 +13907,7 @@ const ProductViabilityPage = () => {
         const margin = price > 0 ? (profit / price) * 100 : 0;
 
         return { totalCost, profit, margin, detailedCosts };
-    }, [linkedRecipes, allRecipes, sellingPrice, inventoryItems, averageBurdenedRate]);
+    }, [linkedRecipes, sellingPrice, inventoryItems, averageBurdenedRate, products]);
 
     if (loading) return <p className="text-center text-gray-400">Loading Profitability Engine...</p>;
 
@@ -13379,7 +13944,6 @@ const ProductViabilityPage = () => {
                                     <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
                                         <div>
                                             <p className="font-semibold text-gray-200">{item.partName}</p>
-                                            <p className="text-xs text-gray-400">{item.departmentName} Department</p>
                                         </div>
                                         <p className="font-mono text-lg text-gray-300">R {item.cost.toFixed(2)}</p>
                                     </div>
@@ -13398,271 +13962,409 @@ const ProductViabilityPage = () => {
 export default ProductViabilityPage;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PurchasingPage.jsx
 ==================================================
-// src/pages/PurchasingPage.jsx (REFACTORED & COMPLETED)
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-    listenToOneOffPurchases, 
-    markOneOffItemsAsOrdered, 
-    getPurchaseQueue, 
+    listenToPurchaseQueue, 
     getSuppliers, 
-    markItemsAsOrdered 
+    markItemsAsOrdered,
+    listenToOneOffPurchases,
+    markOneOffItemsAsOrdered,
+    getSupplierPricingForItem,
+    addSupplier,
+    listenToJobCards, // NEW: For JIT analysis
+    getAllInventoryItems, // NEW: For JIT analysis
+    addToPurchaseQueue // NEW: To programmatically add items
 } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { Mail, ThumbsUp, Truck } from 'lucide-react';
-import InTransitOrders from '../components/features/stock/InTransitOrders'; // IMPORT InTransitOrders
+import { Mail, ThumbsUp, Truck, Package, Wrench, UserPlus, X } from 'lucide-react';
+import InTransitOrders from '../components/features/stock/InTransitOrders';
+import Dropdown from '../components/ui/Dropdown';
 
-// --- Component for Job-Specific, One-Off Purchases ---
-const JobSpecificPurchases = ({ onAction }) => {
-    const [purchaseItems, setPurchaseItems] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [adminEmail, setAdminEmail] = useState('admin@tojem.co.za'); // Configurable email
-
-    useEffect(() => {
-        setLoading(true);
-        const unsubscribe = listenToOneOffPurchases((items) => {
-            setPurchaseItems(items.filter(item => item.status === 'Pending Purchase'));
-            setLoading(false);
-        });
-        return () => unsubscribe();
-    }, []);
+// AddSupplierModal remains unchanged...
+const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
+    const [newSupplier, setNewSupplier] = useState({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
     
-    const ordersToPurchaseFor = useMemo(() => {
-        return purchaseItems.reduce((acc, item) => {
-            const orderId = item.salesOrderId || 'Miscellaneous';
-            if (!acc[orderId]) {
-                acc[orderId] = {
-                    customerName: item.customerName,
-                    salesOrderId: item.salesOrderId,
-                    items: []
-                };
-            }
-            acc[orderId].items.push(item);
-            return acc;
-        }, {});
-    }, [purchaseItems]);
-
-    const handleGenerateEmail = (orderId) => {
-        const orderData = ordersToPurchaseFor[orderId];
-        if (!orderData) return;
-
-        const subject = `Purchase Request for Sales Order: ${orderData.salesOrderId}`;
-        let body = `Hi Admin,\n\nPlease order the following parts required for job SO: ${orderData.salesOrderId} for customer: ${orderData.customerName}.\n\n`;
-        
-        orderData.items.forEach(item => {
-            body += `- ${item.itemName} (Qty: ${item.quantity})\n`;
-        });
-
-        body += `\nThank you,\nTOJEM OS`;
-        window.location.href = `mailto:${adminEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-        const itemIdsToUpdate = orderData.items.map(item => item.id);
-        markOneOffItemsAsOrdered(itemIdsToUpdate).then(() => {
-            if(onAction) onAction();
-        });
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setNewSupplier(prev => ({ ...prev, [name]: value }));
     };
 
-    if (loading) return <div className="text-center text-gray-400 p-8">Loading job-specific purchase requests...</div>;
+    const handleSubmit = async () => {
+        if (!newSupplier.name || !newSupplier.email) {
+            return alert("Supplier Name and Email are required.");
+        }
+        try {
+            const supplierData = {
+                ...newSupplier,
+                estimatedEtaDays: parseInt(newSupplier.estimatedEtaDays, 10) || 0,
+                minOrderAmount: parseFloat(newSupplier.minOrderAmount) || 0,
+            };
+            await addSupplier(supplierData);
+            alert("Supplier added successfully!");
+            onSupplierAdded();
+            onClose();
+        } catch (error) {
+            console.error("Error adding supplier:", error);
+            alert("Failed to add supplier.");
+        }
+    };
 
     return (
-        <div className="space-y-6">
-            {Object.keys(ordersToPurchaseFor).length === 0 && (
-                <p className="text-center text-gray-500 p-8">No job-specific items are currently awaiting purchase.</p>
-            )}
-            {Object.entries(ordersToPurchaseFor).map(([orderId, orderData]) => (
-                <div key={orderId} className="bg-gray-800 rounded-lg border border-gray-700 p-4">
-                    <div className="flex justify-between items-center mb-3">
-                        <div>
-                            <h4 className="font-bold text-white">Sales Order: {orderData.salesOrderId}</h4>
-                            <p className="text-sm text-gray-400">Customer: {orderData.customerName}</p>
-                        </div>
-                        <Button onClick={() => handleGenerateEmail(orderId)} variant="primary">
-                            <Mail size={16} className="mr-2"/>
-                            Generate Purchase Request Email
-                        </Button>
-                    </div>
-                    <ul className="space-y-2">
-                        {orderData.items.map(item => (
-                            <li key={item.id} className="flex justify-between items-center bg-gray-900/50 p-2 rounded-md text-sm">
-                                <span className="text-gray-200">{item.itemName}</span>
-                                <span className="font-mono text-white">Qty: {item.quantity}</span>
-                            </li>
-                        ))}
-                    </ul>
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-lg">
+                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                    <h2 className="text-xl font-bold text-white">Add New Supplier</h2>
+                    <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                 </div>
-            ))}
+                <div className="p-6 space-y-4">
+                    <Input label="Supplier Name" name="name" value={newSupplier.name} onChange={handleInputChange} />
+                    <Input label="Email" name="email" type="email" value={newSupplier.email} onChange={handleInputChange} />
+                    <Input label="ETA (days)" name="estimatedEtaDays" type="number" value={newSupplier.estimatedEtaDays} onChange={handleInputChange} />
+                    <Input label="Min. Order (R)" name="minOrderAmount" type="number" value={newSupplier.minOrderAmount} onChange={handleInputChange} />
+                </div>
+                <div className="p-4 bg-gray-800/50 flex justify-end">
+                    <Button onClick={handleSubmit} variant="primary">Save Supplier</Button>
+                </div>
+            </div>
         </div>
     );
 };
 
-// --- Component for Standard Stock Re-ordering ---
-const StockReorderQueue = ({ items, suppliers, onAction }) => {
+
+// PurchaseHub component remains largely the same, handling the UI for ordering
+const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
+    const [allPricing, setAllPricing] = useState({});
+    const [selectedSuppliers, setSelectedSuppliers] = useState({});
     const [orderQuantities, setOrderQuantities] = useState({});
+    const [loadingPricing, setLoadingPricing] = useState(true);
+    const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
+    const [sendToAdmin, setSendToAdmin] = useState({});
+
+    const ADMIN_EMAIL = "admin@tojem.co.za";
+
+    const unifiedQueue = useMemo(() => [
+        ...stockItems.map(item => ({ ...item, type: 'Stock' })),
+        ...jobItems.map(item => ({ ...item, type: 'Job-Specific', itemId: item.id, itemName: item.itemName || item.description }))
+    ], [stockItems, jobItems]);
+
+    useEffect(() => {
+        const fetchAllPricing = async () => {
+            setLoadingPricing(true);
+            const pricingMap = {};
+            const pricingPromises = unifiedQueue.map(async (item) => {
+                const prices = await getSupplierPricingForItem(item.itemId);
+                pricingMap[item.itemId] = prices;
+            });
+            await Promise.all(pricingPromises);
+            setAllPricing(pricingMap);
+
+            const initialSelections = {};
+            unifiedQueue.forEach(item => {
+                const prices = pricingMap[item.itemId] || [];
+                if (prices.length > 0) {
+                    const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+                    initialSelections[item.itemId] = cheapest.supplierId;
+                }
+            });
+            setSelectedSuppliers(initialSelections);
+            setLoadingPricing(false);
+        };
+
+        if (unifiedQueue.length > 0) {
+            fetchAllPricing();
+        } else {
+            setLoadingPricing(false);
+        }
+    }, [unifiedQueue]);
+
+    const handleSupplierSelection = (itemId, supplierId) => {
+        setSelectedSuppliers(prev => ({ ...prev, [itemId]: supplierId }));
+    };
 
     const handleQuantityChange = (itemId, qty) => {
         setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
     };
+    
+    const handleSendToAdminToggle = (itemId) => {
+        setSendToAdmin(prev => ({...prev, [itemId]: !prev[itemId]}));
+    };
 
-    const groupedBySupplier = useMemo(() => {
-        return items.reduce((acc, item) => {
-            const supplierId = item.supplierId || 'unknown';
-            if (!acc[supplierId]) {
-                const supplierDetails = suppliers.find(s => s.id === supplierId);
-                acc[supplierId] = { supplierDetails: supplierDetails || { name: 'Unknown Supplier', email: '' }, items: [] };
-            }
-            acc[supplierId].items.push(item);
-            return acc;
-        }, {});
-    }, [items, suppliers]);
-
-    const handleGenerateEmail = (supplierDetails, items) => {
-        const supplierEmail = supplierDetails.email || '';
-        const subject = `Purchase Order - TOJEM`;
-        let body = `Hi ${supplierDetails.contactPerson || supplierDetails.name},\n\nPlease supply the following items:\n\n`;
+    const groupedOrders = useMemo(() => {
+        const groups = { admin: { supplierDetails: { name: 'Admin Purchase Request', email: ADMIN_EMAIL }, stockItems: [], jobItems: [] } };
         
-        items.forEach(item => {
-            const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
-            const orderQty = orderQuantities[item.id] || recommendedQty;
-            if (orderQty > 0) {
-                body += `- ${item.itemName} (Code: ${item.itemCode || 'N/A'}) --- Qty: ${orderQty}\n`;
+        unifiedQueue.forEach(item => {
+            const isForAdmin = sendToAdmin[item.itemId];
+            const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
+
+            if (!supplierId) return;
+
+            if (!groups[supplierId]) {
+                const supplierDetails = suppliers.find(s => s.id === supplierId);
+                if (supplierDetails) {
+                    groups[supplierId] = { supplierDetails, stockItems: [], jobItems: [] };
+                }
+            }
+            if (groups[supplierId]) {
+                if (item.type === 'Stock') {
+                    groups[supplierId].stockItems.push(item);
+                } else {
+                    groups[supplierId].jobItems.push(item);
+                }
             }
         });
         
+        return Object.entries(groups)
+            .filter(([_, group]) => group.stockItems.length > 0 || group.jobItems.length > 0)
+            .map(([_, group]) => group)
+            .sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
+
+    }, [unifiedQueue, suppliers, selectedSuppliers, sendToAdmin]);
+    
+    const handleGenerateEmail = async (group) => {
+        const { supplierDetails, stockItems, jobItems } = group;
+        const supplierEmail = supplierDetails.email || '';
+        const subject = `Purchase Order - TOJEM - ${supplierDetails.name}`;
+        let body = `Hi ${supplierDetails.contactPerson || supplierDetails.name},\n\nPlease supply the following items:\n\n`;
+
+        if(stockItems.length > 0) {
+            body += "--- For Stock ---\n";
+            stockItems.forEach(item => {
+                const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+                const orderQty = orderQuantities[item.itemId] || recommendedQty;
+                if (orderQty > 0) body += `- ${item.itemName} (Code: ${item.itemCode || 'N/A'}) --- Qty: ${orderQty}\n`;
+            });
+            body += "\n";
+        }
+        
+        if(jobItems.length > 0) {
+            body += "--- For Specific Jobs ---\n";
+            jobItems.forEach(item => {
+                 const orderQty = orderQuantities[item.itemId] || item.quantity;
+                 if(orderQty > 0) body += `- ${item.itemName} (For SO: ${item.salesOrderId}) --- Qty: ${orderQty}\n`;
+            });
+        }
+
         body += `\nThank you,\nTojem`;
         window.location.href = `mailto:${supplierEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-        markItemsAsOrdered(supplierDetails, items, orderQuantities).then(() => {
-            alert("Items have been marked as ordered and will now appear in the 'In-Transit' list.");
-            if (onAction) onAction();
-        });
+        if (supplierDetails.name !== 'Admin Purchase Request') {
+            try {
+                if (stockItems.length > 0) {
+                    await markItemsAsOrdered(supplierDetails, stockItems, orderQuantities);
+                }
+                if (jobItems.length > 0) {
+                    await markOneOffItemsAsOrdered(jobItems.map(item => item.id));
+                }
+                alert("Items have been marked as ordered and will now appear in the 'In-Transit' list.");
+                onAction();
+            } catch(error) {
+                console.error("Error marking items as ordered:", error);
+                alert("Failed to mark items as ordered.");
+            }
+        } else {
+            alert("Admin purchase request email has been generated. These items remain in the queue until a supplier is assigned.");
+        }
     };
 
-    if (Object.keys(groupedBySupplier).length === 0) {
-        return <p className="text-center text-gray-500 p-8">The stock re-order queue is empty.</p>;
-    }
+    if (loadingPricing) return <p className="text-center p-8 text-gray-400">Analyzing purchasing requirements...</p>;
+    if (unifiedQueue.length === 0) return <p className="text-center text-gray-400 p-8">The purchasing queue is empty.</p>;
 
     return (
         <div className="space-y-6">
-            {Object.entries(groupedBySupplier).map(([supplierId, group]) => (
-                <div key={supplierId} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <div className="flex justify-between items-center mb-4">
+                     <h3 className="text-xl font-bold text-white">Items Requiring Purchase ({unifiedQueue.length})</h3>
+                     <Button onClick={() => setAddSupplierModalOpen(true)} variant="secondary"><UserPlus size={16} className="mr-2"/>Add New Supplier</Button>
+                </div>
+                <div className="space-y-4">
+                    {unifiedQueue.map(item => {
+                        const pricingOptions = allPricing[item.itemId] || [];
+                        const cheapestOption = pricingOptions.length > 0 ? pricingOptions.reduce((min, p) => p.price < min.price ? p : min) : null;
+                        const recommendedQty = item.type === 'Stock' ? Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0)) : item.quantity;
+                        
+                        return (
+                            <div key={item.id} className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center bg-gray-900/50 p-4 rounded-lg">
+                                <div>
+                                    <p className="font-semibold text-white flex items-center gap-2">
+                                       {item.type === 'Stock' ? <Package size={16} className="text-blue-400"/> : <Wrench size={16} className="text-purple-400"/>}
+                                       {item.itemName}
+                                    </p>
+                                    <p className="text-xs text-gray-400 ml-8">{item.type === 'Stock' ? (item.itemCode || 'No Code') : `For SO: ${item.salesOrderId}`}</p>
+                                </div>
+                                <div>
+                                    <Dropdown 
+                                        label="Select Supplier"
+                                        value={selectedSuppliers[item.itemId] || ''}
+                                        onChange={(e) => handleSupplierSelection(item.itemId, e.target.value)}
+                                        options={pricingOptions.map(p => ({ id: p.supplierId, name: `${p.supplierName} - R${p.price.toFixed(2)}` }))}
+                                        placeholder="Choose supplier..."
+                                    />
+                                </div>
+                                <div className="text-center">
+                                    {item.type === 'Stock' && <p className="text-xs text-gray-400">Current: {item.currentStock}</p>}
+                                    <p className="text-xs text-green-400">Recommended: {recommendedQty}</p>
+                                </div>
+                                <div className="w-32 mx-auto">
+                                    <Input 
+                                        label="Order Qty"
+                                        type="number"
+                                        value={orderQuantities[item.itemId] === undefined ? recommendedQty : orderQuantities[item.itemId]}
+                                        onChange={(e) => handleQuantityChange(item.itemId, e.target.value)}
+                                    />
+                                </div>
+                                <div className="text-center">
+                                    <label className="flex items-center justify-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                        <input type="checkbox" checked={!!sendToAdmin[item.itemId]} onChange={() => handleSendToAdminToggle(item.itemId)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"/>
+                                        Send to Admin
+                                    </label>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {groupedOrders.map((group) => (
+                <div key={group.supplierDetails.email} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
                     <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> Order for: {group.supplierDetails.name}</h3>
-                            <p className="text-sm text-gray-400">{group.supplierDetails.email}</p>
-                        </div>
-                        <Button onClick={() => handleGenerateEmail(group.supplierDetails, group.items)}>Generate Email & Mark as Ordered</Button>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="border-b border-blue-400/30">
-                                <tr>
-                                    <th className="p-2 font-semibold text-gray-300">Item</th>
-                                    <th className="p-2 font-semibold text-gray-300 text-center">Current Stock</th>
-                                    <th className="p-2 font-semibold text-gray-300 text-center">Re-order At</th>
-                                    <th className="p-2 font-semibold text-gray-300 text-center" style={{width: '150px'}}>Order Qty</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {group.items.map(item => {
-                                    const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
-                                    return (
-                                        <tr key={item.id} className="border-b border-blue-400/20">
-                                            <td className="p-2 text-gray-200">{item.itemName}</td>
-                                            <td className="p-2 text-white font-bold text-center">{item.currentStock}</td>
-                                            <td className="p-2 text-red-400 font-bold text-center">{item.reorderLevel}</td>
-                                            <td className="p-2">
-                                                <Input 
-                                                    type="number"
-                                                    value={orderQuantities[item.id] || recommendedQty}
-                                                    onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                                                />
-                                            </td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                         <div>
+                             <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> PO for: {group.supplierDetails.name}</h3>
+                             <p className="text-sm text-gray-400">{group.supplierDetails.email}</p>
+                         </div>
+                         <Button onClick={() => handleGenerateEmail(group)}>Generate Email & Mark as Ordered</Button>
+                     </div>
                 </div>
             ))}
+             {isAddSupplierModalOpen && <AddSupplierModal onClose={() => setAddSupplierModalOpen(false)} onSupplierAdded={onAction}/>}
         </div>
     );
 };
 
 
-// Main page component that holds the tabs and fetches all data
+// --- Main Purchasing Page ---
 const PurchasingPage = () => {
-    const [activeTab, setActiveTab] = useState('job-specific');
-    const [purchaseQueueItems, setPurchaseQueueItems] = useState([]);
+    const [activeTab, setActiveTab] = useState('queue');
+    const [purchaseQueue, setPurchaseQueue] = useState([]);
+    const [jobQueue, setJobQueue] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [queue, supplierList] = await Promise.all([getPurchaseQueue(), getSuppliers()]);
-            setPurchaseQueueItems(queue);
+            const supplierList = await getSuppliers();
             setSuppliers(supplierList);
         } catch (error) {
-            console.error("Error fetching purchasing data:", error);
-            alert("Could not load purchasing data.");
+            console.error("Error fetching suppliers:", error);
         }
         setLoading(false);
     };
 
     useEffect(() => {
         fetchData();
+
+        // JIT LOGIC: This effect now also analyzes the upcoming schedule to proactively queue items.
+        const runJitAnalysis = async (allJobs, currentQueue) => {
+            console.log("Running JIT Analysis...");
+            const inventory = await getAllInventoryItems();
+            const inventoryMap = new Map(inventory.map(i => [i.id, i]));
+            const requiredForFuture = new Map();
+
+            const futureJobs = allJobs.filter(j => j.scheduledDate && j.scheduledDate.toDate() > new Date());
+
+            for(const job of futureJobs) {
+                if(!job.processedConsumables) continue;
+                for(const consumable of job.processedConsumables) {
+                    const currentReq = requiredForFuture.get(consumable.id) || 0;
+                    requiredForFuture.set(consumable.id, currentReq + consumable.quantity);
+                }
+            }
+
+            for(const [itemId, requiredQty] of requiredForFuture.entries()) {
+                const item = inventoryMap.get(itemId);
+                const isAlreadyQueued = currentQueue.some(qItem => qItem.itemId === itemId);
+                
+                if (item && !isAlreadyQueued) {
+                    const projectedStock = (item.currentStock || 0) - requiredQty;
+                    // Proactively queue if projected stock falls below reorder level
+                    if (projectedStock < (item.reorderLevel || 0)) {
+                        console.log(`JIT: Proactively queueing ${item.name}.`);
+                        await addToPurchaseQueue({
+                            itemId: item.id,
+                            itemName: item.name,
+                            supplierId: item.supplierId,
+                            itemCode: item.itemCode || '',
+                            category: item.category,
+                            currentStock: item.currentStock,
+                            reorderLevel: item.reorderLevel,
+                            standardStockLevel: item.standardStockLevel,
+                            price: item.price,
+                            unit: item.unit
+                        });
+                    }
+                }
+            }
+        };
+
+        // Set up all listeners
+        const unsubscribeStockQueue = listenToPurchaseQueue(setPurchaseQueue);
+        const unsubscribeJobQueue = listenToOneOffPurchases(items => setJobQueue(items.filter(item => item.status === 'Pending Purchase')));
+        const unsubscribeJobs = listenToJobCards(allJobs => {
+            // Run JIT analysis whenever the job list or purchase queue changes
+            listenToPurchaseQueue(currentQueue => {
+                runJitAnalysis(allJobs, currentQueue);
+            })();
+        });
+
+        return () => {
+            unsubscribeStockQueue();
+            unsubscribeJobQueue();
+            unsubscribeJobs();
+        };
     }, []);
 
-    const { pendingItems, orderedItems } = useMemo(() => ({
-        pendingItems: purchaseQueueItems.filter(i => i.status === 'pending'),
-        orderedItems: purchaseQueueItems.filter(i => i.status === 'ordered')
-    }), [purchaseQueueItems]);
+    const { pendingStockItems, inTransitItems } = useMemo(() => {
+        return {
+            pendingStockItems: purchaseQueue.filter(i => i.status === 'pending'),
+            inTransitItems: purchaseQueue.filter(i => i.status === 'ordered')
+        }
+    }, [purchaseQueue]);
+    
+    const TabButton = ({ id, label, count }) => {
+        const isActive = activeTab === id;
+        return (
+          <button
+            onClick={() => setActiveTab(id)}
+            className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 flex items-center gap-2 transition-colors ${
+              isActive ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            {label}
+            {count > 0 && <span className={`text-xs rounded-full px-2 py-0.5 ${isActive ? 'bg-white text-blue-600' : 'bg-gray-600 text-gray-200'}`}>{count}</span>}
+          </button>
+        );
+      };
 
     return (
         <div className="space-y-6">
             <h2 className="text-3xl font-bold text-white">Purchasing Hub</h2>
             <div className="border-b border-gray-700">
                 <nav className="-mb-px flex space-x-6">
-                    <button
-                        onClick={() => setActiveTab('job-specific')}
-                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
-                            activeTab === 'job-specific' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
-                        }`}
-                    >
-                        Job-Specific Purchases
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('stock-reorder')}
-                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
-                            activeTab === 'stock-reorder' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
-                        }`}
-                    >
-                        Stock Re-order Queue
-                        {pendingItems.length > 0 && <span className="ml-2 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{pendingItems.length}</span>}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('in-transit')}
-                        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 transition-colors ${
-                            activeTab === 'in-transit' ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
-                        }`}
-                    >
-                        In-Transit Orders
-                        {orderedItems.length > 0 && <span className="ml-2 bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5">{orderedItems.length}</span>}
-                    </button>
+                    <TabButton id="queue" label="Purchase Queue" count={pendingStockItems.length + jobQueue.length} />
+                    <TabButton id="transit" label="In-Transit Orders" count={inTransitItems.length} />
                 </nav>
             </div>
 
             <div className="mt-4">
                 {loading ? <p className="text-center text-gray-400 p-8">Loading...</p> : (
                     <>
-                        {activeTab === 'job-specific' && <JobSpecificPurchases onAction={fetchData} />}
-                        {activeTab === 'stock-reorder' && <StockReorderQueue items={pendingItems} suppliers={suppliers} onAction={fetchData} />}
-                        {activeTab === 'in-transit' && <InTransitOrders items={orderedItems} suppliers={suppliers} onStockReceived={fetchData} />}
+                        {activeTab === 'queue' && <PurchaseHub stockItems={pendingStockItems} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />}
+                        {activeTab === 'transit' && <InTransitOrders items={inTransitItems} suppliers={suppliers} onStockReceived={fetchData} />}
                     </>
                 )}
             </div>
@@ -13671,6 +14373,7 @@ const PurchasingPage = () => {
 };
 
 export default PurchasingPage;
+
 
 
 ==================================================
@@ -13838,20 +14541,29 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QuotingPage.jsx
 ==================================================
 // src/pages/QuotingPage.jsx (UPGRADED)
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import Button from '../components/ui/Button';
-import { PlusCircle } from 'lucide-react';
+import { PlusCircle, CheckCircle } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db } from '../api/firebase';
-import { getProducts, getJobStepDetails, getAllInventoryItems, getEmployees, getOverheadCategories, getOverheadExpenses } from '../api/firestore';
+import { 
+    getProducts, 
+    getJobStepDetails, 
+    getAllInventoryItems, 
+    getEmployees, 
+    getOverheadCategories, 
+    getOverheadExpenses,
+    createSalesOrderFromQuote
+} from '../api/firestore';
 import QuoteCreator from '../components/features/quotes/QuoteCreator';
+import AddCustomWorkModal from '../components/features/quotes/AddCustomWorkModal';
+import AddPurchasedItemModal from '../components/features/quotes/AddPurchasedItemModal';
 
 const QuotingPage = () => {
     const [quotes, setQuotes] = useState([]);
     const [isCreatorOpen, setIsCreatorOpen] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    // State to hold all the data needed for cost calculation
     const [calculationData, setCalculationData] = useState({
         products: [],
         allRecipes: [],
@@ -13860,13 +14572,11 @@ const QuotingPage = () => {
     });
 
     useEffect(() => {
-        // This listener will keep the quotes list up to date
         const q = query(collection(db, 'quotes'), orderBy('createdAt', 'desc'));
         const unsubscribeQuotes = onSnapshot(q, (snapshot) => {
             setQuotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
 
-        // This fetches all the data needed for our calculations one time
         const fetchCalculationData = async () => {
             setLoading(true);
             try {
@@ -13881,7 +14591,7 @@ const QuotingPage = () => {
                 const expensePromises = overheadCats.map(cat => getOverheadExpenses(cat.id));
                 const expenseResults = await Promise.all(expensePromises);
                 const totalMonthlyOverheads = expenseResults.flat().reduce((sum, exp) => sum + (exp.amount || 0), 0);
-                const totalCompanyProductiveHours = (employees.length || 1) * 173.2; // Monthly productive hours
+                const totalCompanyProductiveHours = (employees.length || 1) * 173.2;
                 const overheadCostPerHour = totalCompanyProductiveHours > 0 ? totalMonthlyOverheads / totalCompanyProductiveHours : 0;
                 const totalHourlyRate = employees.reduce((sum, emp) => sum + (emp.hourlyRate || 0), 0);
                 const avgDirectRate = employees.length > 0 ? totalHourlyRate / employees.length : 0;
@@ -13904,6 +14614,37 @@ const QuotingPage = () => {
 
         return () => unsubscribeQuotes();
     }, []);
+    
+    const handleAcceptQuote = async (quote) => {
+        if (window.confirm(`Are you sure you want to accept this quote? This will create a Sales Order and lock the quote.`)) {
+            try {
+                await createSalesOrderFromQuote(quote);
+                alert(`Quote ${quote.quoteId} has been accepted and a Sales Order has been created.`);
+            } catch (error) {
+                console.error("Error accepting quote: ", error);
+                alert("Failed to accept the quote.");
+            }
+        }
+    };
+    
+    const getStatusComponent = (quote) => {
+        const baseClasses = "px-3 py-1 text-xs font-semibold rounded-full inline-block";
+        switch (quote.status) {
+            case 'draft':
+                return (
+                    <Button onClick={() => handleAcceptQuote(quote)} variant="primary" className="py-1 px-2 text-xs">
+                        <CheckCircle size={14} className="mr-1" />
+                        Accept Quote
+                    </Button>
+                );
+            case 'Accepted':
+                 return <span className={`${baseClasses} bg-green-500/20 text-green-300`}>Accepted</span>;
+            case 'sent':
+                return <span className={`${baseClasses} bg-blue-500/20 text-blue-300`}>Sent</span>;
+            default:
+                return <span className={`${baseClasses} bg-gray-500/20 text-gray-300`}>{quote.status}</span>;
+        }
+    };
 
     return (
         <>
@@ -13911,7 +14652,7 @@ const QuotingPage = () => {
                 <div className="flex justify-between items-center">
                     <h2 className="text-3xl font-bold text-white">Sales Quotes</h2>
                     <Button onClick={() => setIsCreatorOpen(true)} variant="primary" disabled={loading}>
-                        {loading ? 'Loading Data...' : <><PlusCircle size={18} className="mr-2" />Create New Quote</>}
+                        {loading ? 'Loading Engine...' : <><PlusCircle size={18} className="mr-2" />Create New Quote</>}
                     </Button>
                 </div>
 
@@ -13923,7 +14664,7 @@ const QuotingPage = () => {
                                 <th className="p-3 text-sm font-semibold text-gray-400">Quote ID</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Customer</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400 text-right">Total</th>
-                                <th className="p-3 text-sm font-semibold text-gray-400">Status</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400 text-center">Status</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -13935,12 +14676,8 @@ const QuotingPage = () => {
                                     <td className="p-3 text-sm font-mono text-gray-300">{quote.quoteId}</td>
                                     <td className="p-3 text-sm text-white font-medium">{quote.customerName}</td>
                                     <td className="p-3 text-sm font-mono text-right font-semibold text-green-400">R {quote.total.toFixed(2)}</td>
-                                    <td className="p-3 text-sm capitalize">
-                                        <span className={`px-2 py-1 text-xs rounded-full ${
-                                            quote.status === 'draft' ? 'bg-yellow-500/20 text-yellow-300' :
-                                            quote.status === 'sent' ? 'bg-blue-500/20 text-blue-300' :
-                                            'bg-gray-500/20 text-gray-300'
-                                        }`}>{quote.status}</span>
+                                    <td className="p-3 text-center">
+                                        {getStatusComponent(quote)}
                                     </td>
                                 </tr>
                             ))}
@@ -13962,12 +14699,13 @@ const QuotingPage = () => {
 export default QuotingPage;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SalesOrderPage.jsx
 ==================================================
-// src/pages/SalesOrderPage.jsx (REFACTORED)
+// src/pages/SalesOrderPage.jsx (REFACTORED with modal fix)
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { listenToSalesOrders, addPurchasedItemToQueue, updateSalesOrderLineItemStatus } from '../api/firestore';
 import Button from '../components/ui/Button';
 import { ChevronDown, ChevronRight, Package, Wrench, ShoppingBag, X, CheckCircle } from 'lucide-react';
@@ -13985,9 +14723,8 @@ const OrderLineItem = ({ item, order, onAction }) => {
         setIsSubmitting(true);
         try {
             await addPurchasedItemToQueue(item, order);
-            // CORRECTED: Uses the line item's unique 'id' field for robust status updates
             await updateSalesOrderLineItemStatus(order.id, item.id, 'In Purchasing');
-            onAction(); // This will trigger a re-render of the parent component
+            onAction(); 
         } catch (error) {
             console.error("Error sending item to purchasing:", error);
             alert("Failed to send item to purchasing.");
@@ -13997,7 +14734,6 @@ const OrderLineItem = ({ item, order, onAction }) => {
 
     let icon, actionButton;
 
-    // Logic to determine which button or status to show
     if (item.status === 'In Purchasing') {
         icon = <ShoppingBag size={20} className="text-gray-500" />;
         actionButton = <span className="flex items-center gap-1 text-xs text-green-400 font-semibold"><CheckCircle size={14} /> Queued for Purchase</span>;
@@ -14007,7 +14743,7 @@ const OrderLineItem = ({ item, order, onAction }) => {
     } else if (item.isPurchasedItem) {
         icon = <ShoppingBag size={20} className="text-green-400" />;
         actionButton = <Button variant="secondary" className="text-xs py-1 px-2" onClick={handleSendToPurchasing} disabled={isSubmitting}>{isSubmitting ? 'Sending...' : 'Send to Purchasing'}</Button>;
-    } else if (item.isCustomWork) {
+    } else { 
         icon = <Wrench size={20} className="text-purple-400" />;
         actionButton = <Button variant="primary" className="text-xs py-1 px-2" onClick={() => setCustomModalOpen(true)}>Create Custom Job</Button>;
     }
@@ -14025,13 +14761,16 @@ const OrderLineItem = ({ item, order, onAction }) => {
                 </div>
             </div>
 
+            {/* MODAL FIX: Added max-h-[90vh] and flex-col to the modal structure */}
             {isCustomModalOpen && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-                    <div className="relative bg-gray-800 p-2 rounded-xl border border-gray-700 w-full max-w-4xl">
+                    <div className="relative bg-gray-800 p-2 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                          <Button onClick={() => setCustomModalOpen(false)} variant="danger" className="absolute -top-3 -right-3 z-10 rounded-full h-8 w-8 p-1">
                             <X size={16}/>
                         </Button>
-                        <CustomJobCreator salesOrder={order} customLineItem={item} />
+                        <div className="overflow-y-auto">
+                            <CustomJobCreator salesOrder={order} customLineItem={item} />
+                        </div>
                     </div>
                 </div>
             )}
@@ -14047,7 +14786,7 @@ const OrderLineItem = ({ item, order, onAction }) => {
     );
 };
 
-// A single expandable Sales Order card
+// SalesOrderCard component remains the same...
 const SalesOrderCard = ({ order, onAction }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -14134,6 +14873,7 @@ const SalesOrderPage = () => {
 };
 
 export default SalesOrderPage;
+
 
 
 ==================================================
@@ -14349,18 +15089,18 @@ export default StockControlPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
 ==================================================
-// src/pages/StockTakePage.jsx (Refactored with your app's logic)
+// src/pages/StockTakePage.jsx (Refactored to use the upgraded hook and components)
 
 import React, { useState } from 'react';
 import { reconcileStockLevels } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardList, Save, Search } from 'lucide-react';
+import { ClipboardList, Save, Search, RefreshCw } from 'lucide-react';
 import { useStockTakeData } from '../hooks/useStockTakeData';
-// UPDATED: Corrected the import path to match your file structure
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
 
 const StockTakePage = () => {
+    // The hook now contains all the complex logic, keeping the page component clean.
     const {
         loading,
         error,
@@ -14393,14 +15133,20 @@ const StockTakePage = () => {
         try {
             await reconcileStockLevels(itemsToUpdate);
             alert("Stock levels reconciled successfully!");
-            resetCounts();
-            fetchData();
+            resetCounts(); // Clear the inputs
+            fetchData();   // Refresh data from Firestore
         } catch (error) {
             console.error("Error reconciling stock levels:", error);
             alert("Failed to reconcile stock levels. Please check the console.");
         }
         setIsSubmitting(false);
     };
+    
+    const handleStartNewStockTake = () => {
+        if(window.confirm("Are you sure you want to start a new stock-take? This will clear all current physical counts entered on this screen.")) {
+            resetCounts();
+        }
+    }
 
     if (error) {
         return <p className="text-center text-red-500 p-8">{error}</p>;
@@ -14410,23 +15156,29 @@ const StockTakePage = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold text-white flex items-center gap-2"><ClipboardList/> Stock-Take</h2>
-                <Button onClick={handleReconcile} disabled={isSubmitting || loading} variant="primary">
-                    <Save size={16} className="mr-2" />
-                    {isSubmitting ? 'Finalizing...' : 'Finalize and Reconcile Stock'}
-                </Button>
+                <div className="flex gap-2">
+                     <Button onClick={handleStartNewStockTake} disabled={isSubmitting || loading} variant="secondary">
+                        <RefreshCw size={16} className="mr-2" />
+                        Start New
+                    </Button>
+                    <Button onClick={handleReconcile} disabled={isSubmitting || loading || summary.counted === 0} variant="primary">
+                        <Save size={16} className="mr-2" />
+                        {isSubmitting ? 'Finalizing...' : `Finalize & Reconcile (${summary.counted})`}
+                    </Button>
+                </div>
             </div>
 
             <Summary data={summary} />
 
             <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex justify-between items-center">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-gray-300">Filter:</span>
-                    <Button size="sm" variant={filter === 'all' ? 'secondary' : 'primary'} onClick={() => setFilter('all')}>All</Button>
-                    <Button size="sm" variant={filter === 'uncounted' ? 'secondary' : 'primary'} onClick={() => setFilter('uncounted')}>Uncounted</Button>
-                    <Button size="sm" variant={filter === 'counted' ? 'secondary' : 'primary'} onClick={() => setFilter('counted')}>Counted</Button>
-                    <Button size="sm" variant={filter === 'discrepancies' ? 'secondary' : 'primary'} onClick={() => setFilter('discrepancies')}>Discrepancies</Button>
+                    <Button size="sm" variant={filter === 'all' ? 'primary' : 'secondary'} onClick={() => setFilter('all')}>All</Button>
+                    <Button size="sm" variant={filter === 'uncounted' ? 'primary' : 'secondary'} onClick={() => setFilter('uncounted')}>Uncounted</Button>
+                    <Button size="sm" variant={filter === 'counted' ? 'primary' : 'secondary'} onClick={() => setFilter('counted')}>Counted</Button>
+                    <Button size="sm" variant={filter === 'discrepancies' ? 'primary' : 'secondary'} onClick={() => setFilter('discrepancies')}>Discrepancies</Button>
                 </div>
-                <div className="relative w-1/3">
+                <div className="relative w-full sm:w-1/3">
                     <Input
                         type="text"
                         placeholder="Search items by name or code..."
@@ -14448,6 +15200,7 @@ const StockTakePage = () => {
 };
 
 export default StockTakePage;
+
 
 
 ==================================================
@@ -15033,36 +15786,37 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
 ==================================================
-// src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from './contexts/AuthContext.jsx';
 
 // Layouts & Guards
-import ProtectedRoute from './components/layout/ProtectedRoute';
-import RoleBasedRoute from './components/layout/RoleBasedRoute';
-import MainLayout from './components/layout/MainLayout';
+import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
+import RoleBasedRoute from './components/layout/RoleBasedRoute.jsx';
+import MainLayout from './components/layout/MainLayout.jsx';
 
 // Pages
-import LoginPage from './pages/Login';
-import DashboardPage from './pages/DashboardPage';
-import StockControlPage from './pages/StockControlPage';
-import JobCreatorPage from './pages/JobCreatorPage';
-import LiveTrackingPage from './pages/LiveTrackingPage';
-import ScannerPage from './pages/ScannerPage';
-import QcPage from './pages/QcPage';
-import IssuesPage from './pages/IssuesPage';
-import PerformancePage from './pages/PerformancePage';
-import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage';
-import ProductViabilityPage from './pages/ProductViabilityPage';
-import SettingsPage from './pages/SettingsPage';
-import PayrollPage from './pages/PayrollPage';
-import ValuationPage from './pages/ValuationPage';
-import CalendarPage from './pages/CalendarPage';
-import MarketingPage from './pages/MarketingPage';
-import QuotingPage from './pages/QuotingPage';
-import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage'; // Import the new component
-
+import LoginPage from './pages/Login.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
+import JobCreatorPage from './pages/JobCreatorPage.jsx';
+import LiveTrackingPage from './pages/LiveTrackingPage.jsx';
+import ScannerPage from './pages/ScannerPage.jsx';
+import QcPage from './pages/QcPage.jsx';
+import IssuesPage from './pages/IssuesPage.jsx';
+import PerformancePage from './pages/PerformancePage.jsx';
+import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage.jsx';
+import ProductViabilityPage from './pages/ProductViabilityPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
+import PayrollPage from './pages/PayrollPage.jsx';
+import ValuationPage from './pages/ValuationPage.jsx';
+import CalendarPage from './pages/CalendarPage.jsx';
+import MarketingPage from './pages/MarketingPage.jsx';
+import QuotingPage from './pages/QuotingPage.jsx';
+import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage.jsx'; 
+import SalesOrderPage from './pages/SalesOrderPage.jsx';
+import PurchasingPage from './pages/PurchasingPage.jsx';
+import StockTakePage from './pages/StockTakePage.jsx';
+import AssetIntelligencePage from './pages/AssetIntelligencePage.jsx';
 
 function App() {
     const { user } = useAuth();
@@ -15079,9 +15833,13 @@ function App() {
                                 <Route path="/tracking" element={<LiveTrackingPage />} />
                                 <Route path="/scan" element={<ScannerPage />} />
                                 <Route path="/qc" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><QcPage /></RoleBasedRoute> } />
-                                <Route path="/stock" element={ <RoleBasedRoute roles={['Manager']}><StockControlPage /></RoleBasedRoute> } />
-                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager']}><JobCreatorPage /></RoleBasedRoute> } />
-                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager']}><IssuesPage /></RoleBasedRoute> } />
+                                
+                                <Route path="/orders" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><SalesOrderPage /></RoleBasedRoute>} />
+                                <Route path="/purchasing" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PurchasingPage /></RoleBasedRoute>} />
+                                <Route path="/stock-take" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><StockTakePage /></RoleBasedRoute>} />
+
+                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><JobCreatorPage /></RoleBasedRoute> } />
+                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><IssuesPage /></RoleBasedRoute> } />
                                 <Route path="/performance" element={ <RoleBasedRoute roles={['Manager']}><PerformancePage /></RoleBasedRoute> } />
                                 <Route path="/employee/:employeeId" element={ <RoleBasedRoute roles={['Manager']}><EmployeeIntelligencePage /></RoleBasedRoute> } />
                                 <Route path="/profitability" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><ProductViabilityPage /></RoleBasedRoute> } />
@@ -15091,7 +15849,9 @@ function App() {
                                 <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
                                 <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
                                 <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
-                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} /> {/* ADDED ROUTE */}
+                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} />
+                                <Route path="/assets" element={<RoleBasedRoute roles={['Manager']}><AssetIntelligencePage /></RoleBasedRoute>} />
+                                
                                 {/* Fallback route if no other route matches */}
                                 <Route path="*" element={<Navigate to="/" />} />
                             </Routes>
@@ -15104,6 +15864,7 @@ function App() {
 }
 
 export default App;
+
 
 
 ==================================================

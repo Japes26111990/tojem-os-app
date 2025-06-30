@@ -1,5 +1,6 @@
+// src/pages/ProductViabilityPage.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
-// MainLayout import removed
 import { getProducts, getLinkedRecipesForProduct, getJobStepDetails, getAllInventoryItems, getEmployees, getOverheadCategories, getOverheadExpenses } from '../api/firestore';
 import Dropdown from '../components/ui/Dropdown';
 import Input from '../components/ui/Input';
@@ -62,50 +63,64 @@ const ProductViabilityPage = () => {
     }, []);
 
     useEffect(() => {
-        if (selectedProductId) {
-            const product = products.find(p => p.id === selectedProductId);
-            if (product) {
-                setSellingPrice(product.sellingPrice || '');
-            }
-            const fetchLinks = async () => {
+        const fetchLinks = async () => {
+            if (selectedProductId) {
+                const product = products.find(p => p.id === selectedProductId);
+                if (product) {
+                    setSellingPrice(product.sellingPrice || '');
+                }
                 const links = await getLinkedRecipesForProduct(selectedProductId);
-                setLinkedRecipes(links);
-            };
-            fetchLinks();
-        } else {
-            setLinkedRecipes([]);
-        }
-    }, [selectedProductId, products]);
+                
+                // For each link, find the corresponding full recipe details
+                const detailedRecipes = links.map(link => {
+                    return allRecipes.find(r => r.id === link.jobStepDetailId);
+                }).filter(Boolean); // Filter out any undefined recipes
+
+                setLinkedRecipes(detailedRecipes);
+            } else {
+                setLinkedRecipes([]);
+            }
+        };
+        fetchLinks();
+    }, [selectedProductId, products, allRecipes]);
 
     const analysis = useMemo(() => {
-        // ... (memoized logic remains the same)
         const inventoryMap = new Map(inventoryItems.map(item => [item.id, item]));
         let totalMaterialCost = 0;
         let totalLaborCost = 0;
         const detailedCosts = [];
 
-        linkedRecipes.forEach(link => {
-            const recipe = allRecipes.find(r => r.productId === link.productId && r.departmentId === link.departmentId);
-            if (recipe) {
-                const recipeMaterialCost = (recipe.consumables || []).reduce((sum, consumable) => {
-                    const inventoryItem = inventoryMap.get(consumable.itemId);
-                    const price = inventoryItem?.price || 0;
-                    const quantity = consumable.quantity || 0;
-                    return sum + (price * quantity);
-                }, 0);
-
-                const recipeLaborCost = (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
+        linkedRecipes.forEach(recipe => {
+            const recipeMaterialCost = (recipe.consumables || []).reduce((sum, consumable) => {
+                const inventoryItem = inventoryMap.get(consumable.itemId);
+                const price = inventoryItem?.price || 0;
                 
-                totalMaterialCost += recipeMaterialCost;
-                totalLaborCost += recipeLaborCost;
+                // Handle both fixed and dimensional consumables
+                let quantity = 0;
+                if(consumable.type === 'fixed') {
+                    quantity = consumable.quantity || 0;
+                } else if (consumable.type === 'dimensional') {
+                    // This is a simplified cost for dimensional - a better model could be built
+                    // For now, let's assume the 'quantity' field is stored for cost estimation
+                    quantity = consumable.quantity || 1; 
+                } else {
+                    quantity = consumable.quantity || 0;
+                }
 
-                detailedCosts.push({
-                    id: link.id,
-                    partName: recipe.description || 'Recipe Step', // Use recipe description
-                    departmentName: link.departmentName,
-                    cost: recipeMaterialCost + recipeLaborCost
-                });
-            }
+                return sum + (price * quantity);
+            }, 0);
+
+            const recipeLaborCost = (recipe.estimatedTime || 0) / 60 * averageBurdenedRate;
+            
+            totalMaterialCost += recipeMaterialCost;
+            totalLaborCost += recipeLaborCost;
+
+            detailedCosts.push({
+                id: recipe.id,
+                partName: recipe.description || 'Recipe Step',
+                departmentName: products.find(p=>p.id === recipe.productId)?.name || 'N/A',
+                cost: recipeMaterialCost + recipeLaborCost
+            });
         });
         
         const totalCost = totalMaterialCost + totalLaborCost;
@@ -114,7 +129,7 @@ const ProductViabilityPage = () => {
         const margin = price > 0 ? (profit / price) * 100 : 0;
 
         return { totalCost, profit, margin, detailedCosts };
-    }, [linkedRecipes, allRecipes, sellingPrice, inventoryItems, averageBurdenedRate]);
+    }, [linkedRecipes, sellingPrice, inventoryItems, averageBurdenedRate, products]);
 
     if (loading) return <p className="text-center text-gray-400">Loading Profitability Engine...</p>;
 
@@ -151,7 +166,6 @@ const ProductViabilityPage = () => {
                                     <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg">
                                         <div>
                                             <p className="font-semibold text-gray-200">{item.partName}</p>
-                                            <p className="text-xs text-gray-400">{item.departmentName} Department</p>
                                         </div>
                                         <p className="font-mono text-lg text-gray-300">R {item.cost.toFixed(2)}</p>
                                     </div>

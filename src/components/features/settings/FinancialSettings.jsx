@@ -1,15 +1,17 @@
-// src/components/features/settings/FinancialSettings.jsx (UPDATED with Edit Functionality)
+// src/components/features/settings/FinancialSettings.jsx (Upgraded with Toasts)
+
 import React, { useState, useEffect } from 'react';
 import { collection, doc, setDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const FinancialSettings = () => {
     const [historicalData, setHistoricalData] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [editingId, setEditingId] = useState(null); // State to track which item is being edited
+    const [editingId, setEditingId] = useState(null);
     const [newData, setNewData] = useState({ year: '', month: '', totalSales: '', totalCOGS: '' });
 
     useEffect(() => {
@@ -36,11 +38,10 @@ const FinancialSettings = () => {
         const { year, month, totalSales, totalCOGS } = newData;
 
         if (!year || !month || !totalSales || !totalCOGS || month < 1 || month > 12) {
-            alert("Please enter valid data for all fields (Month must be 1-12).");
+            toast.error("Please enter valid data for all fields (Month must be 1-12)."); // --- REPLACE ALERT ---
             return;
         }
 
-        // If editing, use the existing ID. If adding, create a new one.
         const docId = editingId || `${year}-${String(month).padStart(2, '0')}`;
         const sales = parseFloat(totalSales);
         const cogs = parseFloat(totalCOGS);
@@ -56,15 +57,14 @@ const FinancialSettings = () => {
         try {
             const docRef = doc(db, 'historicalSales', docId);
             await setDoc(docRef, dataToSave, { merge: true });
-            alert(`Financial data for ${docId} has been saved.`);
-            handleCancelEdit(); // Reset form and editing state
+            toast.success(`Financial data for ${docId} has been saved.`); // --- REPLACE ALERT ---
+            handleCancelEdit();
         } catch (error) {
             console.error("Error saving historical data:", error);
-            alert("Failed to save data.");
+            toast.error("Failed to save data."); // --- REPLACE ALERT ---
         }
     };
     
-    // Function to handle clicking the "Edit" button
     const handleEditClick = (data) => {
         setEditingId(data.id);
         setNewData({
@@ -75,22 +75,34 @@ const FinancialSettings = () => {
         });
     };
 
-    // Function to cancel the edit
     const handleCancelEdit = () => {
         setEditingId(null);
         setNewData({ year: '', month: '', totalSales: '', totalCOGS: '' });
     };
 
-    const handleDelete = async (docId) => {
-        if (window.confirm(`Are you sure you want to delete the financial data for ${docId}?`)) {
-            try {
-                await deleteDoc(doc(db, 'historicalSales', docId));
-                alert('Data deleted successfully.');
-            } catch (error) {
-                console.error("Error deleting historical data:", error);
-                alert("Failed to delete data.");
-            }
-        }
+    const handleDelete = (docId) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Delete financial data for {docId}?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteDoc(doc(db, 'historicalSales', docId))
+                        .then(() => toast.success('Data deleted successfully.'))
+                        .catch(err => {
+                            toast.error("Failed to delete data.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+        });
     };
 
     return (

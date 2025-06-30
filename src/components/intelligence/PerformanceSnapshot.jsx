@@ -1,7 +1,7 @@
-// src/components/intelligence/PerformanceSnapshot.jsx (New File)
+// src/components/intelligence/PerformanceSnapshot.jsx
 
 import React, { useMemo } from 'react';
-import { TrendingUp, TrendingDown, Users, Target, AlertTriangle } from 'lucide-react';
+import { TrendingUp, AlertTriangle } from 'lucide-react';
 
 const Insight = ({ text, type }) => {
     const config = {
@@ -35,21 +35,18 @@ const PerformanceSnapshot = ({ metrics }) => {
 
         const results = [];
 
-        // Efficiency Insight
         if (individual.efficiency > team.efficiency * 1.1) {
             results.push({ text: `Efficiency (${individual.efficiency.toFixed(0)}%) is significantly above the team average of ${team.efficiency.toFixed(0)}%.`, type: 'opportunity' });
         } else if (individual.efficiency < team.efficiency * 0.9) {
             results.push({ text: `Efficiency (${individual.efficiency.toFixed(0)}%) is below the team average of ${team.efficiency.toFixed(0)}%.`, type: 'alert' });
         }
 
-        // Rework Rate Insight
-        if (individual.reworkRate > team.reworkRate + 5) { // If rework is 5% or more higher
+        if (individual.reworkRate > team.reworkRate + 5) {
             results.push({ text: `Rework Rate (${individual.reworkRate.toFixed(1)}%) is higher than the team average of ${team.reworkRate.toFixed(1)}%.`, type: 'alert' });
-        } else if (individual.reworkRate < Math.max(team.reworkRate / 2, 0.5)) { // If it's less than half the team average
+        } else if (individual.reworkRate < Math.max(team.reworkRate / 2, 0.5)) {
             results.push({ text: `This employee maintains an excellent quality score with a Rework Rate of just ${individual.reworkRate.toFixed(1)}%.`, type: 'opportunity' });
         }
 
-        // Net Value Insight
         if (individual.netValueAdded > team.netValueAdded * 1.2) {
             results.push({ text: `This employee is a top value generator, adding R ${individual.netValueAdded.toFixed(0)} compared to the team average of R ${team.netValueAdded.toFixed(0)}.`, type: 'opportunity' });
         } else if (individual.netValueAdded < team.netValueAdded * 0.8) {

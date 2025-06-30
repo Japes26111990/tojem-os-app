@@ -1,5 +1,4 @@
-// src/components/intelligence/ReliabilityReport.jsx (Corrected & Completed)
-
+// src/components/intelligence/ReliabilityReport.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../api/firebase';
@@ -15,10 +14,8 @@ const KpiCard = ({ title, value, unit }) => (
     </div>
 );
 
-// Helper function to check punctuality, adapted from PermanentPayroll.jsx
 const checkPunctuality = (date, startTime, endTime) => {
-    const dayOfWeek = date.getDay(); // Sunday = 0, Friday = 5
-    // Skip checks for weekends
+    const dayOfWeek = date.getDay();
     if (dayOfWeek === 0 || dayOfWeek === 6) {
         return { isLate: false, leftEarly: false, minutesLate: 0 };
     }
@@ -27,10 +24,8 @@ const checkPunctuality = (date, startTime, endTime) => {
     standardStartTime.setHours(7, 0, 0, 0);
 
     const standardEndTime = new Date(date.getTime());
-    // Monday to Thursday
     if (dayOfWeek >= 1 && dayOfWeek <= 4) { 
         standardEndTime.setHours(17, 0, 0, 0);
-    // Friday
     } else { 
         standardEndTime.setHours(15, 45, 0, 0);
     }
@@ -50,14 +45,13 @@ const checkPunctuality = (date, startTime, endTime) => {
 const ReliabilityReport = ({ employeeId }) => {
     const [timeEntries, setTimeEntries] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [filter, setFilter] = useState('month'); // 'week', 'month', 'year'
+    const [filter, setFilter] = useState('month');
 
     useEffect(() => {
         const fetchScanEventData = async () => {
             if (!employeeId) return;
             setLoading(true);
             try {
-                // 1. Query the correct 'scanEvents' collection
                 const scanEventsQuery = query(
                     collection(db, 'scanEvents'),
                     where('employeeId', '==', employeeId),
@@ -66,7 +60,6 @@ const ReliabilityReport = ({ employeeId }) => {
                 const snapshot = await getDocs(scanEventsQuery);
                 const events = snapshot.docs.map(doc => ({ ...doc.data(), timestamp: doc.data().timestamp.toDate() }));
 
-                // 2. Group scans by day
                 const dailyScans = {};
                 for (const event of events) {
                     const dateStr = event.timestamp.toISOString().split('T')[0];
@@ -79,7 +72,6 @@ const ReliabilityReport = ({ employeeId }) => {
                     dailyScans[dateStr].scans.push(event.timestamp);
                 }
 
-                // 3. Process each day to get start/end times and punctuality
                 const processedEntries = Object.values(dailyScans).map(dayData => {
                     if (dayData.scans.length === 0) return null;
                     const firstScan = dayData.scans[0];
@@ -89,7 +81,7 @@ const ReliabilityReport = ({ employeeId }) => {
                         date: dayData.date,
                         ...punctuality
                     };
-                }).filter(Boolean); // Filter out any null entries
+                }).filter(Boolean);
 
                 setTimeEntries(processedEntries);
 
@@ -112,7 +104,7 @@ const ReliabilityReport = ({ employeeId }) => {
             startDate.setHours(0, 0, 0, 0);
         } else if (filter === 'month') {
             startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        } else { // year
+        } else {
             startDate = new Date(now.getFullYear(), 0, 1);
         }
 

@@ -1,11 +1,9 @@
-// src/pages/PerformancePage.jsx (Corrected)
+// src/pages/PerformancePage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses, getDepartments } from '../api/firestore';
-import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
-import { CheckCircle2, Clock, DollarSign, Zap, Star } from 'lucide-react';
+import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
 
 const KpiCard = ({ icon, title, value, color }) => (
@@ -64,20 +62,15 @@ const PerformancePage = () => {
     
     const performanceData = useMemo(() => {
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
-        // Use a safe default for number of employees to avoid division by zero
         const employeeCount = employees.length > 0 ? employees.length : 1;
         const overheadCostPerProductiveHour = totalMonthlyOverheads / (employeeCount * 173.2);
 
-        // --- THIS IS THE CORRECTED LOGIC BLOCK ---
-        
-        // First, filter for jobs that are actually completed and have valid time data
         const validCompletedJobs = jobs.filter(job => 
             job.status === 'Complete' && 
             job.startedAt && 
             job.completedAt
         );
 
-        // Now, perform all calculations on this clean, valid data set
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
             return acc + (durationSeconds > 0 ? durationSeconds / 60 : 0);
@@ -88,29 +81,32 @@ const PerformancePage = () => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
             if (durationSeconds <= 0) return null;
             return ((job.estimatedTime * 60) / durationSeconds) * 100;
-        }).filter(Boolean); // Filter out nulls
+        }).filter(Boolean);
 
         const overallAvgEfficiency = efficiencyData.length > 0 ? efficiencyData.reduce((sum, eff) => sum + eff, 0) / efficiencyData.length : 0;
         const overallTotalJobValue = validCompletedJobs.reduce((acc, job) => acc + (job.totalCost || 0), 0);
-
-        // --- END OF CORRECTION ---
 
         let employeeMetrics = (employees || []).map(emp => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
             const empJobsCompleted = empJobs.length;
             const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
             
-            let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0;
+            let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0, jobsWithTime = 0;
             empJobs.forEach(job => {
                 if (job.startedAt && job.completedAt) {
                     const durationSeconds = Math.max(0, (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000);
-                    if (durationSeconds > 0) empTotalWorkMinutes += durationSeconds / 60;
-                    if (job.estimatedTime > 0 && durationSeconds > 0) empTotalEfficiencyRatioSum += (job.estimatedTime * 60) / durationSeconds;
+                    if (durationSeconds > 0) {
+                        empTotalWorkMinutes += durationSeconds / 60;
+                        if(job.estimatedTime > 0) {
+                           empTotalEfficiencyRatioSum += (job.estimatedTime * 60) / durationSeconds;
+                           jobsWithTime++;
+                        }
+                    }
                 }
                 if (typeof job.totalCost === 'number') empTotalJobValue += job.totalCost;
             });
 
-            const empAvgEfficiency = empJobsCompleted > 0 ? (empTotalEfficiencyRatioSum / empJobsCompleted) * 100 : 0;
+            const empAvgEfficiency = jobsWithTime > 0 ? (empTotalEfficiencyRatioSum / jobsWithTime) * 100 : 0;
             const burdenedRate = (emp.hourlyRate || 0) + overheadCostPerProductiveHour;
             const totalLaborCost = (empTotalWorkMinutes / 60) * burdenedRate;
             
@@ -137,7 +133,7 @@ const PerformancePage = () => {
         return {
             overallKpis: {
                 jobsCompleted: validCompletedJobs.length,
-                totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1), // Convert minutes to hours
+                totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1),
                 avgEfficiency: `${Math.round(overallAvgEfficiency)}%`,
                 totalJobValue: `R ${overallTotalJobValue.toFixed(2)}`,
             },

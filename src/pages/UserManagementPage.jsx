@@ -1,49 +1,48 @@
+// src/pages/UserManagementPage.jsx (Upgraded with Dynamic Roles & Toasts)
+
 import React, { useState, useEffect } from 'react';
-// import MainLayout from '../components/layout/MainLayout'; // REMOVE THIS IMPORT
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
-import { getAllUsers, updateUserRole, createUserWithRole, deleteUserWithRole } from '../api/firestore';
+import { getAllUsers, updateUserRole, createUserWithRole, deleteUserWithRole, getRoles } from '../api/firestore';
 import { PlusCircle, Edit, Trash2, User, Mail, Shield } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const UserManagementPage = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [allRoles, setAllRoles] = useState([]);
 
-  // State for adding new user
   const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState(''); // Corrected line
-  const [newUserRole, setNewUserRole] = useState('Workshop Employee'); // Default role for new users
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState('');
   const [addingUser, setAddingUser] = useState(false);
 
-  // State for editing existing user
   const [editingUserId, setEditingUserId] = useState(null);
   const [editingUserRole, setEditingUserRole] = useState('');
-  const [editingUserName, setEditingUserName] = useState(''); // Assuming you might display name
+  const [editingUserName, setEditingUserName] = useState('');
 
-  const availableRoles = [
-    { id: 'Manager', name: 'Manager' },
-    { id: 'QC Inspector', name: 'QC Inspector' },
-    { id: 'Workshop Employee', name: 'Workshop Employee' },
-  ];
-
-  const fetchUsers = async () => {
+  const fetchUsersAndRoles = async () => {
     setLoading(true);
     setError(null);
     try {
-      const fetchedUsers = await getAllUsers();
+      const [fetchedUsers, fetchedRoles] = await Promise.all([
+          getAllUsers(),
+          getRoles()
+      ]);
       setUsers(fetchedUsers);
+      setAllRoles(fetchedRoles);
     } catch (err) {
-      console.error("Error fetching users:", err);
-      setError("Failed to load user data.");
+      console.error("Error fetching data:", err);
+      setError("Failed to load user or role data.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsersAndRoles();
   }, []);
 
   const handleAddUser = async (e) => {
@@ -55,13 +54,12 @@ const UserManagementPage = () => {
     setAddingUser(true);
     setError(null);
     try {
-      // Call the Cloud Function to create user (function needs to be deployed first)
       const result = await createUserWithRole(newUserEmail, newUserPassword, newUserRole);
-      alert(`User ${result.email} created successfully with role ${newUserRole}!`);
+      toast.success(`User ${result.email} created successfully!`);
       setNewUserEmail('');
       setNewUserPassword('');
-      setNewUserRole('Workshop Employee');
-      fetchUsers(); // Refresh list
+      setNewUserRole('');
+      fetchUsersAndRoles();
     } catch (err) {
       console.error("Error adding user:", err.message);
       setError(`Failed to add user: ${err.message}`);
@@ -73,16 +71,16 @@ const UserManagementPage = () => {
   const handleEditRole = (user) => {
     setEditingUserId(user.id);
     setEditingUserRole(user.role);
-    setEditingUserName(user.email); // Use email as name for display
+    setEditingUserName(user.email);
   };
 
   const handleUpdateRole = async (userId) => {
     setError(null);
     try {
       await updateUserRole(userId, editingUserRole);
-      alert(`User role updated successfully for ${editingUserName}!`);
-      setEditingUserId(null); // Exit editing mode
-      fetchUsers(); // Refresh list
+      toast.success(`User role updated for ${editingUserName}!`);
+      setEditingUserId(null);
+      fetchUsersAndRoles();
     } catch (err) {
       console.error("Error updating role:", err.message);
       setError(`Failed to update role: ${err.message}`);
@@ -95,19 +93,29 @@ const UserManagementPage = () => {
     setEditingUserName('');
   };
 
-  const handleDeleteUser = async (userToDelete) => {
-    if (window.confirm(`Are you sure you want to PERMANENTLY delete user ${userToDelete.email}? This action cannot be undone and will delete their authentication record and user document.`)) {
-      setError(null);
-      try {
-        // Call the Cloud Function to delete user (function needs to be deployed first)
-        await deleteUserWithRole(userToDelete.id);
-        alert(`User ${userToDelete.email} deleted successfully!`);
-        fetchUsers(); // Refresh list
-      } catch (err) {
-        console.error("Error deleting user:", err.message);
-        setError(`Failed to delete user: ${err.message}`);
-      }
-    }
+  const handleDeleteUser = (userToDelete) => {
+    toast((t) => (
+        <span>
+            Delete user {userToDelete.email}? This is permanent.
+            <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                deleteUserWithRole(userToDelete.id)
+                    .then(() => {
+                        toast.success(`User ${userToDelete.email} deleted.`);
+                        fetchUsersAndRoles();
+                    })
+                    .catch(err => {
+                        toast.error("Failed to delete user.");
+                        console.error(err);
+                    });
+                toast.dismiss(t.id);
+            }}>
+                Delete
+            </Button>
+            <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+            </Button>
+        </span>
+    ), { icon: '⚠️' });
   };
 
 
@@ -118,7 +126,6 @@ const UserManagementPage = () => {
 
       {error && <div className="p-3 bg-red-800 text-red-100 rounded-lg text-center">{error}</div>}
 
-      {/* Add New User Form */}
       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center"><PlusCircle size={24} className="mr-2 text-blue-400"/> Add New Application User</h3>
         <form onSubmit={handleAddUser} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -143,7 +150,8 @@ const UserManagementPage = () => {
             name="newUserRole"
             value={newUserRole}
             onChange={(e) => setNewUserRole(e.target.value)}
-            options={availableRoles}
+            options={allRoles}
+            placeholder="Select a role..."
             required
           />
           <Button type="submit" disabled={addingUser} className="col-span-1">
@@ -152,7 +160,6 @@ const UserManagementPage = () => {
         </form>
       </div>
 
-      {/* User List & Role Editor */}
       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <h3 className="text-xl font-bold text-white mb-4 flex items-center"><User size={24} className="mr-2 text-purple-400"/> Existing Users</h3>
         <div className="overflow-x-auto">
@@ -182,7 +189,7 @@ const UserManagementPage = () => {
                           name="editingUserRole"
                           value={editingUserRole}
                           onChange={(e) => setEditingUserRole(e.target.value)}
-                          options={availableRoles}
+                          options={allRoles}
                           className="w-full"
                         />
                       ) : (

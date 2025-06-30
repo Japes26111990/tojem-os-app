@@ -1,4 +1,4 @@
-// src/pages/EmployeeIntelligencePage.jsx (Corrected, Optimized & Expanded)
+// src/pages/EmployeeIntelligencePage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -14,10 +14,9 @@ import ValueWasteAnalysis from '../components/intelligence/ValueWasteAnalysis';
 import ReworkAnalysisModal from '../components/intelligence/ReworkAnalysisModal';
 import RealTimeValueWidget from '../components/intelligence/RealTimeValueWidget';
 import SkillProgressionWidget from '../components/intelligence/SkillProgressionWidget';
-import JobCompletionAnalysisWidget from '../components/intelligence/JobCompletionAnalysisWidget';
 import EfficiencyAnalysisModal from '../components/intelligence/EfficiencyAnalysisModal';
 import TrophyCase from '../components/intelligence/TrophyCase';
-import ReliabilityReport from '../components/intelligence/ReliabilityReport'; // <-- Import the newly completed component
+import ReliabilityReport from '../components/intelligence/ReliabilityReport';
 
 const KpiCard = ({ icon, title, value, teamAverage, color, onClick, buttonText }) => (
     <div className={`bg-gray-800 p-5 rounded-lg border border-gray-700 flex flex-col justify-between`}>
@@ -333,7 +332,6 @@ const EmployeeIntelligencePage = () => {
                     <ValueWasteAnalysis jobs={jobs} />
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    {/* The component is now correctly placed here */}
                     <ReliabilityReport employeeId={employeeId} />
                     <SkillProgressionWidget employeeId={employeeId} />
                 </div>

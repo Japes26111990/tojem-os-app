@@ -1,4 +1,5 @@
-// src/components/features/settings/OverheadsManager.jsx (UPGRADED to use Expense Type)
+// src/components/features/settings/OverheadsManager.jsx (Upgraded with Toasts)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     getOverheadCategories, addOverheadCategory, updateOverheadCategory, deleteOverheadCategory,
@@ -7,9 +8,9 @@ import {
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { ChevronDown, ChevronRight, FilePlus, DollarSign, Building, Users, TrendingUp, HelpCircle } from 'lucide-react'; 
+import { ChevronDown, ChevronRight, FilePlus, Building, Users, TrendingUp, HelpCircle } from 'lucide-react'; 
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
-// NEW: ExpenseTypeBadge to visualize the cost classification
 const ExpenseTypeBadge = ({ type }) => {
     const config = {
         'Fixed Operational': { color: 'bg-blue-500', icon: <Building size={12} />, title: 'Fixed Operational Cost' },
@@ -31,7 +32,6 @@ const OverheadsManager = () => {
     const [newCategoryName, setNewCategoryName] = useState('');
     const [editingCategoryId, setEditingCategoryId] = useState(null);
     const [selectedCategoryId, setSelectedCategoryId] = useState(null);
-    // UPDATED: state now uses expenseType instead of priority
     const [newExpense, setNewExpense] = useState({ name: '', amount: '', expenseType: 'Fixed Operational' });
     const [editingExpenseId, setEditingExpenseId] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -52,7 +52,7 @@ const OverheadsManager = () => {
 
         } catch (error) {
             console.error("Error fetching overhead data:", error);
-            alert("Failed to load overhead data.");
+            toast.error("Failed to load overhead data."); // --- REPLACE ALERT ---
         } finally {
             setLoading(false);
         }
@@ -70,7 +70,6 @@ const OverheadsManager = () => {
         return totals;
     }, [allExpenses]);
 
-    // NEW: Calculate totals for each expense type
     const totalsByType = useMemo(() => {
         const totals = {
             'Fixed Operational': 0,
@@ -97,25 +96,26 @@ const OverheadsManager = () => {
             const dataToSave = { name: newCategoryName.trim() };
             if (editingCategoryId) {
                 await updateOverheadCategory(editingCategoryId, dataToSave);
+                toast.success("Category updated.");
             } else {
                 await addOverheadCategory(dataToSave);
+                toast.success("Category added.");
             }
             setNewCategoryName('');
             setEditingCategoryId(null);
             fetchAllData(); 
         } catch (error) {
-            alert(`Failed to save category.`);
+            toast.error(`Failed to save category.`); // --- REPLACE ALERT ---
         }
     };
 
     const handleAddOrUpdateExpense = async (e) => {
         e.preventDefault();
         if (!selectedCategoryId || !newExpense.name.trim() || newExpense.amount === '' || parseFloat(newExpense.amount) < 0) {
-            alert("Please enter a valid expense name, amount, and select an expense type.");
+            toast.error("Please enter a valid expense name, amount, and select an expense type."); // --- REPLACE ALERT ---
             return;
         }
         try {
-            // UPDATED: saving expenseType now
             const dataToSave = {
                 name: newExpense.name.trim(),
                 amount: parseFloat(newExpense.amount),
@@ -123,35 +123,71 @@ const OverheadsManager = () => {
             };
             if (editingExpenseId) {
                 await updateOverheadExpense(selectedCategoryId, editingExpenseId, dataToSave);
+                toast.success("Expense updated.");
             } else {
                 await addOverheadExpense(selectedCategoryId, dataToSave);
+                toast.success("Expense added.");
             }
             setNewExpense({ name: '', amount: '', expenseType: 'Fixed Operational' });
             setEditingExpenseId(null);
             fetchAllData();
         } catch (error) {
-            alert(`Failed to save expense.`);
+            toast.error(`Failed to save expense.`); // --- REPLACE ALERT ---
         }
     };
 
-    const handleEditExpense = (expense) => {
-        setNewExpense({ name: expense.name, amount: expense.amount || '', expenseType: expense.expenseType || 'Fixed Operational' });
-        setEditingExpenseId(expense.id);
+    const handleDeleteCategory = (categoryId) => {
+        toast((t) => (
+            <span>
+                Delete category and ALL expenses?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteOverheadCategory(categoryId)
+                        .then(() => {
+                            toast.success("Category deleted.");
+                            fetchAllData();
+                            if (selectedCategoryId === categoryId) setSelectedCategoryId(null);
+                        })
+                        .catch(err => toast.error("Failed to delete category."));
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
-    const handleCancelEditExpense = () => {
-        setNewExpense({ name: '', amount: '', expenseType: 'Fixed Operational' });
-        setEditingExpenseId(null);
+    const handleDeleteExpense = (expenseId) => {
+        toast((t) => (
+            <span>
+                Delete this expense?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteOverheadExpense(selectedCategoryId, expenseId)
+                        .then(() => {
+                            toast.success("Expense deleted.");
+                            fetchAllData();
+                        })
+                        .catch(err => toast.error("Failed to delete expense."));
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
+    const handleEditExpense = (expense) => { setNewExpense({ name: expense.name, amount: expense.amount || '', expenseType: expense.expenseType || 'Fixed Operational' }); setEditingExpenseId(expense.id); };
+    const handleCancelEditExpense = () => { setNewExpense({ name: '', amount: '', expenseType: 'Fixed Operational' }); setEditingExpenseId(null); };
     const handleEditCategory = (category) => { setNewCategoryName(category.name); setEditingCategoryId(category.id); };
     const handleCancelEditCategory = () => { setNewCategoryName(''); setEditingCategoryId(null); };
-    const handleDeleteCategory = async (categoryId) => { if (window.confirm("Delete category and ALL expenses?")) { await deleteOverheadCategory(categoryId); fetchAllData(); if (selectedCategoryId === categoryId) setSelectedCategoryId(null); }};
     const handleSelectCategory = (categoryId) => { setSelectedCategoryId(prev => prev === categoryId ? null : categoryId); handleCancelEditExpense();};
-    const handleDeleteExpense = async (expenseId) => { if (window.confirm("Delete this expense?")) { await deleteOverheadExpense(selectedCategoryId, expenseId); fetchAllData(); }};
     const handleExpenseInputChange = (e) => { const { name, value } = e.target; setNewExpense(prev => ({ ...prev, [name]: value }));};
 
-    // NEW: Options for the Expense Type dropdown
     const expenseTypeOptions = [
         { id: 'Fixed Operational', name: 'Fixed Operational' },
         { id: 'Team & Training', name: 'Team & Training' },
@@ -163,7 +199,6 @@ const OverheadsManager = () => {
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <div className="flex justify-between items-start mb-4">
                  <h3 className="text-xl font-bold text-white flex items-center"><FilePlus size={22} className="mr-2 text-blue-400"/> Manage Overheads & Fixed Costs</h3>
-                 {/* NEW: Display totals by type */}
                  <div className="text-right">
                     <p className="text-sm text-gray-400">Grand Total</p>
                     <p className="text-2xl font-bold text-green-400 font-mono">R {grandTotal.toLocaleString('en-ZA', {minimumFractionDigits: 2})}</p>
@@ -205,7 +240,6 @@ const OverheadsManager = () => {
                                     <form onSubmit={handleAddOrUpdateExpense} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end mb-4">
                                         <Input label="Expense Name" name="name" value={newExpense.name} onChange={handleExpenseInputChange} placeholder={editingExpenseId ? "Edit name..." : "e.g., Ranos Rent"}/>
                                         <Input label="Amount (R)" name="amount" type="number" value={newExpense.amount} onChange={handleExpenseInputChange} placeholder="e.g., 2000.00"/>
-                                        {/* UPDATED: Dropdown now for Expense Type */}
                                         <Dropdown label="Expense Type" name="expenseType" value={newExpense.expenseType} onChange={handleExpenseInputChange} options={expenseTypeOptions} />
                                         <div className="flex gap-2">
                                             {editingExpenseId && (<Button type="button" variant="secondary" onClick={handleCancelEditExpense}>Cancel</Button>)}

@@ -1,38 +1,34 @@
-// src/App.jsx (Updated with new routes)
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { useAuth } from './contexts/AuthContext';
+import { useAuth } from './contexts/AuthContext.jsx';
 
 // Layouts & Guards
-import ProtectedRoute from './components/layout/ProtectedRoute';
-import RoleBasedRoute from './components/layout/RoleBasedRoute';
-import MainLayout from './components/layout/MainLayout';
+import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
+import RoleBasedRoute from './components/layout/RoleBasedRoute.jsx'; // Now checks permissions
+import MainLayout from './components/layout/MainLayout.jsx';
 
 // Pages
-import LoginPage from './pages/Login';
-import DashboardPage from './pages/DashboardPage';
-// REMOVED old StockControlPage import
-import JobCreatorPage from './pages/JobCreatorPage';
-import LiveTrackingPage from './pages/LiveTrackingPage';
-import ScannerPage from './pages/ScannerPage';
-import QcPage from './pages/QcPage';
-import IssuesPage from './pages/IssuesPage';
-import PerformancePage from './pages/PerformancePage';
-import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage';
-import ProductViabilityPage from './pages/ProductViabilityPage';
-import SettingsPage from './pages/SettingsPage';
-import PayrollPage from './pages/PayrollPage';
-import ValuationPage from './pages/ValuationPage';
-import CalendarPage from './pages/CalendarPage';
-import MarketingPage from './pages/MarketingPage';
-import QuotingPage from './pages/QuotingPage';
-import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage'; 
-
-// --- NEW PAGE IMPORTS ---
-import SalesOrderPage from './pages/SalesOrderPage';
-import PurchasingPage from './pages/PurchasingPage';
-import StockTakePage from './pages/StockTakePage';
-
+import LoginPage from './pages/Login.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
+import JobCreatorPage from './pages/JobCreatorPage.jsx';
+import LiveTrackingPage from './pages/LiveTrackingPage.jsx';
+import ScannerPage from './pages/ScannerPage.jsx';
+import QcPage from './pages/QcPage.jsx';
+import IssuesPage from './pages/IssuesPage.jsx';
+import PerformancePage from './pages/PerformancePage.jsx';
+import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage.jsx';
+import ProductViabilityPage from './pages/ProductViabilityPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
+import PayrollPage from './pages/PayrollPage.jsx';
+import ValuationPage from './pages/ValuationPage.jsx';
+import CalendarPage from './pages/CalendarPage.jsx';
+import MarketingPage from './pages/MarketingPage.jsx';
+import QuotingPage from './pages/QuotingPage.jsx';
+import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage.jsx'; 
+import SalesOrderPage from './pages/SalesOrderPage.jsx';
+import PurchasingPage from './pages/PurchasingPage.jsx';
+import StockTakePage from './pages/StockTakePage.jsx';
+import AssetIntelligencePage from './pages/AssetIntelligencePage.jsx';
 
 function App() {
     const { user } = useAuth();
@@ -45,28 +41,29 @@ function App() {
                     <ProtectedRoute>
                         <MainLayout>
                             <Routes>
-                                <Route path="/" element={<DashboardPage />} />
-                                <Route path="/tracking" element={<LiveTrackingPage />} />
-                                <Route path="/scan" element={<ScannerPage />} />
-                                <Route path="/qc" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><QcPage /></RoleBasedRoute> } />
+                                {/* --- UPDATED ROUTES to use permission prop --- */}
+                                <Route path="/" element={<RoleBasedRoute permission="dashboard"><DashboardPage /></RoleBasedRoute>} />
+                                <Route path="/tracking" element={<RoleBasedRoute permission="tracking"><LiveTrackingPage /></RoleBasedRoute>} />
+                                <Route path="/scan" element={<RoleBasedRoute permission="scanner"><ScannerPage /></RoleBasedRoute>} />
+                                <Route path="/qc" element={ <RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute> } />
                                 
-                                {/* --- NEW & UPDATED ROUTES --- */}
-                                <Route path="/orders" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><SalesOrderPage /></RoleBasedRoute>} />
-                                <Route path="/purchasing" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PurchasingPage /></RoleBasedRoute>} />
-                                <Route path="/stock-take" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><StockTakePage /></RoleBasedRoute>} />
+                                <Route path="/orders" element={ <RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
+                                <Route path="/purchasing" element={ <RoleBasedRoute permission="purchasing"><PurchasingPage /></RoleBasedRoute>} />
+                                <Route path="/stock-take" element={ <RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
 
-                                <Route path="/creator" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><JobCreatorPage /></RoleBasedRoute> } />
-                                <Route path="/issues" element={ <RoleBasedRoute roles={['Manager', 'QC Inspector']}><IssuesPage /></RoleBasedRoute> } />
-                                <Route path="/performance" element={ <RoleBasedRoute roles={['Manager']}><PerformancePage /></RoleBasedRoute> } />
-                                <Route path="/employee/:employeeId" element={ <RoleBasedRoute roles={['Manager']}><EmployeeIntelligencePage /></RoleBasedRoute> } />
-                                <Route path="/profitability" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><ProductViabilityPage /></RoleBasedRoute> } />
-                                <Route path="/payroll" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><PayrollPage /></RoleBasedRoute> } />
-                                <Route path="/valuation" element={ <RoleBasedRoute roles={['Manager', 'Office Manager']}><ValuationPage /></RoleBasedRoute> } />
-                                <Route path="/calendar" element={ <RoleBasedRoute roles={['Manager', 'Workshop Employee']}><CalendarPage /></RoleBasedRoute> } />
-                                <Route path="/settings" element={ <RoleBasedRoute roles={['Manager']}><SettingsPage /></RoleBasedRoute> } />
-                                <Route path="/marketing" element={ <RoleBasedRoute roles={['Manager', 'Marketing']}><MarketingPage /></RoleBasedRoute> } />
-                                <Route path="/quotes" element={ <RoleBasedRoute roles={['Manager', 'Office Manager', 'Marketing']}><QuotingPage /></RoleBasedRoute> } />
-                                <Route path="/adjustment" element={<RoleBasedRoute roles={['Manager']}><JobCardAdjustmentPage /></RoleBasedRoute>} />
+                                <Route path="/creator" element={ <RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute> } />
+                                <Route path="/issues" element={ <RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute> } />
+                                <Route path="/performance" element={ <RoleBasedRoute permission="performance"><PerformancePage /></RoleBasedRoute> } />
+                                <Route path="/employee/:employeeId" element={ <RoleBasedRoute permission="performance"><EmployeeIntelligencePage /></RoleBasedRoute> } />
+                                <Route path="/profitability" element={ <RoleBasedRoute permission="profitability"><ProductViabilityPage /></RoleBasedRoute> } />
+                                <Route path="/payroll" element={ <RoleBasedRoute permission="payroll"><PayrollPage /></RoleBasedRoute> } />
+                                <Route path="/valuation" element={ <RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute> } />
+                                <Route path="/calendar" element={ <RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute> } />
+                                <Route path="/settings" element={ <RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute> } />
+                                <Route path="/marketing" element={ <RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute> } />
+                                <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />
+                                <Route path="/adjustment" element={<RoleBasedRoute permission="adjustment"><JobCardAdjustmentPage /></RoleBasedRoute>} />
+                                <Route path="/assets" element={<RoleBasedRoute permission="assets"><AssetIntelligencePage /></RoleBasedRoute>} />
                                 
                                 {/* Fallback route if no other route matches */}
                                 <Route path="*" element={<Navigate to="/" />} />

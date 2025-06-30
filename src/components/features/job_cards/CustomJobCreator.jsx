@@ -1,4 +1,4 @@
-// src/components/features/job_cards/CustomJobCreator.jsx (UPDATED & FIXED)
+// src/components/features/job_cards/CustomJobCreator.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
@@ -7,6 +7,7 @@ import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import { addJobCard, getDepartments, getEmployees, getTools, getToolAccessories, getAllInventoryItems, getSkills, getDepartmentSkills } from '../../../api/firestore';
 import { Search } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const CustomJobCreator = ({ campaignId }) => {
     const [jobData, setJobData] = useState({
@@ -49,7 +50,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 setAllSkills(skills);
             } catch (error) {
                 console.error("Error fetching data for custom job creator:", error);
-                alert("Failed to load necessary data for custom job creation.");
+                toast.error("Failed to load necessary data for custom job creation."); // --- REPLACE ALERT ---
             } finally {
                 setLoading(false);
             }
@@ -119,13 +120,13 @@ const CustomJobCreator = ({ campaignId }) => {
 
     const addConsumable = () => {
         if (!selectedConsumableItem || parseFloat(consumableQuantity) <= 0 || isNaN(parseFloat(consumableQuantity))) {
-            alert("Please select a consumable from the list and enter a valid quantity.");
+            toast.error("Please select a consumable and enter a valid quantity."); // --- REPLACE ALERT ---
             return;
         }
 
         const isDuplicate = jobData.consumables.some(c => c.id === selectedConsumableItem.id);
         if (isDuplicate) {
-            alert("This consumable has already been added.");
+            toast.error("This consumable has already been added."); // --- REPLACE ALERT ---
             return;
         }
 
@@ -155,7 +156,7 @@ const CustomJobCreator = ({ campaignId }) => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!jobData.jobName.trim() || !jobData.departmentId || !jobData.description.trim() || !jobData.steps.trim()) {
-            alert("Please fill in Job Name, Department, Description, and Steps.");
+            toast.error("Please fill in Job Name, Department, Description, and Steps."); // --- REPLACE ALERT ---
             return;
         }
         
@@ -186,7 +187,7 @@ const CustomJobCreator = ({ campaignId }) => {
 
         try {
             await addJobCard(finalJobData);
-            alert(`Custom Job Card ${finalJobData.jobId} created successfully!`);
+            toast.success(`Custom Job Card ${finalJobData.jobId} created successfully!`); // --- REPLACE ALERT ---
 
             const departmentName = allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown Department';
             const employeeName = allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned';
@@ -246,7 +247,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 printWindow.document.close();
                 printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
             } else {
-                alert("The print window was blocked by your browser. Please allow popups for this site to print job cards automatically.");
+                toast("The print window was blocked by your browser. Please allow popups for this site.", { icon: 'ℹ️' }); // --- REPLACE ALERT ---
             }
 
             setJobData({ jobName: '', departmentId: '', employeeId: '', description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
@@ -257,7 +258,7 @@ const CustomJobCreator = ({ campaignId }) => {
 
         } catch (error) {
             console.error("Error creating custom job card:", error);
-            alert("Failed to create custom job card.");
+            toast.error("Failed to create custom job card."); // --- REPLACE ALERT ---
         }
     };
 

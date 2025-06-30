@@ -1,25 +1,24 @@
-// FILE: src/components/features/settings/EmployeeSkillsModal.jsx
+// src/components/features/settings/EmployeeSkillsModal.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
-import { getSkills, getEmployeeSkills, updateEmployeeSkillsAndLogHistory, getSkillHistoryForEmployee } from '../../../api/firestore'; // Added getSkillHistoryForEmployee to refresh local view
+import { getSkills, getEmployeeSkills, updateEmployeeSkillsAndLogHistory, getSkillHistoryForEmployee } from '../../../api/firestore';
 import Button from '../../ui/Button';
-import Input from '../../ui/Input'; // Import Input component for number slider/input
 import { X } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const EmployeeSkillsModal = ({ employee, onClose }) => {
     const [allSkills, setAllSkills] = useState([]);
-    const [employeeSkills, setEmployeeSkills] = useState({}); // Stores { skillId: proficiency_number }
-    const [skillHistory, setSkillHistory] = useState([]); // To display history within modal
+    const [employeeSkills, setEmployeeSkills] = useState({});
+    const [skillHistory, setSkillHistory] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // Map numerical proficiency to descriptive labels for UI
     const getProficiencyLabel = (level) => {
         switch (level) {
             case 0: return 'Not Acquired';
             case 1: return 'Beginner';
-            case 2: return 'Basic'; // Added 'Basic'
+            case 2: return 'Basic';
             case 3: return 'Intermediate';
-            case 4: return 'Advanced'; // Added 'Advanced'
+            case 4: return 'Advanced';
             case 5: return 'Expert';
             default: return 'N/A';
         }
@@ -31,14 +30,14 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
             const [fetchedSkills, currentSkills, fetchedHistory] = await Promise.all([
                 getSkills(),
                 getEmployeeSkills(employee.id),
-                getSkillHistoryForEmployee(employee.id) // Fetch history for display
+                getSkillHistoryForEmployee(employee.id)
             ]);
             setAllSkills(fetchedSkills);
             setEmployeeSkills(currentSkills || {});
-            setSkillHistory(fetchedHistory.sort((a,b) => b.assessmentDate.toDate() - a.assessmentDate.toDate())); // Sort history by date
+            setSkillHistory(fetchedHistory.sort((a,b) => b.assessmentDate.toDate() - a.assessmentDate.toDate()));
         } catch (error) {
             console.error("Error fetching skills data:", error);
-            alert("Failed to load skills data for this employee.");
+            toast.error("Failed to load skills data for this employee."); // --- REPLACE ALERT ---
         }
         setLoading(false);
     };
@@ -49,14 +48,13 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
         }
     }, [employee]);
 
-    // Handle numerical proficiency change from slider/input
     const handleProficiencyChange = (skillId, newProficiencyValue) => {
         setEmployeeSkills(prevSkills => {
             const updatedSkills = { ...prevSkills };
-            const numericValue = Number(newProficiencyValue); // Ensure it's a number
+            const numericValue = Number(newProficiencyValue);
 
             if (numericValue === 0) {
-                delete updatedSkills[skillId]; // Remove skill if proficiency is 0 (Not Acquired)
+                delete updatedSkills[skillId];
             } else {
                 updatedSkills[skillId] = numericValue;
             }
@@ -67,11 +65,11 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
     const handleSaveChanges = async () => {
         try {
             await updateEmployeeSkillsAndLogHistory(employee, employeeSkills, allSkills);
-            alert(`Successfully updated skills for ${employee.name}.`);
-            onClose(); // Close modal on success
+            toast.success(`Successfully updated skills for ${employee.name}.`); // --- REPLACE ALERT ---
+            onClose();
         } catch (error) {
             console.error("Error saving employee skills:", error);
-            alert("Failed to save skills. Please try again.");
+            toast.error("Failed to save skills. Please try again."); // --- REPLACE ALERT ---
         }
     };
 
@@ -86,7 +84,7 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
             >
                 <div className="flex justify-between items-center p-4 border-b border-gray-600">
                     <h3 className="text-xl font-bold text-white">Manage Skills for {employee.name}</h3>
-                    <Button onClick={onClose} variant="icon" className="text-gray-400 hover:text-white">
+                    <Button onClick={onClose} variant="secondary" className="p-2">
                         <X size={24} />
                     </Button>
                 </div>
@@ -96,7 +94,6 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
                         <p className="text-gray-300">Loading skills...</p>
                     ) : (
                         <>
-                            {/* Skill Rating Section */}
                             <div>
                                 <h4 className="text-lg font-semibold text-white mb-3">Current Skill Ratings (0-5)</h4>
                                 <p className="text-sm text-gray-400 mb-4">
@@ -127,7 +124,6 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
                                 </div>
                             </div>
 
-                            {/* Skill History Section */}
                             <div className="mt-6 border-t border-gray-700 pt-6">
                                 <h4 className="text-lg font-semibold text-white mb-3">Skill Assessment History</h4>
                                 {skillHistory.length > 0 ? (

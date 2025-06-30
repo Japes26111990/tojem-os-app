@@ -1,80 +1,56 @@
-// src/components/features/settings/UnifiedProductManager.jsx (REFACTORED for new data model)
+// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     getProducts, addProduct, updateProduct, deleteProduct,
     getProductCategories, addProductCategory,
-    getJobStepDetails, setJobStepDetail, getDepartments,
-    getTools, getToolAccessories, getAllInventoryItems,
-    linkRecipeToProduct, getLinkedRecipesForProduct, unlinkRecipeFromProduct,
-    getSkills
+    getJobStepDetails, getDepartments
 } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
-import Textarea from '../../ui/Textarea';
-import { X, Save, Link as LinkIcon, Package, Wrench, Settings2, Search, Trash2, ChevronDown, ChevronRight, PackagePlus, FolderPlus, Star, PlusCircle } from 'lucide-react';
-
-// Note: The ConsumableEditor sub-component is no longer needed here as recipe editing is complex
-// and better handled in a dedicated, more focused interface if required later.
-// This simplifies the UnifiedProductManager to focus on high-level product and category management.
+import { Trash2, Save, Package, Settings2, Search, ChevronDown, ChevronRight, PackagePlus, FolderPlus } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const UnifiedProductManager = () => {
-    // State for all data fetched from Firestore
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
-    const [allRecipes, setAllRecipes] = useState([]);
-    const [departments, setDepartments] = useState([]);
-    
-    // UI Control State
     const [loading, setLoading] = useState(true);
     const [selectedProductId, setSelectedProductId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState({});
     
-    // Form State for creating new items
     const [newProduct, setNewProduct] = useState({ name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '' });
     const [newCategoryName, setNewCategoryName] = useState('');
     
-    // State for the currently selected product being edited
     const [editProductData, setEditProductData] = useState(null);
     
-    // State for recipe links
-    const [linkedRecipes, setLinkedRecipes] = useState([]);
-
-    // Fetch all necessary data on component mount
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [prods, cats, recipes, depts] = await Promise.all([
-                getProducts(), getProductCategories(), getJobStepDetails(), getDepartments()
+            const [prods, cats] = await Promise.all([
+                getProducts(), getProductCategories()
             ]);
             setProducts(prods); 
             setCategories(cats); 
-            setAllRecipes(recipes); 
-            setDepartments(depts);
         } catch (error) { 
             console.error("Failed to fetch initial data:", error); 
+            toast.error("Failed to load product data.");
         }
         setLoading(false);
     };
 
     useEffect(() => { fetchData(); }, []);
 
-    // Effect to update form and fetch linked recipes when a product is selected
     useEffect(() => {
         if (selectedProductId) {
             const product = products.find(p => p.id === selectedProductId);
             setEditProductData(product);
-            const fetchLinks = async () => setLinkedRecipes(await getLinkedRecipesForProduct(selectedProductId));
-            fetchLinks();
         } else {
             setEditProductData(null);
-            setLinkedRecipes([]);
         }
     }, [selectedProductId, products]);
 
-    // Memoized calculation to filter and categorize products for display
     const productsByCategory = useMemo(() => {
         const filtered = searchTerm 
             ? products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.partNumber?.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -87,27 +63,28 @@ const UnifiedProductManager = () => {
         return categorized;
     }, [products, categories, searchTerm]);
 
-    // Handlers for adding/updating/deleting data
     const handleAddNewCategory = async () => {
         if (!newCategoryName.trim()) return;
         await addProductCategory(newCategoryName);
+        toast.success("Category added.");
         setNewCategoryName('');
         fetchData();
     };
     
     const handleAddNewProduct = async (e) => {
         e.preventDefault();
-        if (!newProduct.name || !newProduct.partNumber || !newProduct.categoryId) return alert('Category, Product Name, and Part Number are required.');
+        if (!newProduct.name || !newProduct.partNumber || !newProduct.categoryId) return toast.error('Category, Product Name, and Part Number are required.');
         try {
             const productData = { ...newProduct, weight: Number(newProduct.weight) || 0 };
             await addProduct(productData);
+            toast.success("Product added successfully.");
             setNewProduct({ name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '' });
             fetchData();
-        } catch (error) { alert(error.message); }
+        } catch (error) { toast.error(error.message); }
     };
 
     const handleUpdateProduct = async () => {
-        if (!editProductData.name || !editProductData.partNumber) return alert('Product Name and Part Number are required.');
+        if (!editProductData.name || !editProductData.partNumber) return toast.error('Product Name and Part Number are required.');
         await updateProduct(selectedProductId, {
             name: editProductData.name, 
             partNumber: editProductData.partNumber,
@@ -116,16 +93,31 @@ const UnifiedProductManager = () => {
             categoryId: editProductData.categoryId || '',
             weight: Number(editProductData.weight) || 0,
         });
-        alert('Product updated successfully!');
+        toast.success('Product updated successfully!');
         fetchData();
     };
 
-    const handleDeleteProduct = async (productId) => {
-        if (window.confirm("Are you sure you want to PERMANENTLY delete this product and all its recipes?")) {
-            await deleteProduct(productId);
-            setSelectedProductId(null);
-            fetchData();
-        }
+    const handleDeleteProduct = (productId) => {
+        toast((t) => (
+            <span>
+                Delete this product and all its recipes?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteProduct(productId)
+                        .then(() => {
+                            toast.success("Product deleted.");
+                            setSelectedProductId(null);
+                            fetchData();
+                        })
+                        .catch(err => toast.error("Failed to delete product."));
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
     
     if (loading) return <p className="text-gray-400">Loading Product Catalog...</p>;
@@ -134,7 +126,6 @@ const UnifiedProductManager = () => {
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-6">Unified Product Catalog</h3>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Left Column: Product List and Creation Forms */}
                 <div className="lg:col-span-1 space-y-6">
                     <div>
                         <Input placeholder="Search all products..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="mb-4" />
@@ -157,7 +148,6 @@ const UnifiedProductManager = () => {
                                     )}
                                 </div>
                             ))}
-                             {/* Uncategorized Products */}
                              {productsByCategory['uncategorized']?.length > 0 && (
                                 <div>
                                      <div onClick={() => setExpandedCategories(p => ({...p, uncategorized: !p.uncategorized}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600">
@@ -196,7 +186,6 @@ const UnifiedProductManager = () => {
                     </form>
                 </div>
 
-                {/* Right Column: Editor for Selected Product */}
                 <div className="lg:col-span-2">
                      {!selectedProductId ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
@@ -217,23 +206,6 @@ const UnifiedProductManager = () => {
                                 <Input label="Photo URL" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste image link here..."/>
                                 {editProductData?.photoUrl && <img src={editProductData.photoUrl} alt="Product Preview" className="w-48 h-48 rounded-lg object-cover border-2 border-gray-600" />}
                                 <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
-                            </div>
-
-                            {/* Linked Recipes Display */}
-                            <div className="mt-6 pt-6 border-t border-gray-700">
-                                <h4 className="text-xl font-bold text-white mb-4">Manufacturing Recipes</h4>
-                                <p className="text-sm text-gray-400 mb-4">This product is manufactured using the recipes from the following departments. You can edit these recipes in the <span className="font-bold text-blue-400">Settings &gt; Products & Recipes</span> tab.</p>
-                                <div className="space-y-2">
-                                     {linkedRecipes.length > 0 ? (
-                                        linkedRecipes.map(link => (
-                                            <div key={link.id} className="flex items-center justify-between bg-gray-700/50 p-3 rounded-lg">
-                                                <p className="font-semibold text-gray-200">{link.departmentName} Department</p>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <p className="text-sm text-gray-500 text-center py-4">No manufacturing recipes are defined for this product yet.</p>
-                                    )}
-                                </div>
                             </div>
                         </div>
                     )}

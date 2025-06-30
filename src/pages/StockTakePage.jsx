@@ -1,4 +1,4 @@
-// src/pages/StockTakePage.jsx (Refactored to use the upgraded hook and components)
+// src/pages/StockTakePage.jsx (Upgraded with Toasts)
 
 import React, { useState } from 'react';
 import { reconcileStockLevels } from '../api/firestore';
@@ -7,9 +7,9 @@ import Input from '../components/ui/Input';
 import { ClipboardList, Save, Search, RefreshCw } from 'lucide-react';
 import { useStockTakeData } from '../hooks/useStockTakeData';
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const StockTakePage = () => {
-    // The hook now contains all the complex logic, keeping the page component clean.
     const {
         loading,
         error,
@@ -27,34 +27,62 @@ const StockTakePage = () => {
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleReconcile = async () => {
+    const handleReconcile = () => {
         const itemsToUpdate = getItemsToReconcile();
         if (itemsToUpdate.length === 0) {
-            return alert("You haven't counted any items yet.");
+            return toast.error("You haven't counted any items yet."); // --- REPLACE ALERT ---
         }
 
         const varianceCount = itemsToUpdate.filter(item => item.newCount - item.systemCount !== 0).length;
-        if (!window.confirm(`You are about to finalize the stock-take. This will update your inventory levels for ${itemsToUpdate.length} counted items, ${varianceCount} of which have discrepancies. This action cannot be undone. Proceed?`)) {
-            return;
-        }
-
-        setIsSubmitting(true);
-        try {
-            await reconcileStockLevels(itemsToUpdate);
-            alert("Stock levels reconciled successfully!");
-            resetCounts(); // Clear the inputs
-            fetchData();   // Refresh data from Firestore
-        } catch (error) {
-            console.error("Error reconciling stock levels:", error);
-            alert("Failed to reconcile stock levels. Please check the console.");
-        }
-        setIsSubmitting(false);
+        
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Finalize stock-take for {itemsToUpdate.length} items? ({varianceCount} with discrepancies)
+                <Button variant="primary" size="sm" className="ml-2" onClick={() => {
+                    setIsSubmitting(true);
+                    reconcileStockLevels(itemsToUpdate)
+                        .then(() => {
+                            toast.success("Stock levels reconciled successfully!");
+                            resetCounts();
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to reconcile stock levels.");
+                            console.error("Error reconciling stock levels:", err);
+                        })
+                        .finally(() => setIsSubmitting(false));
+                    toast.dismiss(t.id);
+                }}>
+                    Confirm
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+            duration: 6000
+        });
     };
     
     const handleStartNewStockTake = () => {
-        if(window.confirm("Are you sure you want to start a new stock-take? This will clear all current physical counts entered on this screen.")) {
-            resetCounts();
-        }
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Start a new stock-take? This will clear all counts.
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    resetCounts();
+                    toast.dismiss(t.id);
+                    toast.success("Counts cleared. Ready for new stock-take.");
+                }}>
+                    Confirm
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     }
 
     if (error) {

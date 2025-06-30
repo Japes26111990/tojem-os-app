@@ -1,161 +1,16 @@
-// src/components/features/tracking/JobDetailsModal.jsx (Fully Expanded & Corrected)
+// src/components/features/tracking/JobDetailsModal.jsx (Refactored & Path Corrected)
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
 import Dropdown from '../../ui/Dropdown';
-import { Search, X, CheckCircle2, DollarSign, Clock, Zap, Edit, Trash2, Save, XCircle, Award } from 'lucide-react';
+import { X, CheckCircle2, DollarSign, Clock, Zap, Edit, Trash2, Save, XCircle, Award } from 'lucide-react';
 import { processConsumables, calculateJobDuration } from '../../../utils/jobUtils';
 import { useAuth } from '../../../contexts/AuthContext';
 import { giveKudosToJob } from '../../../api/firestore';
-
-const ConsumableEditorInModal = ({ allConsumables, selectedConsumables, onAdd, onRemove }) => {
-    const [consumableType, setConsumableType] = useState('fixed');
-    const [fixedSearchTerm, setFixedSearchTerm] = useState('');
-    const [fixedQty, setFixedQty] = useState('');
-    const [filteredFixedOptions, setFilteredFixedOptions] = useState([]);
-    const [selectedFixedItemDetails, setSelectedFixedItemDetails] = useState(null);
-    const [dimSearchTerm, setDimSearchTerm] = useState('');
-    const [cuts, setCuts] = useState([]);
-    const [cutRule, setCutRule] = useState({ dimensions: '', notes: '' });
-    const [filteredDimOptions, setFilteredDimOptions] = useState([]);
-    const [selectedDimItemDetails, setSelectedDimItemDetails] = useState(null);
-    const searchRefFixed = useRef(null);
-    const searchRefDim = useRef(null);
-
-    useEffect(() => {
-        if (fixedSearchTerm.length > 0) {
-            const lowerCaseSearchTerm = fixedSearchTerm.toLowerCase();
-            const filtered = allConsumables.filter(item =>
-                item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-                (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm))
-            ).slice(0, 10);
-            setFilteredFixedOptions(filtered);
-        } else { setFilteredFixedOptions([]); }
-    }, [fixedSearchTerm, allConsumables]);
-    useEffect(() => {
-        if (dimSearchTerm.length > 0) {
-            const lowerCaseSearchTerm = dimSearchTerm.toLowerCase();
-            const filtered = allConsumables.filter(item =>
-                (item.category === 'Raw Material' || item.name.toLowerCase().includes('mat')) &&
-                (item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-                (item.itemCode && item.itemCode.toLowerCase().includes(lowerCaseSearchTerm)))
-            ).slice(0, 10);
-            setFilteredDimOptions(filtered);
-        } else { setFilteredDimOptions([]); }
-    }, [dimSearchTerm, allConsumables]);
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (searchRefFixed.current && !searchRefFixed.current.contains(event.target)) { setFilteredFixedOptions([]); }
-            if (searchRefDim.current && !searchRefDim.current.contains(event.target)) { setFilteredDimOptions([]); }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const handleAddConsumable = () => {
-        let newConsumable;
-        let itemToAddDetails;
-        if (consumableType === 'fixed') {
-            if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return alert("Please select an item and enter a valid quantity.");
-            itemToAddDetails = selectedFixedItemDetails;
-            newConsumable = { type: 'fixed', itemId: itemToAddDetails.id, quantity: Number(fixedQty) };
-        } else if (consumableType === 'dimensional') {
-            if (!selectedDimItemDetails || cuts.length === 0) return alert("Please select a material and add at least one cutting instruction.");
-            itemToAddDetails = selectedDimItemDetails;
-            newConsumable = { type: 'dimensional', itemId: itemToAddDetails.id, cuts };
-        } else {
-            return;
-        }
-        const consumableWithDetails = {
-            ...newConsumable,
-            name: itemToAddDetails.name,
-            unit: itemToAddDetails.unit || 'units',
-            price: itemToAddDetails.price || 0,
-            itemCode: itemToAddDetails.itemCode || '',
-            category: itemToAddDetails.category || '',
-            requiresCatalyst: itemToAddDetails.requiresCatalyst || false,
-        };
-        if (!selectedConsumables.find(c => c.itemId === consumableWithDetails.itemId)) {
-            onAdd(consumableWithDetails);
-            setFixedSearchTerm(''); setFixedQty(''); setSelectedFixedItemDetails(null);
-            setDimSearchTerm(''); setCuts([]); setCutRule({ dimensions: '', notes: '' }); setSelectedDimItemDetails(null);
-        } else {
-            alert("This consumable has already been added to the recipe.");
-        }
-    };
-
-    return (
-        <div>
-            <h5 className="font-semibold mb-2 text-gray-200">Required Consumables</h5>
-            <div className="p-4 bg-gray-900/50 rounded-lg space-y-4">
-                <div className="flex gap-2 bg-gray-800 p-1 rounded-md">
-                    <button type="button" onClick={() => setConsumableType('fixed')} className={`flex-1 p-2 text-sm rounded transition-colors ${consumableType === 'fixed' ? 'bg-blue-600 text-white' : 'hover:bg-blue-500/20'}`}>Fixed Quantity</button>
-                    <button type="button" onClick={() => setConsumableType('dimensional')} className={`flex-1 p-2 text-sm rounded transition-colors ${consumableType === 'dimensional' ? 'bg-blue-600 text-white' : 'hover:bg-blue-500/20'}`}>Dimensional Cuts</button>
-                </div>
-                {consumableType === 'fixed' && (
-                    <div className="flex items-end gap-2 animate-fade-in" ref={searchRefFixed}>
-                        <div className="flex-grow relative">
-                            <Input
-                                label="Item"
-                                value={fixedSearchTerm}
-                                onChange={e => { setFixedSearchTerm(e.target.value); setSelectedFixedItemDetails(null); }}
-                                placeholder="Search by name or code..."
-                            />
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            {filteredFixedOptions.length > 0 && (
-                                <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                                     {filteredFixedOptions.map(item => (
-                                        <li
-                                            key={item.id}
-                                            className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
-                                            onClick={() => { setSelectedFixedItemDetails(item); setFixedSearchTerm(item.name); setFilteredFixedOptions([]); }}
-                                        >
-                                            {item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})
-                                        </li>
-                                    ))}
-                                 </ul>
-                            )}
-                        </div>
-                        <div className="w-24">
-                             <Input label="Qty" type="number" value={fixedQty} onChange={e => setFixedQty(e.target.value)} placeholder="e.g., 5"/>
-                        </div>
-                        <Button type="button" onClick={handleAddConsumable} disabled={!selectedFixedItemDetails || parseFloat(fixedQty) <= 0 || isNaN(parseFloat(fixedQty))}>Add</Button>
-                    </div>
-                )}
-                {consumableType === 'dimensional' && (
-                    <div className="space-y-3 animate-fade-in" ref={searchRefDim}>
-                         <div className="flex-grow relative">
-                             <Input label="Material to Cut" value={dimSearchTerm} onChange={e => { setDimSearchTerm(e.target.value); setSelectedDimItemDetails(null); }} placeholder="Search by name or code..."/>
-                             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            {filteredDimOptions.length > 0 && (
-                                <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
-                                    {filteredDimOptions.map(item => (<li key={item.id} className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer" onClick={() => { setSelectedDimItemDetails(item); setDimSearchTerm(item.name); setFilteredDimOptions([]); }}>{item.name} ({item.itemCode || 'N/A'}) - {item.unit || 'units'} (R{item.price?.toFixed(2) || '0.00'})</li>))}
-                                 </ul>
-                            )}
-                        </div>
-                        <div className="p-2 border border-gray-700 rounded-md">
-                             <p className="text-xs text-gray-400 mb-2">Cutting Instructions</p>
-                            <div className="flex items-end gap-2"><Input label="Dimensions (e.g., 120cm x 80cm)" value={cutRule.dimensions} onChange={e => setCutRule({...cutRule, dimensions: e.target.value})} /><Input label="Notes" value={cutRule.notes} onChange={e => setCutRule({...cutRule, notes: e.target.value})} /><Button type="button" onClick={() => { if(cutRule.dimensions) { setCuts([...cuts, cutRule]); setCutRule({ dimensions: '', notes: '' }); }}}>Add Cut</Button></div>
-                            <ul className="text-xs mt-2 space-y-1">{cuts.map((c, i) => <li key={i}>{c.dimensions} ({c.notes})</li>)}</ul>
-                        </div>
-                         <Button type="button" onClick={handleAddConsumable} className="w-full" disabled={!selectedDimItemDetails || cuts.length === 0}>Add Dimensional Consumable</Button>
-                    </div>
-                )}
-                <h6 className="text-sm font-bold pt-2 border-t border-gray-700 text-gray-200">Recipe Consumables</h6>
-                <ul className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedConsumables.map((c, i) => (
-                         <li key={i} className="flex justify-between items-center bg-gray-700 p-2 rounded text-sm text-gray-200">
-                            <div><p className="font-semibold">{c.name}</p>{c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}{c.notes && <span className="text-xs italic text-gray-500 ml-1">{c.notes}</span>}{c.cuts && (<ul className="list-square list-inside ml-4 mt-1">{c.cuts.map((cut, j) => <li key={j}>{cut.dimensions} <span className="text-xs italic text-gray-500">{cut.notes}</span></li>)}</ul>)}</div>
-                            <Button type="button" onClick={() => onRemove(c.itemId)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
-                        </li>
-                    ))}
-                </ul>
-            </div>
-        </div>
-    );
-};
+// --- CORRECTED IMPORT PATH ---
+import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.jsx';
 
 const DetailRow = ({ label, value, className = 'text-gray-300' }) => (
     <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
@@ -247,9 +102,9 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
     };
     
     return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in">
+        <div onClick={onClose} className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-fade-in p-4">
             <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
                     <div>
                         <h2 className="text-xl font-bold text-white flex items-center gap-2">
                             {isEditing ? `Editing: ${job.jobId}` : job.partName}
@@ -290,15 +145,16 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                                     ))}
                                 </div>
                             </div>
-                            <div>
-                                <ConsumableEditorInModal
-                                    allConsumables={allInventoryItems.filter(item => ['Component', 'Raw Material', 'Workshop Supply'].includes(item.category))}
-                                    selectedConsumables={editableJobData.selectedConsumables}
-                                    onAdd={handleAddConsumableToList}
-                                    onRemove={handleRemoveConsumableFromList}
-                                />
-                            </div>
-                            <div className="flex justify-end gap-3 mt-4">
+                            
+                            {/* --- REPLACEMENT --- */}
+                            <ConsumableEditor
+                                allConsumables={allInventoryItems}
+                                selectedConsumables={editableJobData.selectedConsumables}
+                                onAdd={handleAddConsumableToList}
+                                onRemove={handleRemoveConsumableFromList}
+                            />
+
+                            <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-700">
                                 <Button onClick={() => setIsEditing(false)} variant="secondary"><XCircle size={18} className="mr-2"/> Cancel</Button>
                                 <Button onClick={handleSave} variant="primary"><Save size={18} className="mr-2"/> Save Changes</Button>
                             </div>

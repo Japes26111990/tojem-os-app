@@ -1,8 +1,8 @@
-// src/components/intelligence/PerformanceLeaderboard.jsx (Final Version)
+// src/components/intelligence/PerformanceLeaderboard.jsx
 
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Zap, DollarSign, ShieldCheck, CheckCircle } from 'lucide-react'; // Import Star icon
+import { Star } from 'lucide-react';
 
 const SortButton = ({ label, active, onClick }) => (
     <button
@@ -28,7 +28,7 @@ const getRankColor = (rank) => {
 
 const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) => {
     const sortConfig = {
-        ops: { direction: 'desc', label: 'OPS', unit: '' }, // <-- ADD OPS
+        ops: { direction: 'desc', label: 'OPS', unit: '' },
         netValueAdded: { direction: 'desc', label: 'Net Value', unit: 'R' },
         avgEfficiency: { direction: 'desc', label: 'Efficiency', unit: '%' },
         reworkRate: { direction: 'asc', label: 'Rework Rate', unit: '%' },
@@ -45,18 +45,16 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
     }, [employees, activeSortKey]);
 
     const formatValue = (value, unit) => {
+        if (typeof value !== 'number') return 'N/A';
         if (unit === '%') return `${Math.round(value)}%`;
         if (unit === 'R') return `R ${value.toFixed(2)}`;
-        if (unit === '') return value.toFixed(1); // For OPS
+        if (unit === '') return value.toFixed(1);
         return value;
     };
 
     return (
-        <div className="bg-gray-800/50 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Performance Leaderboard</h3>
-            
+        <div>
             <div className="flex flex-wrap gap-2 mb-4">
-                {/* ADD new sort button for OPS */}
                 <SortButton label={<><Star size={16}/> Rank by OPS</>} active={activeSortKey === 'ops'} onClick={() => setActiveSortKey('ops')} />
                 <SortButton label="Rank by Net Value" active={activeSortKey === 'netValueAdded'} onClick={() => setActiveSortKey('netValueAdded')} />
                 <SortButton label="Rank by Efficiency" active={activeSortKey === 'avgEfficiency'} onClick={() => setActiveSortKey('avgEfficiency')} />
@@ -87,6 +85,11 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
                         </div>
                     );
                 })}
+                 {sortedEmployees.length === 0 && (
+                    <div className="text-center py-10 text-gray-500">
+                        No employee data to display for the selected filter.
+                    </div>
+                )}
             </div>
         </div>
     );

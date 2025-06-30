@@ -1,10 +1,9 @@
-// src/components/intelligence/RealTimeValueWidget.jsx (New File)
+// src/components/intelligence/RealTimeValueWidget.jsx
 
 import React, { useMemo } from 'react';
-import { DollarSign, TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
-    // Memoize the calculation to avoid re-running on every render
     const metrics = useMemo(() => {
         if (!employee || !jobs || jobs.length === 0) {
             return {
@@ -28,7 +27,6 @@ const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
             };
         }
 
-        // 1. Calculate the total value generated and hours worked from completed jobs
         const { totalValue, totalSeconds } = completedJobs.reduce(
             (acc, job) => {
                 const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -40,14 +38,8 @@ const RealTimeValueWidget = ({ jobs, employee, overheadCostPerHour }) => {
         );
 
         const totalHours = totalSeconds / 3600;
-
-        // 2. Calculate the employee's burdened hourly rate
         const burdenedRate = (employee.hourlyRate || 0) + overheadCostPerHour;
-
-        // 3. Calculate the value they generate per hour
         const valueGeneratedPerHour = totalHours > 0 ? totalValue / totalHours : 0;
-
-        // 4. Calculate the final profitability ratio
         const profitabilityRatio = burdenedRate > 0 ? valueGeneratedPerHour / burdenedRate : 0;
 
         return {

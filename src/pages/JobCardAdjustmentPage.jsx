@@ -1,4 +1,4 @@
-// C:\Development\TOJEM-OS\tojem-os\src\pages\JobCardAdjustmentPage.jsx
+// src/pages/JobCardAdjustmentPage.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,6 +9,7 @@ import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import Textarea from '../components/ui/Textarea';
 import { ArrowLeft } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const JobCardAdjustmentPage = () => {
     const navigate = useNavigate();
@@ -27,8 +28,13 @@ const JobCardAdjustmentPage = () => {
     useEffect(() => {
         const fetchQCJobs = async () => {
             setLoading(true);
-            const qcJobs = await getJobsAwaitingQC();
-            setJobsAwaitingQC(qcJobs);
+            try {
+                const qcJobs = await getJobsAwaitingQC();
+                setJobsAwaitingQC(qcJobs);
+            } catch (error) {
+                toast.error("Failed to load completed jobs.");
+                console.error(error);
+            }
             setLoading(false);
         };
 
@@ -84,22 +90,22 @@ const JobCardAdjustmentPage = () => {
 
     const handleSubmit = async () => {
         if (!selectedJobId) {
-            alert('Please select a job to adjust.');
+            toast.error('Please select a job to adjust.'); // --- REPLACE ALERT ---
             return;
         }
         if (!adjustmentReason.trim()) {
-            alert('Please provide a reason for the adjustment.');
+            toast.error('Please provide a reason for the adjustment.'); // --- REPLACE ALERT ---
             return;
         }
 
         setIsSubmitting(true);
         try {
             await updateJobCardWithAdjustments(selectedJobId, timeAdjustment, consumableAdjustments, adjustmentReason, user.uid);
-            alert('Job card adjustments submitted successfully!');
+            toast.success('Job card adjustments submitted successfully!'); // --- REPLACE ALERT ---
             setSelectedJobId('');
         } catch (error) {
             console.error('Error submitting job card adjustments:', error);
-            alert('Failed to submit job card adjustments.');
+            toast.error('Failed to submit job card adjustments.'); // --- REPLACE ALERT ---
         } finally {
             setIsSubmitting(false);
         }
@@ -126,37 +132,44 @@ const JobCardAdjustmentPage = () => {
                     <div className="space-y-4">
                         <div>
                             <p className="text-gray-300">Original Estimated Time: {selectedJob.estimatedTime} minutes</p>
-                            <p className="text-gray-300">Current Actual Time: {/* Display initial or logged time here */} </p>
                             <Input label="Adjust Time (minutes to add/subtract)" type="number" value={timeAdjustment} onChange={handleTimeAdjustmentChange} />
                         </div>
 
                         <div>
                             <h3 className="text-lg font-semibold text-white mb-2">Adjust Consumables</h3>
-                            {selectedJob.consumablesUsedInitial && Object.keys(selectedJob.consumablesUsedInitial).map(consumableId => (
-                                <div key={consumableId} className="flex items-center space-x-2">
-                                    <p className="text-gray-300">{/* Display consumable name */} ({consumableId})</p>
-                                    <Input
-                                        type="number"
-                                        label={`Qty Change`}
-                                        onChange={(e) => handleQtyChange(consumableId, e)}
-                                    />
+                            {selectedJob.processedConsumables && selectedJob.processedConsumables.map(consumable => (
+                                <div key={consumable.id} className="flex items-center space-x-2 mb-2">
+                                    <p className="text-gray-300 flex-grow">{consumable.name} (Used: {consumable.quantity})</p>
+                                    <div className="w-48">
+                                        <Input
+                                            type="number"
+                                            label={`Qty Change`}
+                                            onChange={(e) => handleQtyChange(consumable.id, e)}
+                                            placeholder="e.g., -1 or 2"
+                                        />
+                                    </div>
                                 </div>
                             ))}
-                            <div className="flex items-center space-x-2">
-                                <Dropdown
-                                    label="Add New Consumable"
-                                    name="newConsumableItem"
-                                    value={newConsumable.itemId}
-                                    onChange={handleNewConsumableItemChange}
-                                    options={allInventoryItems.map(item => ({ id: item.id, name: item.name }))}
-                                    placeholder="Select consumable..."
-                                />
-                                <Input
-                                    type="number"
-                                    label="Qty Change"
-                                    value={newConsumable.qtyChange}
-                                    onChange={handleNewConsumableQtyChange}
-                                />
+                            <div className="flex items-end space-x-2 border-t border-gray-700 pt-4 mt-4">
+                                <div className="flex-grow">
+                                    <Dropdown
+                                        label="Add New Consumable"
+                                        name="newConsumableItem"
+                                        value={newConsumable.itemId}
+                                        onChange={handleNewConsumableItemChange}
+                                        options={allInventoryItems.map(item => ({ id: item.id, name: item.name }))}
+                                        placeholder="Select consumable..."
+                                    />
+                                </div>
+                                <div className="w-32">
+                                    <Input
+                                        type="number"
+                                        label="Qty"
+                                        value={newConsumable.qtyChange}
+                                        onChange={handleNewConsumableQtyChange}
+                                        placeholder="e.g., 1"
+                                    />
+                                </div>
                                 <Button onClick={handleAddConsumable}>Add</Button>
                             </div>
                         </div>
@@ -169,31 +182,15 @@ const JobCardAdjustmentPage = () => {
                     </div>
                 )}
 
-                {!selectedJob && (
+                {!selectedJob && !loading && (
                     <p className="text-gray-400">Select a completed job card to view and adjust its details.</p>
+                )}
+                 {loading && (
+                    <p className="text-gray-400">Loading completed jobs...</p>
                 )}
             </div>
         </div>
     );
 };
-
-// Placeholder function - you'll need to implement this in your firestore.js or a cloud function
-// REMOVE THESE LINES:
-// const getJobsAwaitingQC = async () => {
-//     // Replace this with your actual Firestore query
-//     return [];
-// };
-//
-// // Placeholder function - you'll need to implement this in your firestore.js or a cloud function
-// const updateJobCardWithAdjustments = async (jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId) => {
-//     // Implement your Firestore update logic here
-//     console.log('Submitting adjustments:', jobId, timeAdjustment, consumableAdjustments, adjustmentReason, userId);
-// };
-//
-// // Placeholder function - you'll need to implement this in your firestore.js or a cloud function
-// const getAllInventoryItems = async () => {
-//     // Replace this with your actual Firestore query to get all inventory items
-//     return [];
-// };
 
 export default JobCardAdjustmentPage;

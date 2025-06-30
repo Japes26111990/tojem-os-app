@@ -1,5 +1,3 @@
-// src/components/features/stock/FutureDemandAnalyzer.jsx (New File)
-
 import React, { useState, useMemo } from 'react';
 import { listenToJobCards, getAllInventoryItems } from '../../../api/firestore';
 import Button from '../../ui/Button';
@@ -7,7 +5,7 @@ import Input from '../../ui/Input';
 import { X, TrendingDown, Check, AlertTriangle } from 'lucide-react';
 
 const FutureDemandAnalyzer = ({ onClose }) => {
-    const [daysToAnalyze, setDaysToAnalyze] = useState(14);
+    const [daysToAnalyze, setDaysToAnalyze] = useState(30); // Default to 30 days for a better forecast
     const [analysis, setAnalysis] = useState(null);
     const [loading, setLoading] = useState(false);
 
@@ -16,6 +14,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
         setAnalysis(null);
 
         try {
+            // We can still use listenToJobCards, but we only need the data once for this manual analysis.
             const allJobs = await new Promise(resolve => {
                 const unsubscribe = listenToJobCards(jobs => {
                     unsubscribe();
@@ -30,6 +29,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
             const futureDate = new Date();
             futureDate.setDate(now.getDate() + Number(daysToAnalyze));
 
+            // Filter for jobs scheduled within the analysis window
             const scheduledJobs = allJobs.filter(job => {
                 const scheduled = job.scheduledDate?.toDate();
                 return scheduled && scheduled >= now && scheduled <= futureDate;
@@ -37,11 +37,15 @@ const FutureDemandAnalyzer = ({ onClose }) => {
 
             const requiredMaterials = new Map();
 
+            // Aggregate all required materials from the scheduled jobs
             for (const job of scheduledJobs) {
+                // Ensure we use processedConsumables which includes calculated quantities
                 const consumables = job.processedConsumables || [];
                 for (const consumable of consumables) {
-                    const requiredQty = requiredMaterials.get(consumable.id) || 0;
-                    requiredMaterials.set(consumable.id, requiredQty + consumable.quantity);
+                    if (consumable.id) { // Ensure the consumable has a valid ID
+                         const requiredQty = requiredMaterials.get(consumable.id) || 0;
+                         requiredMaterials.set(consumable.id, requiredQty + consumable.quantity);
+                    }
                 }
             }
 
@@ -58,6 +62,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
                 }
             }
 
+            // Sort results to show the most critical items first
             analysisResults.sort((a,b) => a.projectedStock - b.projectedStock);
             setAnalysis(analysisResults);
 
@@ -123,6 +128,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
                                         </tr>
                                     );
                                 })}
+                                {analysis.length === 0 && <p className="text-center text-gray-400 py-6">No material demand found for the scheduled jobs in this period.</p>}
                             </tbody>
                         </table>
                     )}

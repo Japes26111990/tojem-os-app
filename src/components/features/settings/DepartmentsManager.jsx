@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore'; // updateDocument imported
+import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const DepartmentsManager = () => {
     const [departments, setDepartments] = useState([]);
     const [newDepartmentName, setNewDepartmentName] = useState('');
     const [loading, setLoading] = useState(true);
-    const [editingDeptId, setEditingDeptId] = useState(null); // State to track which department is being edited
+    const [editingDeptId, setEditingDeptId] = useState(null);
 
     const fetchDepartments = async () => {
         setLoading(true);
-        const depts = await getDepartments(); // Fetches departments from Firestore 
+        const depts = await getDepartments();
         setDepartments(depts);
         setLoading(false);
     };
@@ -26,44 +27,57 @@ const DepartmentsManager = () => {
 
         try {
             if (editingDeptId) {
-                // If editingDeptId is set, update the existing department
-                await updateDocument('departments', editingDeptId, { name: newDepartmentName }); // Uses updateDocument for generic update 
-                alert("Department updated successfully!");
+                await updateDocument('departments', editingDeptId, { name: newDepartmentName });
+                toast.success("Department updated successfully!"); // --- REPLACE ALERT ---
             } else {
-                // Otherwise, add a new department
-                await addDepartment(newDepartmentName); // Adds new department 
-                alert("Department added successfully!");
+                await addDepartment(newDepartmentName);
+                toast.success("Department added successfully!"); // --- REPLACE ALERT ---
             }
-            setNewDepartmentName(''); // Clear input field
-            setEditingDeptId(null); // Exit editing mode
-            fetchDepartments(); // Refresh the list of departments
+            setNewDepartmentName('');
+            setEditingDeptId(null);
+            fetchDepartments();
         } catch (error) {
             console.error("Error saving department:", error);
-            alert(`Failed to ${editingDeptId ? 'update' : 'add'} department.`);
+            toast.error(`Failed to ${editingDeptId ? 'update' : 'add'} department.`); // --- REPLACE ALERT ---
         }
     };
 
     const handleEdit = (dept) => {
-        setNewDepartmentName(dept.name); // Pre-fill form with department's current name
-        setEditingDeptId(dept.id); // Set the ID of the department being edited
+        setNewDepartmentName(dept.name);
+        setEditingDeptId(dept.id);
     };
 
     const handleCancelEdit = () => {
-        setNewDepartmentName(''); // Clear input field
-        setEditingDeptId(null); // Exit editing mode
+        setNewDepartmentName('');
+        setEditingDeptId(null);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this department?")) {
-            try {
-                await deleteDepartment(id); // Deletes department 
-                alert("Department deleted successfully!");
-                fetchDepartments(); // Refresh the list
-            } catch (error) {
-                console.error("Error deleting department:", error);
-                alert("Failed to delete department.");
-            }
-        }
+    const handleDelete = (id) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this department?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteDepartment(id)
+                        .then(() => {
+                            toast.success("Department deleted.");
+                            fetchDepartments();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete department.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+        });
     };
 
     return (
@@ -74,16 +88,16 @@ const DepartmentsManager = () => {
                     name="departmentName"
                     value={newDepartmentName}
                     onChange={(e) => setNewDepartmentName(e.target.value)}
-                    placeholder={editingDeptId ? "Edit department name..." : "New department name..."} // Dynamic placeholder
+                    placeholder={editingDeptId ? "Edit department name..." : "New department name..."}
                     className="flex-grow"
                 />
-                {editingDeptId && ( // Show Cancel button only when in editing mode
+                {editingDeptId && (
                     <Button type="button" variant="secondary" onClick={handleCancelEdit}>
                         Cancel
                     </Button>
                 )}
                 <Button type="submit" variant="primary">
-                    {editingDeptId ? "Update Department" : "Add Department"} {/* Dynamic button text */}
+                    {editingDeptId ? "Update Department" : "Add Department"}
                 </Button>
             </form>
             <div className="space-y-3">
@@ -93,7 +107,7 @@ const DepartmentsManager = () => {
                     (departments || []).map(dept => (
                         <div key={dept.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                             <p className="text-gray-200">{dept.name}</p>
-                            <div className="flex space-x-2"> {/* Container for action buttons */}
+                            <div className="flex space-x-2">
                                 <Button onClick={() => handleEdit(dept)} variant="secondary" className="py-1 px-3 text-xs">
                                     Edit
                                 </Button>

@@ -1,4 +1,4 @@
-// src/components/intelligence/ReworkAnalysisModal.jsx (New File)
+// src/components/intelligence/ReworkAnalysisModal.jsx
 
 import React, { useMemo } from 'react';
 import { X } from 'lucide-react';
@@ -16,7 +16,6 @@ const ReworkAnalysisModal = ({ jobs, employeeName, onClose }) => {
             return acc;
         }, {});
 
-        // Sort reasons from most frequent to least
         return Object.entries(reasons).sort(([, a], [, b]) => b - a);
 
     }, [jobs]);

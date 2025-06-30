@@ -1,5 +1,4 @@
-// src/components/intelligence/TrophyCase.jsx (New File)
-
+// src/components/intelligence/TrophyCase.jsx
 import React from 'react';
 import { Award, Zap, ShieldCheck, Star, Gem } from 'lucide-react';
 
@@ -14,7 +13,7 @@ const Badge = ({ icon, label, color, description }) => (
 
 const TrophyCase = ({ badges }) => {
     if (badges.length === 0) {
-        return null; // Don't render the component if there are no badges to show
+        return null;
     }
 
     return (

@@ -1,4 +1,4 @@
-// FILE: src/components/intelligence/EfficiencyAnalysisModal.jsx (NEW FILE - NO CHANGES HERE)
+// src/components/intelligence/EfficiencyAnalysisModal.jsx
 
 import React, { useMemo } from 'react';
 import { X } from 'lucide-react';

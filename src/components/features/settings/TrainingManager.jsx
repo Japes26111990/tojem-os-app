@@ -1,4 +1,4 @@
-// src/components/features/settings/TrainingManager.jsx (Corrected)
+// src/components/features/settings/TrainingManager.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -7,11 +7,12 @@ import {
     addTrainingResource,
     updateTrainingResource,
     deleteTrainingResource
-} from '../../../api/firestore'; // Correct: Imports our custom API functions
+} from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const TrainingManager = () => {
     const [resources, setResources] = useState([]);
@@ -42,7 +43,7 @@ const TrainingManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching training data:", error);
-            alert("Could not load training data.");
+            toast.error("Could not load training data."); // --- REPLACE ALERT ---
         }
         setLoading(false);
     };
@@ -71,38 +72,51 @@ const TrainingManager = () => {
         });
     };
 
-    const handleDelete = async (resourceId) => {
-        if (window.confirm("Are you sure you want to delete this training resource?")) {
-            try {
-                await deleteTrainingResource(resourceId);
-                alert("Resource deleted.");
-                fetchData();
-            } catch (error) {
-                console.error("Error deleting resource:", error);
-                alert("Failed to delete resource.");
-            }
-        }
+    const handleDelete = (resourceId) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this resource?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteTrainingResource(resourceId)
+                        .then(() => {
+                            toast.success("Resource deleted.");
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete resource.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.skillId || !formData.resourceName.trim() || !formData.url.trim()) {
-            return alert("Please select a skill and fill in the resource name and URL.");
+            return toast.error("Please select a skill and fill in the resource name and URL."); // --- REPLACE ALERT ---
         }
 
         try {
             if (editingId) {
                 await updateTrainingResource(editingId, formData);
-                alert("Resource updated successfully!");
+                toast.success("Resource updated successfully!"); // --- REPLACE ALERT ---
             } else {
                 await addTrainingResource(formData);
-                alert("Resource added successfully!");
+                toast.success("Resource added successfully!"); // --- REPLACE ALERT ---
             }
             handleCancelEdit();
             fetchData();
         } catch (error) {
             console.error("Error saving resource:", error);
-            alert("Failed to save training resource.");
+            toast.error("Failed to save training resource."); // --- REPLACE ALERT ---
         }
     };
 

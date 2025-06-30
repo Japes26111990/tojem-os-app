@@ -1,4 +1,4 @@
-// src/pages/QuotingPage.jsx (UPGRADED)
+// src/pages/QuotingPage.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import Button from '../components/ui/Button';
@@ -15,8 +15,7 @@ import {
     createSalesOrderFromQuote
 } from '../api/firestore';
 import QuoteCreator from '../components/features/quotes/QuoteCreator';
-import AddCustomWorkModal from '../components/features/quotes/AddCustomWorkModal';
-import AddPurchasedItemModal from '../components/features/quotes/AddPurchasedItemModal';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const QuotingPage = () => {
     const [quotes, setQuotes] = useState([]);
@@ -64,6 +63,7 @@ const QuotingPage = () => {
 
             } catch (err) {
                 console.error("Failed to load data for quoting engine:", err);
+                toast.error("Failed to load data for quoting engine.");
             } finally {
                 setLoading(false);
             }
@@ -74,16 +74,29 @@ const QuotingPage = () => {
         return () => unsubscribeQuotes();
     }, []);
     
-    const handleAcceptQuote = async (quote) => {
-        if (window.confirm(`Are you sure you want to accept this quote? This will create a Sales Order and lock the quote.`)) {
-            try {
-                await createSalesOrderFromQuote(quote);
-                alert(`Quote ${quote.quoteId} has been accepted and a Sales Order has been created.`);
-            } catch (error) {
-                console.error("Error accepting quote: ", error);
-                alert("Failed to accept the quote.");
-            }
-        }
+    const handleAcceptQuote = (quote) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Accept this quote and create a Sales Order?
+                <Button variant="primary" size="sm" className="ml-2" onClick={() => {
+                    createSalesOrderFromQuote(quote)
+                        .then(() => {
+                            toast.success(`Quote ${quote.quoteId} accepted!`);
+                        })
+                        .catch(err => {
+                            toast.error("Failed to accept the quote.");
+                            console.error("Error accepting quote: ", err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Accept
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '✔️' });
     };
     
     const getStatusComponent = (quote) => {

@@ -1,10 +1,11 @@
+// src/components/features/settings/SkillsManager.jsx (Upgraded with Toasts)
+
 import React, { useState, useEffect } from 'react';
-// Corrected firestore path
 import { getSkills, addSkill, deleteSkill, updateSkill } from '../../../api/firestore'; 
-// CORRECTED UI COMPONENT PATHS
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Edit, Trash2, Check, X } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const SkillsManager = () => {
     const [skills, setSkills] = useState([]);
@@ -20,7 +21,7 @@ const SkillsManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching skills:", error);
-            alert("Could not fetch skills.");
+            toast.error("Could not fetch skills."); // --- REPLACE ALERT ---
         }
         setLoading(false);
     };
@@ -34,24 +35,39 @@ const SkillsManager = () => {
         if (!newSkillName.trim()) return;
         try {
             await addSkill(newSkillName.trim());
+            toast.success("Skill added.");
             setNewSkillName('');
-            await fetchSkills(); // Refresh list
+            await fetchSkills();
         } catch (error) {
             console.error("Error adding skill:", error);
-            alert("Failed to add skill.");
+            toast.error("Failed to add skill."); // --- REPLACE ALERT ---
         }
     };
 
-    const handleDeleteSkill = async (skillId) => {
-        if (window.confirm("Are you sure you want to delete this skill?")) {
-            try {
-                await deleteSkill(skillId);
-                await fetchSkills(); // Refresh list
-            } catch (error) {
-                console.error("Error deleting skill:", error);
-                alert("Failed to delete skill.");
-            }
-        }
+    const handleDeleteSkill = (skillId) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this skill?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteSkill(skillId)
+                        .then(() => {
+                            toast.success("Skill deleted.");
+                            fetchSkills();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete skill.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
     const handleEditClick = (skill) => {
@@ -68,19 +84,19 @@ const SkillsManager = () => {
         if (!editingSkillName.trim()) return;
         try {
             await updateSkill(skillId, { name: editingSkillName.trim() });
+            toast.success("Skill updated.");
             setEditingSkillId(null);
             setEditingSkillName('');
-            await fetchSkills(); // Refresh list
+            await fetchSkills();
         } catch (error) {
             console.error("Error updating skill:", error);
-            alert("Failed to update skill.");
+            toast.error("Failed to update skill."); // --- REPLACE ALERT ---
         }
     };
 
     return (
         <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-4">Manage Skills</h3>
-            {/* Add Skill Form */}
             <form onSubmit={handleAddSkill} className="flex items-center gap-4 mb-6">
                 <Input
                     type="text"
@@ -92,7 +108,6 @@ const SkillsManager = () => {
                 <Button type="submit" variant="primary">Add Skill</Button>
             </form>
 
-            {/* Skills List */}
             <div className="space-y-3">
                 {loading ? (
                     <p className="text-gray-400">Loading skills...</p>

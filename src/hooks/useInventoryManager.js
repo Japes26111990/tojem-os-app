@@ -1,12 +1,13 @@
-// src/hooks/useInventoryManager.js (Updated for Dynamic Supplier Pricing)
+// src/hooks/useInventoryManager.js (Upgraded with Toasts & Syntax Fix)
 
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     getSupplierPricingForItem, 
     addSupplierPrice, 
-    deleteSupplierPrice, 
-    updateSupplierPrice 
+    deleteSupplierPrice
 } from '../api/firestore';
+import toast from 'react-hot-toast';
+import Button from '../components/ui/Button'; // Import Button for the toast
 
 export const useInventoryManager = (api, suppliers, allSkills) => {
   const [items, setItems] = useState([]);
@@ -21,8 +22,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [showLowStock, setShowLowStock] = useState(false);
-
-  // --- NEW STATE for managing supplier prices ---
   const [supplierPrices, setSupplierPrices] = useState([]);
 
   const fetchData = async () => {
@@ -40,7 +39,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     cancelEdit();
   }, [api]);
 
-  // --- NEW EFFECT: Fetch supplier prices when an item is being edited ---
   useEffect(() => {
       if (editingItemId) {
           const fetchPrices = async () => {
@@ -103,7 +101,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newItem.name.trim()) return alert("Item name is required.");
+    if (!newItem.name.trim()) return toast.error("Item name is required.");
 
     const filteredAssociatedSkills = (newItem.associatedSkills || []).filter(s =>
         s.defaultMinimumProficiency > 0 || s.importanceWeight > 0
@@ -126,14 +124,16 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     try {
       if (editingItemId) {
         await api.update(editingItemId, dataToSave);
+        toast.success("Item updated successfully!");
       } else {
         await api.add(dataToSave);
+        toast.success("Item added successfully!");
       }
       cancelEdit();
       fetchData();
     } catch (error) {
       console.error("Error saving item:", error);
-      alert("Failed to save item.");
+      toast.error("Failed to save item.");
     }
   };
 
@@ -150,20 +150,51 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
       associatedSkills: [],
     });
-    setSupplierPrices([]); // Clear prices on cancel
+    setSupplierPrices([]);
   };
 
-  const handleDelete = async (id) => { 
-      if (window.confirm("Are you sure? This will delete the item and all its supplier pricing links.")) { 
-          await api.delete(id); 
-          fetchData(); 
-      } 
+  const handleDelete = (id) => { 
+      toast((t) => React.createElement(
+          'span',
+          null,
+          'Delete this item and all its supplier pricing links?',
+          React.createElement(
+              Button,
+              {
+                  variant: "danger",
+                  size: "sm",
+                  className: "ml-2",
+                  onClick: () => {
+                      api.delete(id)
+                          .then(() => {
+                              toast.success("Item deleted.");
+                              fetchData();
+                          })
+                          .catch(err => {
+                              toast.error("Failed to delete item.");
+                              console.error(err);
+                          });
+                      toast.dismiss(t.id);
+                  }
+              },
+              'Delete'
+          ),
+          React.createElement(
+              Button,
+              {
+                  variant: "secondary",
+                  size: "sm",
+                  className: "ml-2",
+                  onClick: () => toast.dismiss(t.id)
+              },
+              'Cancel'
+          )
+      ), { icon: '⚠️' });
   };
   
-  // --- NEW HANDLERS FOR SUPPLIER PRICING ---
   const handleAddSupplierPrice = async (supplierId, price) => {
       if (!editingItemId || !supplierId || !price) {
-          alert("Please select a supplier and enter a price.");
+          toast.error("Please select a supplier and enter a price.");
           return;
       }
       const supplier = suppliers.find(s => s.id === supplierId);
@@ -179,21 +210,54 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       await addSupplierPrice(priceData);
       const prices = await getSupplierPricingForItem(editingItemId);
       setSupplierPrices(prices);
+      toast.success("Supplier price added.");
   };
 
-  const handleDeleteSupplierPrice = async (priceId) => {
-      if (window.confirm("Delete this supplier price link?")) {
-          await deleteSupplierPrice(priceId);
-          setSupplierPrices(prev => prev.filter(p => p.id !== priceId));
-      }
+  const handleDeleteSupplierPrice = (priceId) => {
+      toast((t) => React.createElement(
+          'span',
+          null,
+          'Delete this supplier price link?',
+          React.createElement(
+              Button,
+              {
+                  variant: "danger",
+                  size: "sm",
+                  className: "ml-2",
+                  onClick: () => {
+                      deleteSupplierPrice(priceId)
+                          .then(() => {
+                              toast.success("Price link deleted.");
+                              setSupplierPrices(prev => prev.filter(p => p.id !== priceId));
+                          })
+                          .catch(err => {
+                              toast.error("Failed to delete price link.");
+                              console.error(err);
+                          });
+                      toast.dismiss(t.id);
+                  }
+              },
+              'Delete'
+          ),
+          React.createElement(
+              Button,
+              {
+                  variant: "secondary",
+                  size: "sm",
+                  className: "ml-2",
+                  onClick: () => toast.dismiss(t.id)
+              },
+              'Cancel'
+          )
+      ), { icon: '⚠️' });
   };
 
   return {
     newItem, loading, editingItemId, displayedItems, sortBy, searchTerm, showLowStock,
-    supplierPrices, // <-- Expose new state
+    supplierPrices,
     handleInputChange, handleSubmit, handleEdit, cancelEdit, handleDelete,
     handleToggleSkillAssociation, handleAssociatedSkillChange,
-    handleAddSupplierPrice, handleDeleteSupplierPrice, // <-- Expose new handlers
+    handleAddSupplierPrice, handleDeleteSupplierPrice,
     setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };

@@ -1,11 +1,12 @@
-// src/components/features/calendar/SchedulingAssistantModal.jsx (Fully Expanded & Corrected)
+// src/components/features/calendar/SchedulingAssistantModal.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
-import { listenToJobCards, getEmployees, getSkills, getDepartmentSkills } from '../../../api/firestore';
+import { listenToJobCards, getEmployees, getSkills } from '../../../api/firestore';
 import { writeBatch, doc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import Button from '../../ui/Button';
 import { X, Bot, Clock } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
     const [pendingJobs, setPendingJobs] = useState([]);
@@ -31,7 +32,7 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
                 setAllSkills(skills);
             } catch (error) {
                 console.error("Error fetching employees or skills for scheduling:", error);
-                alert("Failed to load employee/skill data for scheduling.");
+                toast.error("Failed to load employee/skill data for scheduling."); // --- REPLACE ALERT ---
             } finally {
                  setLoading(false);
             }
@@ -166,7 +167,7 @@ const SchedulingAssistantModal = ({ onClose, onScheduleComplete }) => {
             onScheduleComplete();
         } catch (error) {
             console.error("Error committing schedule:", error);
-            alert("Failed to save the schedule. Please try again.");
+            toast.error("Failed to save the schedule. Please try again."); // --- REPLACE ALERT ---
         } finally {
             setIsScheduling(false);
         }

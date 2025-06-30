@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import toast from 'react-hot-toast';
 
 export const AuthContext = createContext();
 
@@ -12,59 +13,47 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
       if (userAuth) {
-        console.log("Firebase Auth User UID:", userAuth.uid);
-        let userContextData = {
-          uid: userAuth.uid,
-          email: userAuth.email,
-          role: 'Workshop Employee', // Default role if no specific role found
-        };
+        let userRole = 'Workshop Employee'; // Default role
 
-        try {
-          // 1. Fetch user's role from the 'users' collection
-          const userRoleDocRef = doc(db, 'users', userAuth.uid);
-          const userRoleDoc = await getDoc(userRoleDocRef);
+        // 1. Fetch user's role name from the 'users' collection
+        const userRoleDocRef = doc(db, 'users', userAuth.uid);
+        const userRoleDoc = await getDoc(userRoleDocRef);
 
-          if (userRoleDoc.exists()) {
-            const roleData = userRoleDoc.data();
-            if (roleData.role) {
-              userContextData.role = roleData.role; // Set role from 'users' collection
-              console.log("Assigned Role from 'users' collection:", roleData.role);
-            } else {
-              console.warn("User document in 'users' collection exists but has no 'role' field. Assigning default role.");
-            }
-          } else {
-            console.warn("No matching user document found in 'users' collection for UID. Assigning default role.");
-          }
-
-          // 2. Attempt to fetch employee details from the 'employees' collection
-          //    (Assumes employee document ID matches userAuth.uid if they are a login-enabled employee)
-          const employeeDocRef = doc(db, 'employees', userAuth.uid);
-          const employeeDoc = await getDoc(employeeDocRef);
-
-          if (employeeDoc.exists()) {
-            const employeeData = employeeDoc.data();
-            // Merge employee-specific data into the user context object
-            userContextData = { ...userContextData, ...employeeData };
-            console.log("Merged Employee Data:", employeeData);
-          } else {
-            console.log("No matching employee document found in 'employees' collection for this UID. User details will be basic.");
-          }
-
-        } catch (error) {
-            console.error("Error during user profile fetching:", error);
-            // Fallback: If any error occurs, ensure basic user info with a default role is set.
-            userContextData.role = 'Workshop Employee';
-            console.log("Assigned Default Role (due to error): Workshop Employee");
-        } finally {
-            setUser(userContextData);
-            setLoading(false);
+        if (userRoleDoc.exists() && userRoleDoc.data().role) {
+          userRole = userRoleDoc.data().role;
+        } else {
+          console.warn(`User document for ${userAuth.uid} not found in 'users' or has no role. Assigning default role.`);
         }
+
+        // 2. Fetch the permissions for that role from the 'roles' collection
+        let permissions = {};
+        try {
+            const roleDocRef = doc(db, 'roles', userRole);
+            const roleDoc = await getDoc(roleDocRef);
+
+            if (roleDoc.exists()) {
+                permissions = roleDoc.data().permissions || {};
+            } else {
+                console.warn(`Permissions document for role "${userRole}" not found. User will have no permissions.`);
+                toast.error(`Permissions for role "${userRole}" not found. Please contact an administrator.`, { duration: 6000 });
+            }
+        } catch (error) {
+            console.error("Error fetching role permissions:", error);
+        }
+
+        // 3. Combine all user data into a single context object
+        const userContextData = {
+            uid: userAuth.uid,
+            email: userAuth.email,
+            role: userRole,
+            permissions: permissions,
+        };
+        
+        setUser(userContextData);
       } else {
-        // User is signed out
-        console.log("User signed out.");
         setUser(null);
-        setLoading(false);
       }
+      setLoading(false);
     });
     return unsubscribe;
   }, []);

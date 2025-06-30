@@ -1,4 +1,4 @@
-// src/pages/SalesOrderPage.jsx (REFACTORED with modal fix)
+// src/pages/SalesOrderPage.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToSalesOrders, addPurchasedItemToQueue, updateSalesOrderLineItemStatus } from '../api/firestore';
@@ -6,25 +6,40 @@ import Button from '../components/ui/Button';
 import { ChevronDown, ChevronRight, Package, Wrench, ShoppingBag, X, CheckCircle } from 'lucide-react';
 import CustomJobCreator from '../components/features/job_cards/CustomJobCreator';
 import StandardJobCreatorModal from '../components/features/job_cards/StandardJobCreatorModal';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
-// A single line item within an order
 const OrderLineItem = ({ item, order, onAction }) => {
     const [isCustomModalOpen, setCustomModalOpen] = useState(false);
     const [isStandardModalOpen, setStandardModalOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleSendToPurchasing = async () => {
-        if (!window.confirm(`Are you sure you want to send "${item.description}" to the purchasing queue?`)) return;
-        setIsSubmitting(true);
-        try {
-            await addPurchasedItemToQueue(item, order);
-            await updateSalesOrderLineItemStatus(order.id, item.id, 'In Purchasing');
-            onAction(); 
-        } catch (error) {
-            console.error("Error sending item to purchasing:", error);
-            alert("Failed to send item to purchasing.");
-        }
-        setIsSubmitting(false);
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Send "{item.description}" to the purchasing queue?
+                <Button variant="primary" size="sm" className="ml-2" onClick={() => {
+                    setIsSubmitting(true);
+                    addPurchasedItemToQueue(item, order)
+                        .then(() => updateSalesOrderLineItemStatus(order.id, item.id, 'In Purchasing'))
+                        .then(() => {
+                            toast.success("Item sent to purchasing.");
+                            onAction();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to send item to purchasing.");
+                            console.error("Error sending item to purchasing:", err);
+                        })
+                        .finally(() => setIsSubmitting(false));
+                    toast.dismiss(t.id);
+                }}>
+                    Confirm
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ));
     };
 
     let icon, actionButton;
@@ -56,7 +71,6 @@ const OrderLineItem = ({ item, order, onAction }) => {
                 </div>
             </div>
 
-            {/* MODAL FIX: Added max-h-[90vh] and flex-col to the modal structure */}
             {isCustomModalOpen && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
                     <div className="relative bg-gray-800 p-2 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -81,7 +95,6 @@ const OrderLineItem = ({ item, order, onAction }) => {
     );
 };
 
-// SalesOrderCard component remains the same...
 const SalesOrderCard = ({ order, onAction }) => {
     const [isExpanded, setIsExpanded] = useState(false);
 

@@ -1,3 +1,4 @@
+// src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -22,7 +23,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
 
             if (actualWorkSeconds < 0) return;
 
-            // Categorize the time
             if (job.status === 'Complete') {
                 valueAddedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
@@ -42,7 +42,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
     const chartData = [
         {
             name: 'Time Allocation',
-            // Use keys that are simple and will match the dataKey prop in the <Bar> components
             valueAdded: timeAnalysisData.valueAddedHours,
             paused: timeAnalysisData.nonValueHours,
             wasted: timeAnalysisData.wastedHours,
@@ -71,7 +70,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #4b5563' }}
                     />
                     <Legend
-                        // THIS IS THE CORRECTED FORMATTER LOGIC
                         formatter={(value, entry) => {
                             const { dataKey, color } = entry;
                             const hours = chartData[0][dataKey];
@@ -79,7 +77,6 @@ const ValueWasteAnalysis = ({ jobs }) => {
                         }}
                         iconType="circle"
                     />
-                    {/* The dataKey here now perfectly matches the keys in chartData */}
                     <Bar dataKey="valueAdded" name="Value-Added Time" stackId="a" fill="#22c55e" />
                     <Bar dataKey="paused" name="Non-Value Time (Paused)" stackId="a" fill="#eab308" />
                     <Bar dataKey="wasted" name="Wasted Time (Issues)" stackId="a" fill="#ef4444" />

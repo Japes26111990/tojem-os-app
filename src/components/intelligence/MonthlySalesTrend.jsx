@@ -1,4 +1,4 @@
-// src/components/intelligence/MonthlySalesTrend.jsx (NEW FILE)
+// src/components/intelligence/MonthlySalesTrend.jsx
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
 

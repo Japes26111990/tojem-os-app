@@ -1,14 +1,15 @@
-// src/pages/PurchasingPage.jsx (Advanced Version)
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-    getPurchaseQueue, 
+    listenToPurchaseQueue, 
     getSuppliers, 
     markItemsAsOrdered,
     listenToOneOffPurchases,
     markOneOffItemsAsOrdered,
     getSupplierPricingForItem,
-    addSupplier
+    addSupplier,
+    listenToJobCards, // NEW: For JIT analysis
+    getAllInventoryItems, // NEW: For JIT analysis
+    addToPurchaseQueue // NEW: To programmatically add items
 } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -16,7 +17,7 @@ import { Mail, ThumbsUp, Truck, Package, Wrench, UserPlus, X } from 'lucide-reac
 import InTransitOrders from '../components/features/stock/InTransitOrders';
 import Dropdown from '../components/ui/Dropdown';
 
-// New Modal for adding a supplier on the fly
+// AddSupplierModal remains unchanged...
 const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
     const [newSupplier, setNewSupplier] = useState({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
     
@@ -37,7 +38,7 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
             };
             await addSupplier(supplierData);
             alert("Supplier added successfully!");
-            onSupplierAdded(); // This will trigger a refresh in the main component
+            onSupplierAdded();
             onClose();
         } catch (error) {
             console.error("Error adding supplier:", error);
@@ -67,16 +68,15 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
 };
 
 
-// --- Unified Purchase Hub Component ---
+// PurchaseHub component remains largely the same, handling the UI for ordering
 const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     const [allPricing, setAllPricing] = useState({});
     const [selectedSuppliers, setSelectedSuppliers] = useState({});
     const [orderQuantities, setOrderQuantities] = useState({});
     const [loadingPricing, setLoadingPricing] = useState(true);
     const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
-    const [sendToAdmin, setSendToAdmin] = useState({}); // { itemId: boolean }
+    const [sendToAdmin, setSendToAdmin] = useState({});
 
-    // Hardcoded for now, will be moved to settings later
     const ADMIN_EMAIL = "admin@tojem.co.za";
 
     const unifiedQueue = useMemo(() => [
@@ -121,7 +121,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     const handleQuantityChange = (itemId, qty) => {
         setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
     };
-
+    
     const handleSendToAdminToggle = (itemId) => {
         setSendToAdmin(prev => ({...prev, [itemId]: !prev[itemId]}));
     };
@@ -150,7 +150,6 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
             }
         });
         
-        // Filter out empty groups
         return Object.entries(groups)
             .filter(([_, group]) => group.stockItems.length > 0 || group.jobItems.length > 0)
             .map(([_, group]) => group)
@@ -185,7 +184,6 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
         body += `\nThank you,\nTojem`;
         window.location.href = `mailto:${supplierEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-        // We only mark as ordered if it's NOT an admin request
         if (supplierDetails.name !== 'Admin Purchase Request') {
             try {
                 if (stockItems.length > 0) {
@@ -279,36 +277,96 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     );
 };
 
-// Main page component remains largely the same
+
+// --- Main Purchasing Page ---
 const PurchasingPage = () => {
     const [activeTab, setActiveTab] = useState('queue');
-    const [stockQueue, setStockQueue] = useState([]);
+    const [purchaseQueue, setPurchaseQueue] = useState([]);
     const [jobQueue, setJobQueue] = useState([]);
-    const [inTransitItems, setInTransitItems] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [sQueue, sList] = await Promise.all([getPurchaseQueue(), getSuppliers()]);
-            setStockQueue(sQueue.filter(i => i.status === 'pending'));
-            setInTransitItems(sQueue.filter(i => i.status === 'ordered'));
-            setSuppliers(sList);
+            const supplierList = await getSuppliers();
+            setSuppliers(supplierList);
         } catch (error) {
-            console.error("Error fetching purchasing data:", error);
+            console.error("Error fetching suppliers:", error);
         }
         setLoading(false);
     };
 
     useEffect(() => {
         fetchData();
-        const unsubscribeJobQueue = listenToOneOffPurchases((items) => {
-            setJobQueue(items.filter(item => item.status === 'Pending Purchase'));
+
+        // JIT LOGIC: This effect now also analyzes the upcoming schedule to proactively queue items.
+        const runJitAnalysis = async (allJobs, currentQueue) => {
+            console.log("Running JIT Analysis...");
+            const inventory = await getAllInventoryItems();
+            const inventoryMap = new Map(inventory.map(i => [i.id, i]));
+            const requiredForFuture = new Map();
+
+            const futureJobs = allJobs.filter(j => j.scheduledDate && j.scheduledDate.toDate() > new Date());
+
+            for(const job of futureJobs) {
+                if(!job.processedConsumables) continue;
+                for(const consumable of job.processedConsumables) {
+                    const currentReq = requiredForFuture.get(consumable.id) || 0;
+                    requiredForFuture.set(consumable.id, currentReq + consumable.quantity);
+                }
+            }
+
+            for(const [itemId, requiredQty] of requiredForFuture.entries()) {
+                const item = inventoryMap.get(itemId);
+                const isAlreadyQueued = currentQueue.some(qItem => qItem.itemId === itemId);
+                
+                if (item && !isAlreadyQueued) {
+                    const projectedStock = (item.currentStock || 0) - requiredQty;
+                    // Proactively queue if projected stock falls below reorder level
+                    if (projectedStock < (item.reorderLevel || 0)) {
+                        console.log(`JIT: Proactively queueing ${item.name}.`);
+                        await addToPurchaseQueue({
+                            itemId: item.id,
+                            itemName: item.name,
+                            supplierId: item.supplierId,
+                            itemCode: item.itemCode || '',
+                            category: item.category,
+                            currentStock: item.currentStock,
+                            reorderLevel: item.reorderLevel,
+                            standardStockLevel: item.standardStockLevel,
+                            price: item.price,
+                            unit: item.unit
+                        });
+                    }
+                }
+            }
+        };
+
+        // Set up all listeners
+        const unsubscribeStockQueue = listenToPurchaseQueue(setPurchaseQueue);
+        const unsubscribeJobQueue = listenToOneOffPurchases(items => setJobQueue(items.filter(item => item.status === 'Pending Purchase')));
+        const unsubscribeJobs = listenToJobCards(allJobs => {
+            // Run JIT analysis whenever the job list or purchase queue changes
+            listenToPurchaseQueue(currentQueue => {
+                runJitAnalysis(allJobs, currentQueue);
+            })();
         });
-        return () => unsubscribeJobQueue();
+
+        return () => {
+            unsubscribeStockQueue();
+            unsubscribeJobQueue();
+            unsubscribeJobs();
+        };
     }, []);
 
+    const { pendingStockItems, inTransitItems } = useMemo(() => {
+        return {
+            pendingStockItems: purchaseQueue.filter(i => i.status === 'pending'),
+            inTransitItems: purchaseQueue.filter(i => i.status === 'ordered')
+        }
+    }, [purchaseQueue]);
+    
     const TabButton = ({ id, label, count }) => {
         const isActive = activeTab === id;
         return (
@@ -329,7 +387,7 @@ const PurchasingPage = () => {
             <h2 className="text-3xl font-bold text-white">Purchasing Hub</h2>
             <div className="border-b border-gray-700">
                 <nav className="-mb-px flex space-x-6">
-                    <TabButton id="queue" label="Purchase Queue" count={stockQueue.length + jobQueue.length} />
+                    <TabButton id="queue" label="Purchase Queue" count={pendingStockItems.length + jobQueue.length} />
                     <TabButton id="transit" label="In-Transit Orders" count={inTransitItems.length} />
                 </nav>
             </div>
@@ -337,7 +395,7 @@ const PurchasingPage = () => {
             <div className="mt-4">
                 {loading ? <p className="text-center text-gray-400 p-8">Loading...</p> : (
                     <>
-                        {activeTab === 'queue' && <PurchaseHub stockItems={stockQueue} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />}
+                        {activeTab === 'queue' && <PurchaseHub stockItems={pendingStockItems} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />}
                         {activeTab === 'transit' && <InTransitOrders items={inTransitItems} suppliers={suppliers} onStockReceived={fetchData} />}
                     </>
                 )}
@@ -347,4 +405,3 @@ const PurchasingPage = () => {
 };
 
 export default PurchasingPage;
-

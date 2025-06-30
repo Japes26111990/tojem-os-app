@@ -1,4 +1,4 @@
-// src/components/intelligence/EfficiencyChart.jsx (New File)
+// src/components/intelligence/EfficiencyChart.jsx
 
 import React, { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -29,13 +29,13 @@ const EfficiencyChart = ({ jobs }) => {
         const efficiency = ((job.estimatedTime * 60) / actualSeconds) * 100;
 
         return {
-          date: new Date(job.completedAt.toDate()).toLocaleDateString('en-ZA'), // Use a consistent date format
+          date: new Date(job.completedAt.toDate()).toLocaleDateString('en-ZA'),
           efficiency: efficiency,
           partName: job.partName,
         };
       })
-      .filter(Boolean) // Remove any null entries
-      .sort((a, b) => new Date(a.date) - new Date(b.date)); // Sort by date to connect the line properly
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
   }, [jobs]);
 
   if (chartData.length === 0) {

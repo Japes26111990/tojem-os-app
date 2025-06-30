@@ -1,35 +1,32 @@
-// src/components/features/settings/ComponentsManager.jsx
+// src/components/features/settings/ComponentsManager.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
-import { getComponents, addComponent, deleteComponent, updateDocument, getSuppliers } from '../../../api/firestore';
+import { getComponents, addComponent, deleteComponent, updateDocument } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const ComponentsManager = () => {
     const [components, setComponents] = useState([]);
-    const [suppliers, setSuppliers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [formData, setFormData] = useState({
         name: '',
         itemCode: '',
-        supplierId: '',
         price: '',
         unit: 'Each',
         currentStock: '',
         reorderLevel: '',
         standardStockLevel: '',
-        // NEW: Add new fields to the form state
-        countMethod: 'Quantity', // Default to Quantity
+        countMethod: 'Quantity',
         containerWeight: '',
         unitWeight: '',
     });
 
     const fetchData = async () => {
         setIsLoading(true);
-        const [fetchedComponents, fetchedSuppliers] = await Promise.all([getComponents(), getSuppliers()]);
+        const fetchedComponents = await getComponents();
         setComponents(fetchedComponents);
-        setSuppliers(fetchedSuppliers);
         setIsLoading(false);
     };
 
@@ -44,21 +41,21 @@ const ComponentsManager = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.name || !formData.supplierId) {
-            alert("Please provide a name and select a supplier.");
+        if (!formData.name) {
+            toast.error("Please provide a component name."); // --- REPLACE ALERT ---
             return;
         }
         try {
             await addComponent(formData);
-            alert('Component added successfully!');
+            toast.success('Component added successfully!'); // --- REPLACE ALERT ---
             setFormData({
-                name: '', itemCode: '', supplierId: '', price: '', unit: 'Each',
+                name: '', itemCode: '', price: '', unit: 'Each',
                 currentStock: '', reorderLevel: '', standardStockLevel: '',
-                countMethod: 'Quantity', containerWeight: '', unitWeight: '' // Reset new fields
+                countMethod: 'Quantity', containerWeight: '', unitWeight: ''
             });
             fetchData();
         } catch (error) {
-            alert('Failed to add component.');
+            toast.error('Failed to add component.'); // --- REPLACE ALERT ---
             console.error(error);
         }
     };
@@ -66,24 +63,40 @@ const ComponentsManager = () => {
     const handleUpdate = async (id, updatedData) => {
         try {
             await updateDocument('components', id, updatedData);
-            fetchData(); // Refresh data
+            toast.success('Component updated successfully!');
+            fetchData();
         } catch (error) {
+            toast.error("Failed to update component.");
             console.error("Failed to update component: ", error);
         }
     };
 
-
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this component?")) {
-            try {
-                await deleteComponent(id);
-                alert('Component deleted successfully!');
-                fetchData();
-            } catch (error) {
-                alert('Failed to delete component.');
-                console.error(error);
-            }
-        }
+    const handleDelete = (id) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this component?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteComponent(id)
+                        .then(() => {
+                            toast.success("Component deleted.");
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete component.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+        });
     };
 
     if (isLoading) return <p>Loading components...</p>;
@@ -95,14 +108,11 @@ const ComponentsManager = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input name="name" label="Component Name" value={formData.name} onChange={handleInputChange} placeholder="e.g., Mounting Bracket" />
                     <Input name="itemCode" label="Item Code" value={formData.itemCode} onChange={handleInputChange} placeholder="e.g., MB-001" />
-                    <Dropdown name="supplierId" label="Supplier" value={formData.supplierId} onChange={handleInputChange} options={suppliers} placeholder="Select Supplier" />
                     <Input name="price" label="Price" type="number" value={formData.price} onChange={handleInputChange} placeholder="e.g., 150.00" />
                     <Input name="unit" label="Unit of Measure" value={formData.unit} onChange={handleInputChange} placeholder="e.g., Each, Box" />
                     <Input name="currentStock" label="In Stock" type="number" value={formData.currentStock} onChange={handleInputChange} placeholder="e.g., 100" />
                     <Input name="reorderLevel" label="Re-order At" type="number" value={formData.reorderLevel} onChange={handleInputChange} placeholder="e.g., 20" />
                     <Input name="standardStockLevel" label="Standard Stock Level" type="number" value={formData.standardStockLevel} onChange={handleInputChange} placeholder="e.g., 120" />
-                    
-                    {/* NEW: Fields for Count Method */}
                     <Dropdown 
                         name="countMethod" 
                         label="Count Method" 
@@ -112,8 +122,6 @@ const ComponentsManager = () => {
                         <option value="Quantity">Quantity</option>
                         <option value="Weight">Weight</option>
                     </Dropdown>
-                    
-                    {/* NEW: Conditional fields for Weight */}
                     {formData.countMethod === 'Weight' && (
                         <>
                             <Input name="containerWeight" label="Container Weight (g)" type="number" value={formData.containerWeight} onChange={handleInputChange} placeholder="e.g., 50" />
@@ -142,9 +150,8 @@ const ComponentsManager = () => {
                                 <EditableComponentRow 
                                     key={comp.id} 
                                     component={comp} 
-                                    suppliers={suppliers}
                                     onUpdate={handleUpdate}
-                                    onDelete={handleDelete} 
+                                    onDelete={() => handleDelete(comp.id)} 
                                 />
                             ))}
                         </tbody>
@@ -155,9 +162,8 @@ const ComponentsManager = () => {
     );
 };
 
-
-// A new sub-component to make the rows editable
-const EditableComponentRow = ({ component, suppliers, onUpdate, onDelete }) => {
+// EditableComponentRow sub-component remains the same as it doesn't use alerts directly.
+const EditableComponentRow = ({ component, onUpdate, onDelete }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState(component);
 
@@ -180,13 +186,12 @@ const EditableComponentRow = ({ component, suppliers, onUpdate, onDelete }) => {
                 <td className="p-2">{component.countMethod || 'Quantity'}</td>
                 <td className="p-2 flex gap-2">
                     <Button onClick={() => setIsEditing(true)} size="sm">Edit</Button>
-                    <Button onClick={() => onDelete(component.id)} variant="danger" size="sm">Delete</Button>
+                    <Button onClick={onDelete} variant="danger" size="sm">Delete</Button>
                 </td>
             </tr>
         )
     }
 
-    // Editing View
     return (
         <tr className="bg-gray-900">
             <td className="p-2"><Input name="name" value={editData.name} onChange={handleInputChange} /></td>

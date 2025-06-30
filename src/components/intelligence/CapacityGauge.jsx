@@ -1,10 +1,9 @@
-// src/components/intelligence/CapacityGauge.jsx (NEW FILE)
+// src/components/intelligence/CapacityGauge.jsx
 import React from 'react';
 import { Gauge } from 'lucide-react';
 import { RadialBarChart, RadialBar, ResponsiveContainer } from 'recharts';
 
 const CapacityGauge = ({ utilization }) => {
-    // This component is UI-only for now, logic will be in DashboardPage.jsx
     const scoreColor = utilization > 85 ? '#ef4444' : utilization > 70 ? '#f59e0b' : '#22c55e';
     const data = [{ name: 'Capacity', value: utilization }];
 

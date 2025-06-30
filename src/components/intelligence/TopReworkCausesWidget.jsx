@@ -1,10 +1,8 @@
-// src/components/intelligence/TopReworkCausesWidget.jsx (New File)
-
+// src/components/intelligence/TopReworkCausesWidget.jsx
 import React from 'react';
 import { AlertCircle } from 'lucide-react';
 
 const TopReworkCausesWidget = ({ data }) => {
-    // Handle the case where there are no issue jobs to analyze
     if (!data || data.length === 0) {
         return (
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col">
@@ -19,7 +17,6 @@ const TopReworkCausesWidget = ({ data }) => {
         );
     }
 
-    // Find the highest count to make the bar widths proportional
     const maxCount = Math.max(...data.map(([, count]) => count), 1);
 
     return (

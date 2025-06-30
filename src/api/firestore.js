@@ -20,6 +20,26 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
+// --- SYSTEM STATUS API (NEW) ---
+/**
+ * Listens for real-time updates to the system status document.
+ * This is used for features like the real-time bottleneck display.
+ * @param {function} callback - The function to call with the status data.
+ * @returns {import("firebase/firestore").Unsubscribe} A function to unsubscribe from updates.
+ */
+export const listenToSystemStatus = (callback) => {
+    const statusDocRef = doc(db, 'systemStatus', 'latest');
+    return onSnapshot(statusDocRef, (doc) => {
+        if (doc.exists()) {
+            callback(doc.data());
+        } else {
+            // Provide a default object if the document doesn't exist yet
+            callback({ bottleneckToolName: 'N/A', bottleneckUtilization: 0 });
+        }
+    });
+};
+
+
 // --- DEPARTMENTS API ---
 const departmentsCollection = collection(db, 'departments');
 export const getDepartments = async () => {
@@ -282,6 +302,14 @@ export const getPurchaseQueue = async () => {
     const snapshot = await getDocs(purchaseQueueCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
+// NEW: Real-time listener for the purchase queue
+export const listenToPurchaseQueue = (callback) => {
+    const q = query(purchaseQueueCollection, orderBy('queuedAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(items);
+    });
+};
 export const addToPurchaseQueue = (itemData) => {
     return addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
 };
@@ -382,12 +410,16 @@ export const getJobByJobId = async (jobId) => {
     const jobDoc = querySnapshot.docs[0];
     return { id: jobDoc.id, ...jobDoc.data() };
 };
-export const updateJobStatus = async (docId, newStatus) => {
+
+export const updateJobStatus = async (docId, newStatus, options = {}) => {
     const jobDocRef = doc(db, 'createdJobCards', docId);
     const jobDoc = await getDoc(jobDocRef);
     if (!jobDoc.exists()) throw new Error("Job not found!");
+
     const currentData = jobDoc.data();
     const dataToUpdate = { status: newStatus };
+    const { haltReason } = options;
+
     if (newStatus === 'In Progress') {
         if (!currentData.startedAt) dataToUpdate.startedAt = serverTimestamp();
         else if (currentData.status === 'Paused' && currentData.pausedAt) {
@@ -398,27 +430,58 @@ export const updateJobStatus = async (docId, newStatus) => {
         dataToUpdate.pausedAt = serverTimestamp();
     } else if (newStatus === 'Awaiting QC') {
         dataToUpdate.completedAt = serverTimestamp();
+    } else if (newStatus === 'Halted - Issue') {
+        dataToUpdate.haltedAt = serverTimestamp();
+        dataToUpdate.issueLog = [
+            ...(currentData.issueLog || []),
+            { reason: haltReason, timestamp: serverTimestamp(), user: 'SYSTEM' } 
+        ];
     }
+
     const scanEventRef = doc(collection(db, 'scanEvents'));
     const scanEventData = {
         employeeId: currentData.employeeId,
         employeeName: currentData.employeeName,
         jobId: currentData.jobId,
         statusUpdatedTo: newStatus,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp(),
+        notes: haltReason ? `Halted: ${haltReason}` : ''
     };
     const batch = writeBatch(db);
     batch.update(jobDocRef, dataToUpdate);
     batch.set(scanEventRef, scanEventData);
+    
+    if (newStatus === 'Halted - Issue') {
+        const notificationRef = doc(collection(db, 'notifications'));
+        const notificationData = {
+            message: `Job ${currentData.jobId} (${currentData.partName}) was halted. Reason: ${haltReason}`,
+            type: 'job_halted',
+            targetRole: 'Manager',
+            jobId: currentData.jobId,
+            createdAt: serverTimestamp(),
+            read: false,
+        };
+        batch.set(notificationRef, notificationData);
+    }
+    
     return batch.commit();
 };
-export const processQcDecision = async (job, isApproved, rejectionReason = '') => {
+
+export const processQcDecision = async (job, isApproved, options = {}) => {
+    const { 
+        rejectionReason = '', 
+        preventStockDeduction = false, 
+        reworkDetails = null 
+    } = options;
+
     const allTools = await getTools();
     const toolsMap = new Map(allTools.map(t => [t.id, t]));
+    
     return runTransaction(db, async (transaction) => {
         const jobRef = doc(db, 'createdJobCards', job.id);
         const jobDoc = await transaction.get(jobRef);
         if (!jobDoc.exists()) throw "Job document does not exist!";
+        
         const allInventory = await getAllInventoryItems();
         const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
         const allEmployees = await getEmployees();
@@ -429,6 +492,7 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
         const recipe = recipeDoc.exists() ? recipeDoc.data() : null;
         const currentJobData = jobDoc.data();
         const dataToUpdate = {};
+
         if (isApproved) {
             dataToUpdate.status = 'Complete';
             if (!currentJobData.completedAt) dataToUpdate.completedAt = serverTimestamp();
@@ -466,11 +530,19 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
             dataToUpdate.machineCost = machineCost;
             dataToUpdate.totalCost = materialCost + laborCost + machineCost;
         } else {
-            dataToUpdate.status = 'Issue';
-            dataToUpdate.issueReason = rejectionReason;
+            if (reworkDetails && reworkDetails.requeue) {
+                dataToUpdate.status = 'Pending';
+                dataToUpdate.issueReason = `REWORK: ${rejectionReason}`;
+                dataToUpdate.employeeId = reworkDetails.newEmployeeId || job.employeeId;
+                dataToUpdate.employeeName = reworkDetails.newEmployeeName || job.employeeName;
+                dataToUpdate.completedAt = null;
+            } else {
+                dataToUpdate.status = 'Issue';
+                dataToUpdate.issueReason = rejectionReason;
+            }
         }
-        transaction.update(jobRef, dataToUpdate);
-        if (isApproved && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
+
+        if (!preventStockDeduction && currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
             for (const consumable of currentJobData.processedConsumables) {
                 const inventoryItem = inventoryMap.get(consumable.id);
                 if (!inventoryItem) continue;
@@ -491,8 +563,11 @@ export const processQcDecision = async (job, isApproved, rejectionReason = '') =
                 }
             }
         }
+        
+        transaction.update(jobRef, dataToUpdate);
     });
 };
+
 
 // --- GENERIC DOCUMENT API ---
 export const updateDocument = async (collectionName, docId, data) => {
@@ -577,6 +652,14 @@ export const deleteUserWithRole = async (userId) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to delete user.');
     return data;
+};
+
+// --- ROLES API (NEW) ---
+export const getRoles = async () => {
+    const rolesCollection = collection(db, 'roles');
+    const snapshot = await getDocs(rolesCollection);
+    // Use the document ID as the role's ID in the application
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
 // --- MARKETING & SALES API ---

@@ -1,4 +1,4 @@
-// src/components/features/job_cards/StandardJobCreatorModal.jsx (CORRECTED & ENHANCED)
+// src/components/features/job_cards/StandardJobCreatorModal.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import { getDepartments, getEmployees, addJobCard, getRecipeForProductDepartment, getProducts, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
@@ -7,6 +7,7 @@ import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import { X, Package } from 'lucide-react';
 import QRCode from 'qrcode';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
     const [departments, setDepartments] = useState([]);
@@ -37,7 +38,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
                 setAllTools(tools);
                 setAllAccessories(accessories);
             } catch (error) {
-                alert("Failed to load necessary data for job creation.");
+                toast.error("Failed to load necessary data for job creation."); // --- REPLACE ALERT ---
                 console.error(error);
             }
             setLoading(false);
@@ -52,17 +53,17 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 
     const handleSubmit = async () => {
         if (!selection.departmentId) {
-            return alert("Please select a department.");
+            return toast.error("Please select a department."); // --- REPLACE ALERT ---
         }
         
         const product = allProducts.find(p => p.id === lineItem.productId);
         if (!product) {
-            return alert("Could not find the product details for this line item.");
+            return toast.error("Could not find the product details for this line item."); // --- REPLACE ALERT ---
         }
         
         const recipe = await getRecipeForProductDepartment(lineItem.productId, selection.departmentId);
         if (!recipe) {
-            return alert(`No recipe found for "${product.name}" in the selected department. Please define one in Settings first.`);
+            return toast.error(`No recipe found for "${product.name}" in the selected department. Please define one in Settings first.`); // --- REPLACE ALERT ---
         }
         
         const department = departments.find(d => d.id === selection.departmentId);
@@ -98,9 +99,8 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             const qrCodeDataUrl = await QRCode.toDataURL(newJobId, { width: 80 });
 
             await addJobCard(finalJobData);
-            alert(`Job card created successfully for ${product.name}!`);
+            toast.success(`Job card created successfully for ${product.name}!`); // --- REPLACE ALERT ---
             
-            // --- UPDATED: Full print logic to match other job cards ---
             const imageSection = product.photoUrl
                 ? `<img src="${product.photoUrl}" alt="${product.name}" style="width: 100%; height: 200px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />`
                 : `<div style="border-radius: 8px; width: 100%; height: 200px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image Available</span></div>`;
@@ -162,7 +162,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             onClose();
         } catch (error) {
             console.error("Error creating job card:", error);
-            alert("Failed to create job card.");
+            toast.error("Failed to create job card."); // --- REPLACE ALERT ---
         }
     };
 

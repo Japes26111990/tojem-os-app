@@ -1,4 +1,4 @@
-// src/components/features/settings/ReworkReasonsManager.jsx (New File)
+// src/components/features/settings/ReworkReasonsManager.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
@@ -6,6 +6,7 @@ import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Trash2, Edit, PlusCircle } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const ReworkReasonsManager = () => {
     const [reasons, setReasons] = useState([]);
@@ -34,15 +35,17 @@ const ReworkReasonsManager = () => {
         try {
             if (editingId) {
                 await updateDoc(doc(db, 'reworkReasons', editingId), { name: reasonName.trim() });
+                toast.success("Reason updated.");
             } else {
                 await addDoc(reasonsCollection, { name: reasonName.trim() });
+                toast.success("Reason added.");
             }
             setReasonName('');
             setEditingId(null);
             fetchData();
         } catch (error) {
             console.error("Error saving rework reason:", error);
-            alert("Failed to save rework reason.");
+            toast.error("Failed to save rework reason."); // --- REPLACE ALERT ---
         }
     };
 
@@ -51,11 +54,30 @@ const ReworkReasonsManager = () => {
         setReasonName(reason.name);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this reason? This might affect historical reports.")) {
-            await deleteDoc(doc(db, 'reworkReasons', id));
-            fetchData();
-        }
+    const handleDelete = (id) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Delete this reason?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteDoc(doc(db, 'reworkReasons', id))
+                        .then(() => {
+                            toast.success("Reason deleted.");
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete reason.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
     return (

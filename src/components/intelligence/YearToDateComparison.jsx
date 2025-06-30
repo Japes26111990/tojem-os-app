@@ -1,4 +1,4 @@
-// src/components/intelligence/YearToDateComparison.jsx (NEW FILE)
+// src/components/intelligence/YearToDateComparison.jsx
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Calendar } from 'lucide-react';
 

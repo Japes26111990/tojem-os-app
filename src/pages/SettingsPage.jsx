@@ -1,4 +1,4 @@
-// src/pages/SettingsPage.jsx (UPDATED)
+// src/pages/SettingsPage.jsx (UPDATED with Role Manager)
 
 import React, { useState, useMemo } from 'react';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
@@ -14,7 +14,8 @@ import UserManagementPage from './UserManagementPage';
 import CampaignManager from '../components/features/settings/CampaignManager';
 import FinancialSettings from '../components/features/settings/FinancialSettings'; 
 import TrainingManager from '../components/features/settings/TrainingManager';
-import ReworkReasonsManager from '../components/features/settings/ReworkReasonsManager'; // <-- 1. IMPORT NEW COMPONENT
+import ReworkReasonsManager from '../components/features/settings/ReworkReasonsManager';
+import RoleManager from '../components/features/settings/RoleManager'; // --- IMPORT NEW COMPONENT ---
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -45,7 +46,6 @@ const SettingsPage = () => {
     },
     company: {
        label: 'Company & Staff',
-       // --- 2. ADD NEW MANAGER TO THIS TAB ---
       components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />, <ReworkReasonsManager key="rework-reasons" />]
     },
     training: {
@@ -60,9 +60,14 @@ const SettingsPage = () => {
       label: 'Marketing',
       components: [<CampaignManager key="campaigns" />]
     },
+    // --- ADD NEW TABS FOR USER & ROLE MANAGEMENT ---
     users: {
-       label: 'User Management',
+       label: 'User Logins',
       components: [<UserManagementPage key="user-management" />]
+    },
+    roles: {
+        label: 'Roles & Permissions',
+        components: [<RoleManager key="role-manager" />]
     }
   }), []);
 

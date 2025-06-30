@@ -3,6 +3,7 @@ import { getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../..
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { DollarSign, Trash2, Edit, PlusCircle, Users } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const CampaignManager = () => {
     const [campaigns, setCampaigns] = useState([]);
@@ -15,7 +16,7 @@ const CampaignManager = () => {
         budget: '',
         startDate: '',
         endDate: '',
-        leadsGenerated: '', // Add new field to form state
+        leadsGenerated: '',
     };
     const [formData, setFormData] = useState(initialFormState);
 
@@ -26,7 +27,7 @@ const CampaignManager = () => {
             setCampaigns(fetchedCampaigns);
         } catch (error) {
             console.error("Error fetching campaigns:", error);
-            alert("Could not load campaign data.");
+            toast.error("Could not load campaign data."); // --- REPLACE ALERT ---
         }
         setLoading(false);
     };
@@ -48,7 +49,7 @@ const CampaignManager = () => {
             budget: campaign.budget,
             startDate: campaign.startDate?.toDate ? campaign.startDate.toDate().toISOString().split('T')[0] : '',
             endDate: campaign.endDate?.toDate ? campaign.endDate.toDate().toISOString().split('T')[0] : '',
-            leadsGenerated: campaign.leadsGenerated || 0, // Set leads from campaign data
+            leadsGenerated: campaign.leadsGenerated || 0,
         });
     };
 
@@ -60,7 +61,7 @@ const CampaignManager = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.name || !formData.platform || !formData.budget || !formData.startDate) {
-            alert("Please fill in name, platform, budget, and start date.");
+            toast.error("Please fill in name, platform, budget, and start date."); // --- REPLACE ALERT ---
             return;
         }
 
@@ -70,36 +71,51 @@ const CampaignManager = () => {
             budget: parseFloat(formData.budget),
             startDate: new Date(formData.startDate),
             endDate: formData.endDate ? new Date(formData.endDate) : null,
-            leadsGenerated: Number(formData.leadsGenerated) || 0, // Ensure leads are saved as a number
+            leadsGenerated: Number(formData.leadsGenerated) || 0,
         };
 
         try {
             if (editingCampaign) {
                 await updateCampaign(editingCampaign.id, dataToSave);
-                alert("Campaign updated successfully!");
+                toast.success("Campaign updated successfully!"); // --- REPLACE ALERT ---
             } else {
                 await addCampaign(dataToSave);
-                alert("Campaign added successfully!");
+                toast.success("Campaign added successfully!"); // --- REPLACE ALERT ---
             }
             handleCancelEdit();
             fetchCampaigns();
         } catch (error) {
             console.error("Error saving campaign:", error);
-            alert("Failed to save campaign.");
+            toast.error("Failed to save campaign."); // --- REPLACE ALERT ---
         }
     };
 
-    const handleDeleteClick = async (campaignId) => {
-        if (window.confirm("Are you sure you want to delete this campaign?")) {
-            try {
-                await deleteCampaign(campaignId);
-                alert("Campaign deleted.");
-                fetchCampaigns();
-            } catch (error) {
-                console.error("Error deleting campaign:", error);
-                alert("Failed to delete campaign.");
-            }
-        }
+    const handleDeleteClick = (campaignId) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this campaign?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteCampaign(campaignId)
+                        .then(() => {
+                            toast.success("Campaign deleted.");
+                            fetchCampaigns();
+                        })
+                        .catch(err => {
+                            console.error("Error deleting campaign:", err);
+                            toast.error("Failed to delete campaign.");
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+        });
     };
 
     const formatDate = (timestamp) => {

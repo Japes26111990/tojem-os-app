@@ -1,5 +1,5 @@
+// src/components/intelligence/SkillProgressionWidget.jsx
 import React, { useState, useEffect } from 'react';
-// 1. IMPORT THE GENERIC deleteDocument FUNCTION and an icon
 import { getSkillHistoryForEmployee, getSkills, deleteDocument } from '../../api/firestore';
 import Button from '../ui/Button';
 import { Trash2 } from 'lucide-react';
@@ -10,7 +10,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
     const [selectedSkillId, setSelectedSkillId] = useState('');
     const [loading, setLoading] = useState(true);
 
-    // Encapsulate fetch logic to be reusable
     const fetchData = async () => {
         if (!employeeId) return;
         setLoading(true);
@@ -20,11 +19,10 @@ const SkillProgressionWidget = ({ employeeId }) => {
                 getSkills()
             ]);
 
-            // 2. SORT THE DATA IN THE BROWSER (client-side) after fetching
             const sortedHistory = history.sort((a, b) => {
                 const dateA = a.assessmentDate?.toDate() || 0;
                 const dateB = b.assessmentDate?.toDate() || 0;
-                return dateB - dateA; // Sort descending (newest first)
+                return dateB - dateA;
             });
 
             setSkillHistory(sortedHistory);
@@ -40,7 +38,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
             }
         } catch (error) {
             console.error("Error fetching skill progression data:", error);
-            alert("Could not load skill history.");
         }
         setLoading(false);
     };
@@ -49,17 +46,13 @@ const SkillProgressionWidget = ({ employeeId }) => {
         fetchData();
     }, [employeeId]);
 
-    // 3. ADD A HANDLER FOR DELETING A HISTORY RECORD
     const handleDeleteHistory = async (recordId) => {
-        if (window.confirm("Are you sure you want to permanently delete this history record? This action cannot be undone.")) {
+        if (window.confirm("Are you sure you want to permanently delete this history record?")) {
             try {
                 await deleteDocument('skillHistory', recordId);
-                // Refresh the data from local state for an instant UI update
                 setSkillHistory(prev => prev.filter(record => record.id !== recordId));
-                alert("History record deleted.");
             } catch (error) {
                 console.error("Error deleting history record:", error);
-                alert("Failed to delete history record.");
             }
         }
     };
@@ -105,7 +98,6 @@ const SkillProgressionWidget = ({ employeeId }) => {
                                             {record.assessmentDate ? new Date(record.assessmentDate.toDate()).toLocaleString() : 'Date unknown'}
                                         </p>
                                     </div>
-                                    {/* 4. ADD THE DELETE BUTTON TO EACH RECORD */}
                                     <Button onClick={() => handleDeleteHistory(record.id)} variant="icon" className="text-red-500 hover:text-red-400">
                                         <Trash2 size={18} />
                                     </Button>

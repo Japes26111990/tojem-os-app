@@ -1,26 +1,43 @@
-// src/pages/QcPage.jsx (Corrected)
+// src/pages/QcPage.jsx (Upgraded with Toast Notifications)
 
 import React, { useState, useEffect, useMemo } from 'react';
-// --- CORRECTED IMPORTS ---
-import { listenToJobCards, processQcDecision, getReworkReasons } from '../api/firestore';
+import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { X } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- 1. IMPORT toast
 
-// A new sub-component for handling the rejection logic in a modal
+// The RejectionModal component remains the same internally but will now be called by functions using toast.
 const RejectionModal = ({ job, reasons, onReject, onClose }) => {
     const [rejectionReasonId, setRejectionReasonId] = useState('');
     const [notes, setNotes] = useState('');
+    const [preventDeduction, setPreventDeduction] = useState(false);
+    const [requeueForRework, setRequeueForRework] = useState(false);
+    const [reworkEmployeeId, setReworkEmployeeId] = useState('');
+    const [allEmployees, setAllEmployees] = useState([]);
+
+    useEffect(() => {
+        getEmployees().then(setAllEmployees);
+    }, []);
 
     const handleSubmit = () => {
         if (!rejectionReasonId) {
-            return alert("Please select a reason for rejection.");
+            return toast.error("Please select a reason for rejection.");
         }
-        // Find the text of the selected reason
         const reasonText = reasons.find(r => r.id === rejectionReasonId)?.name || 'Other';
-        // Combine the standard reason with any specific notes
         const fullReason = notes ? `${reasonText}: ${notes}` : reasonText;
-        onReject(job, fullReason);
+        const selectedEmployee = allEmployees.find(emp => emp.id === reworkEmployeeId);
+
+        const options = {
+            rejectionReason: fullReason,
+            preventStockDeduction: preventDeduction,
+            reworkDetails: {
+                requeue: requeueForRework,
+                newEmployeeId: reworkEmployeeId || null,
+                newEmployeeName: selectedEmployee ? selectedEmployee.name : null
+            }
+        };
+        onReject(job, options);
     };
 
     return (
@@ -45,6 +62,26 @@ const RejectionModal = ({ job, reasons, onReject, onClose }) => {
                         className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
                         rows="3"
                     ></textarea>
+                    
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked={preventDeduction} onChange={(e) => setPreventDeduction(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 text-blue-600"/>
+                        Do NOT deduct stock (parts are salvageable)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" checked={requeueForRework} onChange={(e) => setRequeueForRework(e.target.checked)} className="h-4 w-4 rounded bg-gray-700 text-blue-600"/>
+                        Re-queue job for rework
+                    </label>
+                    {requeueForRework && (
+                        <div className="animate-fade-in pl-6">
+                            <Dropdown
+                                label="Assign Rework to (Optional)"
+                                options={allEmployees}
+                                value={reworkEmployeeId}
+                                onChange={(e) => setReworkEmployeeId(e.target.value)}
+                                placeholder="Keep original employee or re-assign..."
+                            />
+                        </div>
+                    )}
                 </div>
                 <div className="p-4 flex justify-end gap-2 bg-gray-900/50 rounded-b-xl">
                     <Button onClick={onClose} variant="secondary">Cancel</Button>
@@ -63,7 +100,6 @@ const QcPage = () => {
   const [jobToReject, setJobToReject] = useState(null);
 
   useEffect(() => {
-    // This now uses our new, clean API function
     const fetchReasons = async () => {
         const reasons = await getReworkReasons();
         setRejectionReasons(reasons);
@@ -85,21 +121,21 @@ const QcPage = () => {
     if (window.confirm(`Are you sure you want to approve this job? This will deduct used items from stock.`)) {
       try {
         await processQcDecision(job, true);
-        alert('Job approved and stock updated!');
+        toast.success('Job approved and stock updated!'); // --- 2. REPLACE alert
       } catch (err) {
-        alert('Failed to process approval.');
+        toast.error('Failed to process approval.'); // --- 2. REPLACE alert
         console.error(err);
       }
     }
   };
 
-  const handleReject = async (job, reason) => {
+  const handleReject = async (job, options) => {
     try {
-      await processQcDecision(job, false, reason);
-      alert('Job marked with an issue.');
+      await processQcDecision(job, false, options);
+      toast.success('Job rejection processed successfully.'); // --- 2. REPLACE alert
       setJobToReject(null);
     } catch (err) {
-      alert('Failed to process rejection.');
+      toast.error('Failed to process rejection.'); // --- 2. REPLACE alert
       console.error(err);
     }
   };

@@ -1,4 +1,4 @@
-// src/components/intelligence/MultiYearSalesGraph.jsx (NEW FILE)
+// src/components/intelligence/MultiYearSalesGraph.jsx
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { TrendingUp } from 'lucide-react';
@@ -20,7 +20,6 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 const MultiYearSalesGraph = ({ salesData, years }) => {
-    // A dynamic color palette for the lines
     const colors = ['#8884d8', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
 
     return (

@@ -1,4 +1,4 @@
-// src/components/features/settings/EmployeesManager.jsx (UPGRADED)
+// src/components/features/settings/EmployeesManager.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect } from 'react';
 import { getEmployees, addEmployee, deleteEmployee, getDepartments, updateDocument } from '../../../api/firestore';
@@ -7,6 +7,7 @@ import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
@@ -19,10 +20,10 @@ const EmployeesManager = () => {
     const initialFormState = {
         name: '',
         departmentId: '',
-        employeeType: 'permanent', // 'permanent' or 'subcontractor'
-        hourlyRate: '', // For permanent staff
-        paymentModel: 'per_kg', // 'per_kg', 'per_hour', 'per_product'
-        rate: '', // R40 (per kg), R90 (per hour), etc.
+        employeeType: 'permanent',
+        hourlyRate: '',
+        paymentModel: 'per_kg',
+        rate: '',
     };
     const [newEmployee, setNewEmployee] = useState(initialFormState);
 
@@ -47,7 +48,7 @@ const EmployeesManager = () => {
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newEmployee.name.trim() || !newEmployee.departmentId) {
-            alert("Please enter a name and select a department.");
+            toast.error("Please enter a name and select a department."); // --- REPLACE ALERT ---
             return;
         }
 
@@ -56,7 +57,6 @@ const EmployeesManager = () => {
                 name: newEmployee.name,
                 departmentId: newEmployee.departmentId,
                 employeeType: newEmployee.employeeType,
-                // Save data based on type
                 hourlyRate: newEmployee.employeeType === 'permanent' ? (Number(newEmployee.hourlyRate) || 0) : 0,
                 paymentModel: newEmployee.employeeType === 'subcontractor' ? newEmployee.paymentModel : null,
                 rate: newEmployee.employeeType === 'subcontractor' ? (Number(newEmployee.rate) || 0) : 0,
@@ -64,17 +64,17 @@ const EmployeesManager = () => {
 
             if (editingEmployeeId) {
                 await updateDocument('employees', editingEmployeeId, dataToSave);
-                alert("Employee updated successfully!");
+                toast.success("Employee updated successfully!"); // --- REPLACE ALERT ---
             } else {
                 await addEmployee(dataToSave);
-                alert("Employee added successfully!");
+                toast.success("Employee added successfully!"); // --- REPLACE ALERT ---
             }
             setNewEmployee(initialFormState);
             setEditingEmployeeId(null);
             fetchData();
         } catch (error) {
             console.error("Error saving employee:", error);
-            alert(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`);
+            toast.error(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`); // --- REPLACE ALERT ---
         }
     };
 
@@ -95,11 +95,32 @@ const EmployeesManager = () => {
         setEditingEmployeeId(null);
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure?")) {
-            await deleteEmployee(id);
-            fetchData();
-        }
+    const handleDelete = (id) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteEmployee(id)
+                        .then(() => {
+                            toast.success("Employee deleted.");
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete employee.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), {
+            icon: '⚠️',
+        });
     };
 
     const handleManageSkillsClick = (employee) => {

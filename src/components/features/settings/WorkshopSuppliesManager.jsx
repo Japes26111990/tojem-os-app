@@ -1,33 +1,32 @@
+// src/components/features/settings/WorkshopSuppliesManager.jsx (Upgraded with Toasts)
+
 import React, { useState, useEffect } from 'react';
-import { getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, getSuppliers, updateDocument } from '../../../api/firestore';
+import { getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, updateDocument } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const WorkshopSuppliesManager = () => {
     const [supplies, setSupplies] = useState([]);
-    const [suppliers, setSuppliers] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [formData, setFormData] = useState({
         name: '',
         itemCode: '',
-        supplierId: '',
         price: '',
         unit: 'Each',
         currentStock: '',
         reorderLevel: '',
         standardStockLevel: '',
-        // NEW: Add new fields to the form state
-        countMethod: 'Quantity', // Default to Quantity
+        countMethod: 'Quantity',
         containerWeight: '',
         unitWeight: '',
     });
     
     const fetchData = async () => {
         setIsLoading(true);
-        const [fetchedSupplies, fetchedSuppliers] = await Promise.all([getWorkshopSupplies(), getSuppliers()]);
+        const fetchedSupplies = await getWorkshopSupplies();
         setSupplies(fetchedSupplies);
-        setSuppliers(fetchedSuppliers);
         setIsLoading(false);
     };
 
@@ -42,21 +41,21 @@ const WorkshopSuppliesManager = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!formData.name || !formData.supplierId) {
-            alert("Please provide a name and select a supplier.");
+        if (!formData.name) {
+            toast.error("Please provide a supply name."); // --- REPLACE ALERT ---
             return;
         }
         try {
             await addWorkshopSupply(formData);
-            alert('Supply added successfully!');
+            toast.success('Supply added successfully!'); // --- REPLACE ALERT ---
             setFormData({
-                name: '', itemCode: '', supplierId: '', price: '', unit: 'Each',
+                name: '', itemCode: '', price: '', unit: 'Each',
                 currentStock: '', reorderLevel: '', standardStockLevel: '',
-                countMethod: 'Quantity', containerWeight: '', unitWeight: '' // Reset new fields
+                countMethod: 'Quantity', containerWeight: '', unitWeight: ''
             });
             fetchData();
         } catch (error) {
-            alert('Failed to add supply.');
+            toast.error('Failed to add supply.'); // --- REPLACE ALERT ---
             console.error(error);
         }
     };
@@ -64,23 +63,38 @@ const WorkshopSuppliesManager = () => {
     const handleUpdate = async (id, updatedData) => {
         try {
             await updateDocument('workshopSupplies', id, updatedData);
+            toast.success("Supply updated.");
             fetchData();
         } catch (error) {
+            toast.error("Failed to update supply.");
             console.error("Failed to update supply: ", error);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm("Are you sure you want to delete this supply?")) {
-            try {
-                await deleteWorkshopSupply(id);
-                alert('Supply deleted successfully!');
-                fetchData();
-            } catch (error) {
-                alert('Failed to delete supply.');
-                console.error(error);
-            }
-        }
+    const handleDelete = (id) => {
+        // --- REPLACE window.confirm ---
+        toast((t) => (
+            <span>
+                Are you sure you want to delete this supply?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteWorkshopSupply(id)
+                        .then(() => {
+                            toast.success("Supply deleted.");
+                            fetchData();
+                        })
+                        .catch(err => {
+                            toast.error("Failed to delete supply.");
+                            console.error(err);
+                        });
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
     if (isLoading) return <p>Loading supplies...</p>;
@@ -92,14 +106,11 @@ const WorkshopSuppliesManager = () => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input name="name" label="Supply Name" value={formData.name} onChange={handleInputChange} placeholder="e.g., Sanding Discs" />
                     <Input name="itemCode" label="Item Code" value={formData.itemCode} onChange={handleInputChange} placeholder="e.g., SD-120" />
-                    <Dropdown name="supplierId" label="Supplier" value={formData.supplierId} onChange={handleInputChange} options={suppliers} placeholder="Select Supplier" />
                     <Input name="price" label="Price" type="number" value={formData.price} onChange={handleInputChange} placeholder="e.g., 5.00" />
                     <Input name="unit" label="Unit of Measure" value={formData.unit} onChange={handleInputChange} placeholder="e.g., Box of 100" />
                     <Input name="currentStock" label="In Stock" type="number" value={formData.currentStock} onChange={handleInputChange} placeholder="e.g., 50" />
                     <Input name="reorderLevel" label="Re-order At" type="number" value={formData.reorderLevel} onChange={handleInputChange} placeholder="e.g., 10" />
                     <Input name="standardStockLevel" label="Standard Stock Level" type="number" value={formData.standardStockLevel} onChange={handleInputChange} placeholder="e.g., 60" />
-                    
-                    {/* NEW: Fields for Count Method */}
                     <Dropdown 
                         name="countMethod" 
                         label="Count Method" 
@@ -109,8 +120,6 @@ const WorkshopSuppliesManager = () => {
                         <option value="Quantity">Quantity</option>
                         <option value="Weight">Weight</option>
                     </Dropdown>
-                    
-                    {/* NEW: Conditional fields for Weight */}
                     {formData.countMethod === 'Weight' && (
                         <>
                             <Input name="containerWeight" label="Container Weight (g)" type="number" value={formData.containerWeight} onChange={handleInputChange} placeholder="e.g., 20" />
@@ -140,7 +149,7 @@ const WorkshopSuppliesManager = () => {
                                     key={supply.id} 
                                     supply={supply} 
                                     onUpdate={handleUpdate}
-                                    onDelete={handleDelete} 
+                                    onDelete={() => handleDelete(supply.id)} 
                                 />
                             ))}
                         </tbody>
@@ -151,7 +160,6 @@ const WorkshopSuppliesManager = () => {
     );
 };
 
-// A new sub-component to make the rows editable
 const EditableSupplyRow = ({ supply, onUpdate, onDelete }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editData, setEditData] = useState(supply);
@@ -175,13 +183,12 @@ const EditableSupplyRow = ({ supply, onUpdate, onDelete }) => {
                 <td className="p-2">{supply.countMethod || 'Quantity'}</td>
                 <td className="p-2 flex gap-2">
                     <Button onClick={() => setIsEditing(true)} size="sm">Edit</Button>
-                    <Button onClick={() => onDelete(supply.id)} variant="danger" size="sm">Delete</Button>
+                    <Button onClick={onDelete} variant="danger" size="sm">Delete</Button>
                 </td>
             </tr>
         )
     }
 
-    // Editing View
     return (
         <tr className="bg-gray-900">
             <td className="p-2"><Input name="name" value={editData.name} onChange={handleInputChange} /></td>
