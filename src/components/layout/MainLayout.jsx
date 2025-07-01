@@ -43,7 +43,7 @@ const MainLayout = ({ children }) => {
   }, [location.pathname]);
 
   // --- NEW: Conditionally render layout based on permission ---
-  if (user?.permissions?.hideSidebar) {
+  if (user?.hideSidebar) { // Check the new hideSidebar property from user context
     // Render a simplified layout without the sidebar for tablet/floor roles
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">

@@ -38,7 +38,9 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
     // --- The canSee function now checks the permissions map ---
     const canSee = (permission) => !!user?.permissions?.[permission];
 
-    if (user?.role === 'Floor Tablet') return null;
+    // The MainLayout now handles the primary conditional rendering based on user.hideSidebar.
+    // This component will only render if MainLayout decides to show the sidebar.
+    // So, no explicit `return null` here based on `user?.hideSidebar`.
 
     return (
         <div

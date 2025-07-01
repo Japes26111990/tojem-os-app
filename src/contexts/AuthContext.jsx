@@ -14,6 +14,8 @@ export const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
       if (userAuth) {
         let userRole = 'Workshop Employee'; // Default role
+        let landingPage = '/'; // Default landing page
+        let hideSidebar = false; // Default sidebar visibility
 
         // 1. Fetch user's role name from the 'users' collection
         const userRoleDocRef = doc(db, 'users', userAuth.uid);
@@ -25,14 +27,17 @@ export const AuthProvider = ({ children }) => {
           console.warn(`User document for ${userAuth.uid} not found in 'users' or has no role. Assigning default role.`);
         }
 
-        // 2. Fetch the permissions for that role from the 'roles' collection
+        // 2. Fetch the permissions, landing page, and sidebar visibility for that role from the 'roles' collection
         let permissions = {};
         try {
             const roleDocRef = doc(db, 'roles', userRole);
             const roleDoc = await getDoc(roleDocRef);
 
             if (roleDoc.exists()) {
-                permissions = roleDoc.data().permissions || {};
+                const roleData = roleDoc.data();
+                permissions = roleData.permissions || {};
+                landingPage = roleData.landingPage || '/'; // Get landing page
+                hideSidebar = roleData.hideSidebar || false; // Get hideSidebar status
             } else {
                 console.warn(`Permissions document for role "${userRole}" not found. User will have no permissions.`);
                 toast.error(`Permissions for role "${userRole}" not found. Please contact an administrator.`, { duration: 6000 });
@@ -47,6 +52,8 @@ export const AuthProvider = ({ children }) => {
             email: userAuth.email,
             role: userRole,
             permissions: permissions,
+            landingPage: landingPage, // Add to user context
+            hideSidebar: hideSidebar, // Add to user context
         };
         
         setUser(userContextData);

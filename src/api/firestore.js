@@ -497,7 +497,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         rejectionReason = '', 
         preventStockDeduction = false, 
         reworkDetails = null 
-    } = options;
+     } = options;
 
     const allTools = await getTools();
     const toolsMap = new Map(allTools.map(t => [t.id, t]));
@@ -680,10 +680,24 @@ export const deleteUserWithRole = async (userId) => {
 };
 
 // --- ROLES API (NEW) ---
+const rolesCollection = collection(db, 'roles'); // Define rolesCollection
 export const getRoles = async () => {
-    const rolesCollection = collection(db, 'roles');
     const snapshot = await getDocs(rolesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+// Function to add a new role with permissions, landing page, and sidebar visibility
+export const addRole = (roleData) => {
+    return addDoc(rolesCollection, roleData);
+};
+// Function to update an existing role, including permissions, landing page, and sidebar visibility
+export const updateRole = (roleId, updatedData) => {
+    const roleDocRef = doc(db, 'roles', roleId);
+    return updateDoc(roleDocRef, updatedData);
+};
+// Function to delete a role
+export const deleteRole = (roleId) => {
+    const roleDocRef = doc(db, 'roles', roleId);
+    return deleteDoc(roleDocRef);
 };
 
 // --- MARKETING & SALES API ---

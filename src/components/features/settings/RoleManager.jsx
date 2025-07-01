@@ -1,4 +1,4 @@
-// src/components/features/settings/RoleManager.jsx (Corrected & Self-Healing)
+// src/components/features/settings/RoleManager.jsx (Corrected & Self-Healing & NEW FIELDS)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { collection, getDocs, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
@@ -7,6 +7,7 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Shield, Lock, Unlock, PlusCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { addRole, updateRole, deleteRole } from '../../../api/firestore'; // Import new API functions
 
 // Define all available permissions in the application
 const ALL_PERMISSIONS = [
@@ -31,11 +32,36 @@ const ALL_PERMISSIONS = [
     { id: 'settings', label: 'Settings' },
 ];
 
+// Define all possible landing pages
+const ALL_LANDING_PAGES = [
+    { id: '/', name: 'Dashboard' },
+    { id: '/tracking', name: 'Live Tracking' },
+    { id: '/scan', name: 'Scanner' },
+    { id: '/qc', name: 'Quality Control' },
+    { id: '/orders', name: 'Sales Orders' },
+    { id: '/purchasing', name: 'Purchasing Hub' },
+    { id: '/stock-take', name: 'Stock Take' },
+    { id: '/creator', name: 'Job Creator' },
+    { id: '/issues', name: 'Issues & Halts' },
+    { id: '/performance', name: 'Performance BI' },
+    { id: '/profitability', name: 'Profitability BI' },
+    { id: '/payroll', name: 'Payroll' },
+    { id: '/valuation', name: 'Valuation BI' },
+    { id: '/calendar', name: 'Calendar' },
+    { id: '/settings', name: 'Settings' },
+    { id: '/marketing', name: 'Marketing Dashboard' },
+    { id: '/quotes', name: 'Sales Quotes' },
+    { id: '/adjustment', name: 'Job Card Adjustment' },
+    { id: '/assets', name: 'Asset Intelligence' },
+];
+
 const RoleManager = () => {
     const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedRole, setSelectedRole] = useState(null);
     const [newRoleName, setNewRoleName] = useState('');
+    const [newRoleLandingPage, setNewRoleLandingPage] = useState('/'); // New state for landing page
+    const [newRoleHideSidebar, setNewRoleHideSidebar] = useState(false); // New state for hide sidebar
 
     const fetchRoles = async () => {
         setLoading(true);
@@ -58,11 +84,13 @@ const RoleManager = () => {
                 const managerRoleRef = doc(db, 'roles', 'Manager');
                 await setDoc(managerRoleRef, {
                     name: 'Manager',
-                    permissions: fullPermissions
+                    permissions: fullPermissions,
+                    landingPage: '/', // Default for Manager
+                    hideSidebar: false // Default for Manager
                 });
                 console.log("Default 'Manager' role created successfully.");
                 // Add the new role to our local state to avoid a re-fetch
-                fetchedRoles.push({ id: 'Manager', name: 'Manager', permissions: fullPermissions });
+                fetchedRoles.push({ id: 'Manager', name: 'Manager', permissions: fullPermissions, landingPage: '/', hideSidebar: false });
                 toast.success("Default 'Manager' role created.");
             } catch (error) {
                 console.error("Error creating default Manager role:", error);
@@ -80,7 +108,12 @@ const RoleManager = () => {
     }, []);
 
     const handleSelectRole = (role) => {
-        setSelectedRole({ ...role, permissions: role.permissions || {} });
+        setSelectedRole({ 
+            ...role, 
+            permissions: role.permissions || {},
+            landingPage: role.landingPage || '/', // Ensure default if not set
+            hideSidebar: role.hideSidebar || false // Ensure default if not set
+        });
     };
 
     const handlePermissionChange = (permissionId, value) => {
@@ -95,9 +128,19 @@ const RoleManager = () => {
 
     const handleSaveRole = async () => {
         if (!selectedRole) return;
-        const roleRef = doc(db, 'roles', selectedRole.id);
+        
+        // Ensure the landing page is a valid path
+        const finalLandingPage = ALL_LANDING_PAGES.some(p => p.id === selectedRole.landingPage) ? selectedRole.landingPage : '/';
+
+        const roleDataToSave = { 
+            name: selectedRole.name, 
+            permissions: selectedRole.permissions,
+            landingPage: finalLandingPage, // Save landing page
+            hideSidebar: selectedRole.hideSidebar // Save hide sidebar preference
+        };
+
         try {
-            await setDoc(roleRef, { name: selectedRole.name, permissions: selectedRole.permissions }, { merge: true });
+            await updateRole(selectedRole.id, roleDataToSave); // Use updateRole
             toast.success(`Role "${selectedRole.name}" updated successfully!`);
             fetchRoles();
         } catch (error) {
@@ -108,13 +151,21 @@ const RoleManager = () => {
 
     const handleAddNewRole = async () => {
         if (!newRoleName.trim()) return toast.error("Role name cannot be empty.");
+        
+        // Ensure the landing page is a valid path
+        const finalLandingPage = ALL_LANDING_PAGES.some(p => p.id === newRoleLandingPage) ? newRoleLandingPage : '/';
+
         try {
-            await addDoc(collection(db, 'roles'), {
+            await addRole({ // Use addRole
                 name: newRoleName.trim(),
-                permissions: {} // Start with no permissions
+                permissions: {}, // Start with no permissions
+                landingPage: finalLandingPage, // Save landing page
+                hideSidebar: newRoleHideSidebar // Save hide sidebar preference
             });
             toast.success(`Role "${newRoleName.trim()}" created.`);
             setNewRoleName('');
+            setNewRoleLandingPage('/');
+            setNewRoleHideSidebar(false);
             fetchRoles();
         } catch (error) {
             toast.error("Failed to create role.");
@@ -130,7 +181,7 @@ const RoleManager = () => {
             <span>
                 Delete role "{roleName}"? This cannot be undone.
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteDoc(doc(db, 'roles', roleId))
+                    deleteRole(roleId) // Use deleteRole
                         .then(() => {
                             toast.success("Role deleted.");
                             fetchRoles();
@@ -177,10 +228,35 @@ const RoleManager = () => {
                     </div>
                     <div className="space-y-3 border-t border-gray-700 pt-6">
                         <h4 className="font-bold text-lg text-white">Add New Role</h4>
-                        <div className="flex gap-2">
-                            <Input placeholder="e.g., Floor Staff" value={newRoleName} onChange={e => setNewRoleName(e.target.value)} />
-                            <Button onClick={handleAddNewRole}><PlusCircle size={16} /></Button>
+                        <Input placeholder="e.g., Floor Staff" value={newRoleName} onChange={e => setNewRoleName(e.target.value)} />
+                        {/* New Dropdown for Landing Page */}
+                        <div className="w-full">
+                            <label htmlFor="newRoleLandingPage" className="block text-sm font-medium text-gray-400 mb-1">
+                                Default Landing Page
+                            </label>
+                            <select
+                                id="newRoleLandingPage"
+                                name="newRoleLandingPage"
+                                value={newRoleLandingPage}
+                                onChange={e => setNewRoleLandingPage(e.target.value)}
+                                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                {ALL_LANDING_PAGES.map(page => (
+                                    <option key={page.id} value={page.id}>{page.name}</option>
+                                ))}
+                            </select>
                         </div>
+                        {/* New Checkbox for Hide Sidebar */}
+                        <label className="flex items-center space-x-2 text-sm text-gray-300 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={newRoleHideSidebar}
+                                onChange={e => setNewRoleHideSidebar(e.target.checked)}
+                                className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>Hide Sidebar for this Role</span>
+                        </label>
+                        <Button onClick={handleAddNewRole}><PlusCircle size={16} /></Button>
                     </div>
                 </div>
 
@@ -193,6 +269,34 @@ const RoleManager = () => {
                     ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
                             <h4 className="text-xl font-bold text-blue-400 mb-4">Editing Permissions for: {selectedRole.name}</h4>
+                            {/* Dropdown for Landing Page */}
+                            <div className="w-full mb-4">
+                                <label htmlFor="selectedRoleLandingPage" className="block text-sm font-medium text-gray-400 mb-1">
+                                    Default Landing Page
+                                </label>
+                                <select
+                                    id="selectedRoleLandingPage"
+                                    name="selectedRoleLandingPage"
+                                    value={selectedRole.landingPage}
+                                    onChange={e => setSelectedRole(prev => ({ ...prev, landingPage: e.target.value }))}
+                                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    {ALL_LANDING_PAGES.map(page => (
+                                        <option key={page.id} value={page.id}>{page.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            {/* Checkbox for Hide Sidebar */}
+                            <label className="flex items-center space-x-2 text-sm text-gray-300 cursor-pointer mb-6">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedRole.hideSidebar}
+                                    onChange={e => setSelectedRole(prev => ({ ...prev, hideSidebar: e.target.checked }))}
+                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>Hide Sidebar for this Role</span>
+                            </label>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-3">
                                 {ALL_PERMISSIONS.map(permission => (
                                     <div key={permission.id} className="flex items-center justify-between bg-gray-800 p-3 rounded-lg">
