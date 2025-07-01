@@ -1,11 +1,11 @@
-// src/components/features/scanner/JobCardScanner.jsx (New File)
+// src/components/features/scanner/JobCardScanner.jsx (Halt Job Button Restored)
 
 import React, { useState, useEffect, useRef } from 'react';
 import { getJobByJobId, updateJobStatus, getDepartments, getEmployees, updateDocument } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { ShieldAlert, QrCode, X, User, CheckCircle, PauseCircle, PlayCircle, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, QrCode, X, User, CheckCircle, PauseCircle, PlayCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import QrScannerModal from './QrScannerModal';
 
@@ -22,7 +22,6 @@ const JobCardScanner = () => {
     const wakeLockRef = useRef(null);
     const timeoutRef = useRef(null);
 
-    // Fetch initial data for assignment dropdowns
     useEffect(() => {
         const fetchInitialData = async () => {
             const [depts, emps] = await Promise.all([getDepartments(), getEmployees()]);
@@ -32,18 +31,14 @@ const JobCardScanner = () => {
         fetchInitialData();
     }, []);
 
-    // Wake Lock management
     const acquireWakeLock = async () => {
         if ('wakeLock' in navigator) {
             try {
                 wakeLockRef.current = await navigator.wakeLock.request('screen');
-                console.log('Screen Wake Lock is active.');
-                // Set a timeout to release the lock after 5 minutes
                 timeoutRef.current = setTimeout(() => {
                     if (wakeLockRef.current) {
                         wakeLockRef.current.release();
                         wakeLockRef.current = null;
-                        console.log('Wake Lock released due to timeout.');
                     }
                 }, 300000); // 5 minutes
             } catch (err) {
@@ -57,7 +52,6 @@ const JobCardScanner = () => {
             wakeLockRef.current.release();
             wakeLockRef.current = null;
             clearTimeout(timeoutRef.current);
-            console.log('Screen Wake Lock released.');
         }
     };
 
@@ -103,7 +97,6 @@ const JobCardScanner = () => {
                 employeeName: employee.name
             });
             toast.success(`Job assigned to ${employee.name}`);
-            // Refresh job data in modal
             const updatedJob = await getJobByJobId(jobData.jobId);
             setJobData(updatedJob);
         } catch (error) {
@@ -126,6 +119,43 @@ const JobCardScanner = () => {
 
         await promise;
         handleCloseModal();
+    };
+    
+    // --- RESTORED: Halt Job Functionality ---
+    const handleFlagIssue = () => {
+        if (!jobData) return;
+        toast((t) => (
+            <div className="flex flex-col gap-2 p-2">
+                <span className="font-bold text-white">Halt Job: {jobData.partName}</span>
+                <p className="text-sm text-gray-300">Please provide a reason for halting this job:</p>
+                <Input
+                  id="halt-reason-input"
+                  placeholder="e.g., material defect, tool problem..."
+                  autoFocus
+                />
+                <div className="flex gap-2 mt-2">
+                    <Button variant="danger" size="sm" onClick={() => {
+                        const reason = document.getElementById('halt-reason-input').value;
+                        if (reason && reason.trim()) {
+                            updateJobStatus(jobData.id, 'Halted - Issue', { haltReason: reason.trim() })
+                                .then(() => {
+                                    toast.success(`Job halted. Management notified.`);
+                                    handleCloseModal();
+                                })
+                                .catch(err => toast.error("Failed to halt job."));
+                            toast.dismiss(t.id);
+                        } else {
+                            toast.error("A reason is required to halt a job.");
+                        }
+                    }}>
+                        Confirm Halt
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={() => toast.dismiss(t.id)}>
+                        Cancel
+                    </Button>
+                </div>
+            </div>
+        ), { duration: 15000 }); // Give user more time to type
     };
 
     const filteredEmployees = employees.filter(e => e.departmentId === selectedDept);
@@ -174,10 +204,12 @@ const JobCardScanner = () => {
                                 <Button onClick={handleAssignment} className="w-full" disabled={!selectedEmp}>Assign / Re-assign</Button>
                             </div>
 
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle/><span className="mt-1 text-xs">Start</span></Button>
                                 <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle/><span className="mt-1 text-xs">Pause</span></Button>
                                 <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle/><span className="mt-1 text-xs">Complete</span></Button>
+                                {/* --- RESTORED: Halt Job Button --- */}
+                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert/><span className="mt-1 text-xs">Halt Job</span></Button>
                             </div>
                         </div>
                     </div>
