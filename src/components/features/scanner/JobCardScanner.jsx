@@ -1,4 +1,4 @@
-// src/components/features/scanner/JobCardScanner.jsx (Halt Job Button Restored)
+// src/components/features/scanner/JobCardScanner.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
 import { getJobByJobId, updateJobStatus, getDepartments, getEmployees, updateDocument } from '../../../api/firestore';
@@ -13,8 +13,8 @@ const JobCardScanner = () => {
     const [jobIdInput, setJobIdInput] = useState('');
     const [jobData, setJobData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    // Set isScannerOpen to true initially to automatically open the scanner
-    const [isScannerOpen, setIsScannerOpen] = useState(true); // Controls the QR scanner modal visibility
+    // Initialize isScannerOpen to false. It will only open when the user clicks the "Scan Job Card" button.
+    const [isScannerOpen, setIsScannerOpen] = useState(false); 
     const [loading, setLoading] = useState(false);
     const [departments, setDepartments] = useState([]);
     const [employees, setEmployees] = useState([]);
@@ -173,20 +173,22 @@ const JobCardScanner = () => {
 
     return (
         <>
+            {/* This div contains the main content of the scanner page, including the "Scan Job Card" button */}
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">Job Card Scanner</h3>
                 <p className="text-gray-400 mb-6">Scan a job card's QR code to begin.</p>
-                {/* The button to manually open the scanner is still here, but it won't be needed if it opens automatically */}
+                {/* Button to manually open the scanner */}
                 <Button 
                     variant="primary" 
                     className="w-full max-w-xs mx-auto py-4 text-lg"
-                    onClick={() => setIsScannerOpen(true)}
+                    onClick={() => setIsScannerOpen(true)} // This button explicitly opens the scanner
                 >
                     <QrCode size={24} className="mr-2"/>
                     Scan Job Card
                 </Button>
             </div>
 
+            {/* This modal displays job details after a scan */}
             {isModalOpen && jobData && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-lg">
@@ -263,6 +265,7 @@ const JobCardScanner = () => {
                 </div>
             )}
 
+            {/* This modal is the actual QR scanner camera feed */}
             {isScannerOpen && (
                 <QrScannerModal 
                     onClose={() => setIsScannerOpen(false)} // Allow manual close of scanner

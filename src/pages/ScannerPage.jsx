@@ -23,6 +23,7 @@ const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
 };
 
 const ScannerPage = () => {
+    // Ensure 'job_scanner' is the default active tab
     const [activeTab, setActiveTab] = useState('job_scanner');
 
     return (
@@ -47,7 +48,9 @@ const ScannerPage = () => {
             </div>
 
             <div>
+                {/* Render JobCardScanner directly if it's the active tab */}
                 {activeTab === 'job_scanner' && <JobCardScanner />}
+                {/* Render StockTakeApp if it's the active tab */}
                 {activeTab === 'stock_scanner' && <StockTakeApp />}
             </div>
         </div>
