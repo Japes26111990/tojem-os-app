@@ -20,20 +20,46 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
-// --- SYSTEM STATUS API (NEW) ---
-/**
- * Listens for real-time updates to the system status document.
- * This is used for features like the real-time bottleneck display.
- * @param {function} callback - The function to call with the status data.
- * @returns {import("firebase/firestore").Unsubscribe} A function to unsubscribe from updates.
- */
+// --- NEW: Find an inventory item by its unique item code ---
+export const findInventoryItemByItemCode = async (itemCode) => {
+    if (!itemCode) throw new Error("Item code is required.");
+
+    const collectionsToSearch = ['components', 'rawMaterials', 'workshopSupplies'];
+    
+    for (const collectionName of collectionsToSearch) {
+        const q = query(collection(db, collectionName), where("itemCode", "==", itemCode));
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const itemDoc = querySnapshot.docs[0];
+            // Return the category along with the item data
+            return { id: itemDoc.id, category: collectionName, ...itemDoc.data() };
+        }
+    }
+
+    throw new Error(`No inventory item found with code: ${itemCode}`);
+};
+
+// --- NEW: Update an item's stock level and tag it with the session ID ---
+export const updateStockCount = async (itemId, category, newStock, sessionId) => {
+    if (!itemId || !category || isNaN(newStock) || !sessionId) {
+        throw new Error("Item ID, category, a valid stock count, and session ID are required.");
+    }
+    const itemRef = doc(db, category, itemId);
+    return updateDoc(itemRef, {
+        currentStock: Number(newStock),
+        lastCountedAt: serverTimestamp(),
+        lastCountedInSessionId: sessionId
+    });
+};
+
+
+// --- SYSTEM STATUS API ---
 export const listenToSystemStatus = (callback) => {
     const statusDocRef = doc(db, 'systemStatus', 'latest');
     return onSnapshot(statusDocRef, (doc) => {
         if (doc.exists()) {
             callback(doc.data());
         } else {
-            // Provide a default object if the document doesn't exist yet
             callback({ bottleneckToolName: 'N/A', bottleneckUtilization: 0 });
         }
     });
@@ -302,7 +328,6 @@ export const getPurchaseQueue = async () => {
     const snapshot = await getDocs(purchaseQueueCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-// NEW: Real-time listener for the purchase queue
 export const listenToPurchaseQueue = (callback) => {
     const q = query(purchaseQueueCollection, orderBy('queuedAt', 'desc'));
     return onSnapshot(q, (snapshot) => {
@@ -658,7 +683,6 @@ export const deleteUserWithRole = async (userId) => {
 export const getRoles = async () => {
     const rolesCollection = collection(db, 'roles');
     const snapshot = await getDocs(rolesCollection);
-    // Use the document ID as the role's ID in the application
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
@@ -826,17 +850,11 @@ export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newSta
 };
 
 // --- STOCK TAKE API (NEW) ---
-/**
- * Reconciles stock levels after a physical count.
- * @param {Array<Object>} itemsToReconcile - An array of objects with item details.
- * Each object should have: id, category, and newCount.
- */
 export const reconcileStockLevels = async (itemsToReconcile) => {
     const batch = writeBatch(db);
 
     for (const item of itemsToReconcile) {
         let collectionName;
-        // Determine the correct collection based on the item's category
         switch (item.category) {
             case 'Component':
                 collectionName = 'components';
@@ -849,7 +867,7 @@ export const reconcileStockLevels = async (itemsToReconcile) => {
                 break;
             default:
                 console.warn(`Unknown category "${item.category}" for item ${item.name}. Skipping.`);
-                continue; // Skip this item if the category is unknown
+                continue;
         }
 
         const itemRef = doc(db, collectionName, item.id);
