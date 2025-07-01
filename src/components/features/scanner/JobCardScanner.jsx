@@ -13,7 +13,8 @@ const JobCardScanner = () => {
     const [jobIdInput, setJobIdInput] = useState('');
     const [jobData, setJobData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isScannerOpen, setIsScannerOpen] = useState(false); // Controls the QR scanner modal visibility
+    // Set isScannerOpen to true initially to automatically open the scanner
+    const [isScannerOpen, setIsScannerOpen] = useState(true); // Controls the QR scanner modal visibility
     const [loading, setLoading] = useState(false);
     const [departments, setDepartments] = useState([]);
     const [employees, setEmployees] = useState([]);
@@ -175,6 +176,7 @@ const JobCardScanner = () => {
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">Job Card Scanner</h3>
                 <p className="text-gray-400 mb-6">Scan a job card's QR code to begin.</p>
+                {/* The button to manually open the scanner is still here, but it won't be needed if it opens automatically */}
                 <Button 
                     variant="primary" 
                     className="w-full max-w-xs mx-auto py-4 text-lg"
