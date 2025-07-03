@@ -36,6 +36,7 @@ export const StockCountList = ({ items, onCountChange }) => {
                     <thead className="bg-gray-900/50">
                         <tr>
                             <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
+                            <th className="p-3 text-sm font-semibold text-gray-400">Category</th> {/* NEW: Added Category Column */}
                             <th className="p-3 text-sm font-semibold text-gray-400">Method</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center">System Count</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center w-64">Physical Count Input</th>
@@ -47,6 +48,7 @@ export const StockCountList = ({ items, onCountChange }) => {
                         {items.map(item => (
                             <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/50">
                                 <td className="p-2 text-white font-medium">{item.name}</td>
+                                <td className="p-2 text-gray-400">{item.category}</td> {/* NEW: Display Category */}
                                 <td className="p-2 text-gray-400 font-mono">
                                     <div className="flex items-center gap-2" title={`Unit Weight: ${item.unitWeight}g, Tare: ${item.tareWeight}g`}>
                                         {item.stockTakeMethod === 'weight' ? <Scale size={16}/> : <Hash size={16}/>}

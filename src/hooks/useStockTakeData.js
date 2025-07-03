@@ -121,7 +121,7 @@ export const useStockTakeData = () => {
             .map(item => ({
                 id: item.id,
                 name: item.name,
-                category: item.category,
+                category: item.category, // Ensure category is included for reconciliation
                 systemCount: item.systemCount,
                 newCount: item.physicalCount,
             }));

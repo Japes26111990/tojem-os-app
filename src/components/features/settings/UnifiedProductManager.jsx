@@ -1,4 +1,4 @@
-// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Toasts)
+// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Toasts & Stock Fields)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -9,7 +9,7 @@ import {
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
-import { Trash2, Save, Package, Settings2, Search, ChevronDown, ChevronRight, PackagePlus, FolderPlus } from 'lucide-react';
+import { Trash2, Save, Package, Settings2, Search, ChevronDown, ChevronRight, PackagePlus, FolderPlus, Hash, Scale } from 'lucide-react';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const UnifiedProductManager = () => {
@@ -20,10 +20,26 @@ const UnifiedProductManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState({});
     
-    const [newProduct, setNewProduct] = useState({ name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '' });
-    const [newCategoryName, setNewCategoryName] = useState('');
-    
+    // State for new product form (includes new stock fields)
+    const [newProduct, setNewProduct] = useState({ 
+        name: '', 
+        partNumber: '', 
+        sellingPrice: '', 
+        categoryId: '', 
+        weight: '',
+        currentStock: '', // New
+        reorderLevel: '', // New
+        standardStockLevel: '', // New
+        countMethod: 'Quantity', // New
+        unitWeight: '', // New
+        tareWeight: '', // New
+        unit: 'Each', // New default unit
+    });
+
+    // State for editing existing product (includes new stock fields)
     const [editProductData, setEditProductData] = useState(null);
+    
+    const [newCategoryName, setNewCategoryName] = useState('');
     
     const fetchData = async () => {
         setLoading(true);
@@ -45,7 +61,17 @@ const UnifiedProductManager = () => {
     useEffect(() => {
         if (selectedProductId) {
             const product = products.find(p => p.id === selectedProductId);
-            setEditProductData(product);
+            // Ensure all stock fields are present when editing, even if undefined in DB
+            setEditProductData({
+                ...product,
+                currentStock: product.currentStock || '',
+                reorderLevel: product.reorderLevel || '',
+                standardStockLevel: product.standardStockLevel || '',
+                countMethod: product.countMethod || 'Quantity',
+                unitWeight: product.unitWeight || '',
+                tareWeight: product.tareWeight || '',
+                unit: product.unit || 'Each',
+            });
         } else {
             setEditProductData(null);
         }
@@ -73,28 +99,58 @@ const UnifiedProductManager = () => {
     
     const handleAddNewProduct = async (e) => {
         e.preventDefault();
-        if (!newProduct.name || !newProduct.partNumber || !newProduct.categoryId) return toast.error('Category, Product Name, and Part Number are required.');
+        if (!newProduct.name || !newProduct.partNumber || !newProduct.categoryId) {
+            return toast.error('Category, Product Name, and Part Number are required.');
+        }
         try {
-            const productData = { ...newProduct, weight: Number(newProduct.weight) || 0 };
+            const productData = { 
+                ...newProduct, 
+                sellingPrice: Number(newProduct.sellingPrice) || 0,
+                weight: Number(newProduct.weight) || 0,
+                currentStock: Number(newProduct.currentStock) || 0,
+                reorderLevel: Number(newProduct.reorderLevel) || 0,
+                standardStockLevel: Number(newProduct.standardStockLevel) || 0,
+                unitWeight: Number(newProduct.unitWeight) || 0,
+                tareWeight: Number(newProduct.tareWeight) || 0,
+            };
             await addProduct(productData);
             toast.success("Product added successfully.");
-            setNewProduct({ name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '' });
+            setNewProduct({ 
+                name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '',
+                currentStock: '', reorderLevel: '', standardStockLevel: '',
+                countMethod: 'Quantity', unitWeight: '', tareWeight: '', unit: 'Each',
+            });
             fetchData();
-        } catch (error) { toast.error(error.message); }
+        } catch (error) { 
+            toast.error(error.message); 
+            console.error("Error adding product:", error);
+        }
     };
 
     const handleUpdateProduct = async () => {
         if (!editProductData.name || !editProductData.partNumber) return toast.error('Product Name and Part Number are required.');
-        await updateProduct(selectedProductId, {
-            name: editProductData.name, 
-            partNumber: editProductData.partNumber,
-            sellingPrice: Number(editProductData.sellingPrice) || 0,
-            photoUrl: editProductData.photoUrl || '',
-            categoryId: editProductData.categoryId || '',
-            weight: Number(editProductData.weight) || 0,
-        });
-        toast.success('Product updated successfully!');
-        fetchData();
+        try {
+            await updateProduct(selectedProductId, {
+                name: editProductData.name, 
+                partNumber: editProductData.partNumber,
+                sellingPrice: Number(editProductData.sellingPrice) || 0,
+                photoUrl: editProductData.photoUrl || '',
+                categoryId: editProductData.categoryId || '',
+                weight: Number(editProductData.weight) || 0,
+                currentStock: Number(editProductData.currentStock) || 0, // Update stock
+                reorderLevel: Number(editProductData.reorderLevel) || 0, // Update reorder level
+                standardStockLevel: Number(editProductData.standardStockLevel) || 0, // Update standard stock
+                countMethod: editProductData.countMethod || 'Quantity', // Update count method
+                unitWeight: Number(editProductData.unitWeight) || 0, // Update unit weight
+                tareWeight: Number(editProductData.tareWeight) || 0, // Update tare weight
+                unit: editProductData.unit || 'Each', // Update unit
+            });
+            toast.success('Product updated successfully!');
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to update product.");
+            console.error("Error updating product:", error);
+        }
     };
 
     const handleDeleteProduct = (productId) => {
@@ -177,11 +233,35 @@ const UnifiedProductManager = () => {
                     </div>
                      <form onSubmit={handleAddNewProduct} className="space-y-4 border-t border-gray-700 pt-6">
                          <h4 className="font-bold text-lg text-white">Add New Product</h4>
-                         <Dropdown label="Category" value={newProduct.categoryId} onChange={e => setNewProduct({...newProduct, categoryId: e.target.value})} options={categories} required/>
-                         <Input label="Product Name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
-                         <Input label="Part Number" value={newProduct.partNumber} onChange={e => setNewProduct({...newProduct, partNumber: e.target.value})} required/>
-                         <Input label="Selling Price (R)" type="number" value={newProduct.sellingPrice} onChange={e => setNewProduct({...newProduct, sellingPrice: e.target.value})} />
-                         <Input label="Weight (kg)" type="number" step="0.01" value={newProduct.weight} onChange={e => setNewProduct({...newProduct, weight: e.target.value})} />
+                         <Dropdown label="Category" value={newProduct.categoryId} onChange={e => setNewProduct({...newProduct, categoryId: e.target.value})} options={categories} placeholder="Select category..." required/>
+                         <Input label="Product Name" name="name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
+                         <Input label="Part Number" name="partNumber" value={newProduct.partNumber} onChange={e => setNewProduct({...newProduct, partNumber: e.target.value})} required/>
+                         <Input label="Selling Price (R)" name="sellingPrice" type="number" value={newProduct.sellingPrice} onChange={e => setNewProduct({...newProduct, sellingPrice: e.target.value})} />
+                         <Input label="Weight (kg)" name="weight" type="number" step="0.01" value={newProduct.weight} onChange={e => setNewProduct({...newProduct, weight: e.target.value})} />
+                         <Input label="Unit of Measure" name="unit" value={newProduct.unit} onChange={e => setNewProduct({...newProduct, unit: e.target.value})} placeholder="e.g., Each, Set" />
+                         
+                         {/* New Stock Fields for Products */}
+                         <div className="grid grid-cols-3 gap-2">
+                            <Input label="In Stock" name="currentStock" type="number" value={newProduct.currentStock} onChange={e => setNewProduct({...newProduct, currentStock: e.target.value})} placeholder="0" />
+                            <Input label="Re-order At" name="reorderLevel" type="number" value={newProduct.reorderLevel} onChange={e => setNewProduct({...newProduct, reorderLevel: e.target.value})} placeholder="0" />
+                            <Input label="Standard Stock" name="standardStockLevel" type="number" value={newProduct.standardStockLevel} onChange={e => setNewProduct({...newProduct, standardStockLevel: e.target.value})} placeholder="0" />
+                        </div>
+                        <Dropdown 
+                            name="countMethod" 
+                            label="Count Method" 
+                            value={newProduct.countMethod} 
+                            onChange={e => setNewProduct({...newProduct, countMethod: e.target.value})}
+                        >
+                            <option value="Quantity">Quantity</option>
+                            <option value="Weight">Weight</option>
+                        </Dropdown>
+                        {newProduct.countMethod === 'Weight' && (
+                            <>
+                                <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={newProduct.unitWeight} onChange={e => setNewProduct({...newProduct, unitWeight: e.target.value})} placeholder="0" />
+                                <Input name="tareWeight" label="Container Tare Weight (g)" type="number" value={newProduct.tareWeight} onChange={e => setNewProduct({...newProduct, tareWeight: e.target.value})} placeholder="0" />
+                            </>
+                        )}
+
                          <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
                     </form>
                 </div>
@@ -199,12 +279,37 @@ const UnifiedProductManager = () => {
                             </div>
                             <div className="space-y-4">
                                 <Dropdown label="Category" value={editProductData?.categoryId || ''} onChange={e => setEditProductData({...editProductData, categoryId: e.target.value})} options={categories} placeholder="Choose a category..."/>
-                                <Input label="Product Name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
+                                <Input label="Product Name" name="name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
                                 <Input label="Part Number" value={editProductData?.partNumber || ''} disabled />
-                                <Input label="Selling Price (R)" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
-                                <Input label="Weight (kg)" type="number" step="0.01" value={editProductData?.weight || ''} onChange={e => setEditProductData({...editProductData, weight: e.target.value})} />
-                                <Input label="Photo URL" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste image link here..."/>
+                                <Input label="Selling Price (R)" name="sellingPrice" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
+                                <Input label="Weight (kg)" name="weight" type="number" step="0.01" value={editProductData?.weight || ''} onChange={e => setEditProductData({...editProductData, weight: e.target.value})} />
+                                <Input label="Unit of Measure" name="unit" value={editProductData?.unit || ''} onChange={e => setEditProductData({...editProductData, unit: e.target.value})} placeholder="e.g., Each, Set" />
+                                <Input label="Photo URL" name="photoUrl" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste image link here..."/>
                                 {editProductData?.photoUrl && <img src={editProductData.photoUrl} alt="Product Preview" className="w-48 h-48 rounded-lg object-cover border-2 border-gray-600" />}
+                                
+                                {/* Existing Product Stock Fields */}
+                                <h5 className="font-semibold text-white mt-6 mb-2">Stock & Inventory Settings</h5>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <Input label="In Stock" name="currentStock" type="number" value={editProductData?.currentStock || ''} onChange={e => setEditProductData({...editProductData, currentStock: e.target.value})} placeholder="0" />
+                                    <Input label="Re-order At" name="reorderLevel" type="number" value={editProductData?.reorderLevel || ''} onChange={e => setEditProductData({...editProductData, reorderLevel: e.target.value})} placeholder="0" />
+                                    <Input label="Standard Stock" name="standardStockLevel" type="number" value={editProductData?.standardStockLevel || ''} onChange={e => setEditProductData({...editProductData, standardStockLevel: e.target.value})} placeholder="0" />
+                                </div>
+                                <Dropdown 
+                                    name="countMethod" 
+                                    label="Count Method" 
+                                    value={editProductData?.countMethod || 'Quantity'} 
+                                    onChange={e => setEditProductData({...editProductData, countMethod: e.target.value})}
+                                >
+                                    <option value="Quantity">Quantity</option>
+                                    <option value="Weight">Weight</option>
+                                </Dropdown>
+                                {editProductData?.countMethod === 'Weight' && (
+                                    <>
+                                        <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={editProductData?.unitWeight || ''} onChange={e => setEditProductData({...editProductData, unitWeight: e.target.value})} placeholder="0" />
+                                        <Input name="tareWeight" label="Container Tare Weight (g)" type="number" value={editProductData?.tareWeight || ''} onChange={e => setEditProductData({...editProductData, tareWeight: e.target.value})} placeholder="0" />
+                                    </>
+                                )}
+
                                 <Button onClick={handleUpdateProduct}><Save size={16} className="mr-2"/> Save Details</Button>
                             </div>
                         </div>

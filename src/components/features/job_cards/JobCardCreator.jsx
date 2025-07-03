@@ -1,4 +1,4 @@
-// src/components/features/job_cards/JobCardCreator.jsx (Refactored & Path Corrected)
+// src/components/features/job_cards/JobCardCreator.jsx (Upgraded with Print Confirmation)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -6,18 +6,17 @@ import {
     getDepartments, getEmployees, addJobCard, getJobStepDetails, getTools,
     getToolAccessories, getAllInventoryItems, getDepartmentSkills,
     setJobStepDetail,
-    getSkills
+    getSkills // --- IMPORT ADDED ---
 } from '../../../api/firestore';
 import { processConsumables } from '../../../utils/jobUtils';
 import Dropdown from '../../ui/Dropdown';
 import Button from '../../ui/Button';
 import Textarea from '../../ui/Textarea';
 import Input from '../../ui/Input';
-// --- CORRECTED IMPORT PATH ---
 import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.jsx';
+import PrintConfirmationModal from './PrintConfirmationModal';
+import toast from 'react-hot-toast';
 
-// JobCardPreview component is used for displaying the job card before printing.
-// It remains unchanged as it is a display-only component.
 const JobCardPreview = ({ details }) => {
     if (!details) return null;
     return (
@@ -82,9 +81,6 @@ const JobCardPreview = ({ details }) => {
     )
 };
 
-
-// --- Main Unified Component ---
-
 const JobCardCreator = ({ campaignId }) => {
     const [allData, setAllData] = useState({ products: [], categories: [], departments: [], employees: [], allRecipes: [], tools: [], toolAccessories: [], allConsumables: [], allSkills: [] });
     const [loading, setLoading] = useState(true);
@@ -94,6 +90,7 @@ const JobCardCreator = ({ campaignId }) => {
     const [showDefineRecipeForm, setShowDefineRecipeForm] = useState(false);
     const [tempRecipeDetails, setTempRecipeDetails] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false);
+    const [jobToConfirm, setJobToConfirm] = useState(null);
 
     useEffect(() => {
         const fetchAllData = async () => {
@@ -110,7 +107,7 @@ const JobCardCreator = ({ campaignId }) => {
                 setAllData({ products: prods, categories: cats, departments: depts, employees: emps, allRecipes: recipes, tools, toolAccessories, allConsumables: consumables, allSkills: skills });
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
-                alert("Error fetching page data. Please check the console and refresh.");
+                toast.error("Error fetching page data.");
             } finally {
                 setLoading(false);
             }
@@ -167,7 +164,6 @@ const JobCardCreator = ({ campaignId }) => {
                 const processed = processConsumables(finalRecipeDetails.consumables, allData.allConsumables, currentTemp);
                 const toolsForDisplay = (finalRecipeDetails.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                 const accessoriesForDisplay = (finalRecipeDetails.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
-
 
                 setJobDetails({
                     jobId: `JOB-${Date.now()}`,
@@ -226,6 +222,7 @@ const JobCardCreator = ({ campaignId }) => {
         setJobDetails(null);
         setShowDefineRecipeForm(false);
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
+        setJobToConfirm(null);
     };
 
     const handlePrint = () => {
@@ -233,54 +230,22 @@ const JobCardCreator = ({ campaignId }) => {
         if (printContents) {
             const printWindow = window.open('', '', 'height=800,width=1000');
             if (printWindow) {
-                printWindow.document.write(`<html><head><title>Print Job Card ${jobDetails.jobId}</title><style>body { margin: 0; padding: 20px; font-family: Arial, sans-serif; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } button { display: none; } }</style></head><body>${printContents}<div style="margin-top: 20px; text-align: center;"><button onclick="window.print()">Print This Job Card</button></div></body></html>`);
+                printWindow.document.write(`<html><head><title>Print Job Card ${jobDetails.jobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
+                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
             }
         }
     };
     
-    const handleGenerateNewJobCard = async () => {
-        if (!jobDetails) return alert("Please select a product and department.");
-
-        const confirmGenerate = window.confirm(`Create a new Job Card for "${jobDetails.productName}"?`);
-        if (!confirmGenerate) return;
-
-        try {
-            const finalJobData = {
-              jobId: jobDetails.jobId,
-              partName: jobDetails.productName,
-              partId: jobDetails.productId,
-              departmentId: jobDetails.departmentId,
-              departmentName: jobDetails.departmentName,
-              employeeId: jobDetails.employeeId,
-              employeeName: jobDetails.employeeName,
-              status: 'Pending',
-              description: jobDetails.description,
-              estimatedTime: jobDetails.estimatedTime,
-              steps: (jobDetails.steps || []).map(s => (s && s.text) ? s.text : s),
-              tools: allData.tools.filter(t => (jobDetails.tools.map(tool => tool.id) || []).includes(t.id)),
-              accessories: allData.toolAccessories.filter(a => (jobDetails.accessories.map(acc => acc.id) || []).includes(a.id)),
-              processedConsumables: jobDetails.processedConsumables,
-              isCustomJob: false,
-              campaignId: jobDetails.campaignId,
-              requiredSkills: jobDetails.requiredSkills,
-              consumables: jobDetails.consumables,
-            };
-
-            await addJobCard(finalJobData);
-            alert(`New Job Card ${finalJobData.jobId} created successfully!`);
-            handlePrint();
-            handleResetFormAndPreview();
-        } catch (error) {
-            console.error("Error generating new job card:", error);
-            alert("Failed to generate new job card.");
-        }
+    const handleGenerateNewJobCard = () => {
+        if (!jobDetails) return toast.error("Please select a product and department.");
+        setJobToConfirm(jobDetails);
     };
     
     const saveNewRecipeAndCreateJob = async () => {
         if (!jobDetails || !selection.productId || !selection.departmentId) return;
         if (!tempRecipeDetails.description.trim() || !tempRecipeDetails.estimatedTime || !tempRecipeDetails.steps.trim()) {
-            return alert("Please fill in Description, Estimated Time, and Steps for the new recipe.");
+            return toast.error("Please fill in Description, Estimated Time, and Steps for the new recipe.");
         }
         
         setIsSavingNewRecipe(true);
@@ -295,18 +260,28 @@ const JobCardCreator = ({ campaignId }) => {
                 requiredSkills: jobDetails.requiredSkills || [],
             };
             await setJobStepDetail(selection.productId, selection.departmentId, recipeData);
-            alert("New recipe saved successfully! Now creating the job card.");
-
-            await handleGenerateNewJobCard();
-
-            const updatedRecipes = await getJobStepDetails();
-            setAllData(prev => ({ ...prev, allRecipes: updatedRecipes }));
+            toast.success("New recipe saved successfully!");
             
+            setJobToConfirm(jobDetails);
+
         } catch (error) {
-            console.error("Error saving new recipe or creating job:", error);
-            alert("Failed to save new recipe or create job. Please try again.");
+            console.error("Error saving new recipe:", error);
+            toast.error("Failed to save new recipe.");
         } finally {
             setIsSavingNewRecipe(false);
+        }
+    };
+
+    const handleConfirmPrint = async () => {
+        if (!jobToConfirm) return;
+        try {
+            await addJobCard(jobToConfirm);
+            toast.success(`Job Card ${jobToConfirm.jobId} created successfully!`);
+            handlePrint();
+            handleResetFormAndPreview();
+        } catch (error) {
+            console.error("Error generating job card:", error);
+            toast.error("Failed to generate job card.");
         }
     };
 
@@ -336,9 +311,9 @@ const JobCardCreator = ({ campaignId }) => {
                     Create New Job from Catalog
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Dropdown label="1. Product Category" name="categoryId" value={selection.categoryId} onChange={handleSelection} options={allData.categories} placeholder="Select Category" />
-                    <Dropdown label="2. Product" name="productId" value={selection.productId} onChange={handleSelection} options={filteredProducts} placeholder="Select Product" disabled={!selection.categoryId} />
-                    <Dropdown label="3. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department" />
+                    <Dropdown label="1. Product Category" name="categoryId" value={selection.categoryId} onChange={handleSelection} options={allData.categories} placeholder="Select Category..." />
+                    <Dropdown label="2. Product" name="productId" value={selection.productId} onChange={handleSelection} options={filteredProducts} placeholder="Select Product..." disabled={!selection.categoryId} />
+                    <Dropdown label="3. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Department..." />
                     <Dropdown label="4. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
                 </div>
                 
@@ -374,7 +349,6 @@ const JobCardCreator = ({ campaignId }) => {
                                 </div>
                             </div>
                             <div>
-                                {/* --- REPLACEMENT --- */}
                                 <ConsumableEditor
                                     allConsumables={allData.allConsumables}
                                     selectedConsumables={tempRecipeDetails.consumables}
@@ -393,6 +367,14 @@ const JobCardCreator = ({ campaignId }) => {
                 )}
             </div>
             {jobDetails && <JobCardPreview details={jobDetails} />}
+
+            {jobToConfirm && (
+                <PrintConfirmationModal 
+                    jobDetails={jobToConfirm}
+                    onClose={() => setJobToConfirm(null)}
+                    onConfirmPrint={handleConfirmPrint}
+                />
+            )}
         </>
     );
 };

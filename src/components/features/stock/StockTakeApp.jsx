@@ -1,4 +1,4 @@
-// src/components/features/stock/StockTakeApp.jsx (Path Corrected & Index Fix)
+// src/components/features/stock/StockTakeApp.jsx (Path Corrected & Index Fix & Filtered by Category)
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -112,13 +112,13 @@ const VerificationScanner = ({ itemToVerify, onVerified, onClose }) => {
 
 
 // --- Main StockTakeApp Component ---
-
-const StockTakeApp = () => {
+// Now accepts a categoryFilter prop
+const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if not provided
     const { user } = useAuth();
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
     const [inventory, setInventory] = useState([]);
-    const [activeTab, setActiveTab] = useState('remaining');
+    const [activeTab, setActiveTab] = useState('remaining'); // This tab is for remaining/completed within the current category filter
     const [searchTerm, setSearchTerm] = useState('');
     const [itemToCount, setItemToCount] = useState(null);
     const [itemToVerify, setItemToVerify] = useState(null);
@@ -127,7 +127,6 @@ const StockTakeApp = () => {
     useEffect(() => {
         const checkForActiveSession = async () => {
             const sessionsRef = collection(db, 'stockTakeSessions');
-            // --- QUERY FIX: Removed orderBy to avoid needing a composite index ---
             const q = query(sessionsRef, where('status', '==', 'in-progress'), limit(1));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
@@ -139,27 +138,42 @@ const StockTakeApp = () => {
         checkForActiveSession();
     }, []);
 
-    // Fetch inventory when a session is active
+    // Fetch inventory when a session is active or categoryFilter changes
     useEffect(() => {
         if (session) {
             const fetchInventory = async () => {
                 setLoading(true);
-                const items = await getAllInventoryItems();
-                setInventory(items);
+                const allItems = await getAllInventoryItems();
+                // Apply the category filter here before setting inventory
+                let filteredItems = allItems;
+                if (categoryFilter === 'products') {
+                    filteredItems = allItems.filter(item => item.category === 'Product');
+                } else if (categoryFilter === 'purchased') {
+                    filteredItems = allItems.filter(item => item.category !== 'Product');
+                }
+                setInventory(filteredItems);
                 setLoading(false);
             };
             fetchInventory();
         }
-    }, [session]);
+    }, [session, categoryFilter]); // Depend on categoryFilter
 
     const handleStartNewSession = async () => {
         setLoading(true);
         try {
             // Reset all items' session tracking field
-            const allItems = await getAllInventoryItems();
+            const allItems = await getAllInventoryItems(); // Get all items regardless of current filter for reset
             const batch = writeBatch(db);
             allItems.forEach(item => {
-                const itemRef = doc(db, item.category.toLowerCase().replace(' ', '') + 's', item.id);
+                // Determine correct collection name based on category
+                let collectionName;
+                if (item.category === 'Product') collectionName = 'products';
+                else if (item.category === 'Component') collectionName = 'components';
+                else if (item.category === 'Raw Material') collectionName = 'rawMaterials';
+                else if (item.category === 'Workshop Supply') collectionName = 'workshopSupplies';
+                else return; // Skip if category is unknown
+
+                const itemRef = doc(db, collectionName, item.id);
                 batch.update(itemRef, { lastCountedInSessionId: null });
             });
             await batch.commit();
@@ -181,17 +195,39 @@ const StockTakeApp = () => {
     };
 
     const handleItemSelect = (item, viaScan = false) => {
+        // If the item is scanned, open the counting modal directly
         if (viaScan) {
             setItemToCount(item);
+            // If the item has a stockTakeMethod of 'weight' and we are scanning,
+            // we should directly open the counting modal without verification.
+            // Otherwise, for quantity-based items, we still require verification.
+            // This logic might need adjustment based on exact workflow.
+            if (item.stockTakeMethod === 'weight') {
+                setItemToCount(item);
+                setItemToVerify(null); // No verification needed for weight scan
+            } else {
+                setItemToVerify(item); // For quantity, still verify
+                setItemToCount(null);
+            }
         } else {
+            // If selected manually from the list, always require verification
             setItemToVerify(item);
+            setItemToCount(null);
         }
     };
 
     const handleUpdateCount = async (newCount) => {
         if (!itemToCount) return;
         try {
-            await updateStockCount(itemToCount.id, itemToCount.category.toLowerCase().replace(' ', '') + 's', newCount, session.id);
+            // Determine the correct collection name for the item's category
+            let collectionName;
+            if (itemToCount.category === 'Product') collectionName = 'products';
+            else if (itemToCount.category === 'Component') collectionName = 'components';
+            else if (itemToCount.category === 'Raw Material') collectionName = 'rawMaterials';
+            else if (itemToCount.category === 'Workshop Supply') collectionName = 'workshopSupplies';
+            else throw new Error(`Unknown category for update: ${itemToCount.category}`);
+
+            await updateStockCount(itemToCount.id, itemToCount.category, newCount, session.id); // Pass item.category directly
             // Optimistically update UI
             setInventory(prev => prev.map(item => 
                 item.id === itemToCount.id ? { ...item, currentStock: newCount, lastCountedInSessionId: session.id } : item
@@ -200,8 +236,9 @@ const StockTakeApp = () => {
         } catch (error) {
             toast.error("Failed to update stock count.");
             console.error(error);
+        } finally {
+            setItemToCount(null);
         }
-        setItemToCount(null);
     };
 
     const handleFinishSession = async () => {

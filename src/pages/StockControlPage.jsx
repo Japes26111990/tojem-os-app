@@ -71,7 +71,7 @@ const StockControlPage = () => {
             </nav>
         </div>
         <div className="mt-6">
-            {loading ? <p className="text-center text-gray-400">Loading...</p> : (
+            {loading ? <p className="text-center text-gray-400 p-8">Loading...</p> : (
                 <>
                     {activeTab === 'dashboard' && <StockControlDashboard />}
                     {activeTab === 'queue' && <PurchaseQueue onOrderPlaced={fetchData} />}

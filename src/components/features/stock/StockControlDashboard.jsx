@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueue } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { Search } from 'lucide-react';
+import { Search, Package, Factory } from 'lucide-react'; // Import Package and Factory icons
 
 const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
     const stock = Number(currentStock);
@@ -27,11 +27,12 @@ const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel })
 const StockControlDashboard = () => {
   const [allItems, setAllItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [queuedItemIds, setQueuedItemIds] = useState(new Set());
+  const [queuedItemIds, setQueuedItemIds] = new Set(); // Use a Set for efficient lookup
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [showLowStock, setShowLowStock] = useState(false);
+  const [inventoryTypeFilter, setInventoryTypeFilter] = useState('all'); // 'all', 'products', 'purchased'
 
   const fetchData = async () => {
     setLoading(true);
@@ -48,8 +49,21 @@ const StockControlDashboard = () => {
 
   const displayedItems = useMemo(() => {
     let filtered = [...(allItems || [])];
+
+    // Apply inventory type filter
+    if (inventoryTypeFilter === 'products') {
+        filtered = filtered.filter(item => item.category === 'Product');
+    } else if (inventoryTypeFilter === 'purchased') {
+        filtered = filtered.filter(item => item.category !== 'Product');
+    }
+
     if (showLowStock) { filtered = filtered.filter(item => Number(item.currentStock) < Number(item.reorderLevel)); }
-    if (searchTerm) { filtered = filtered.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase())); }
+    if (searchTerm) { 
+        filtered = filtered.filter(item => 
+            item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.itemCode && item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()))
+        ); 
+    }
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'name-asc': return a.name.localeCompare(b.name);
@@ -59,7 +73,7 @@ const StockControlDashboard = () => {
       }
     });
     return filtered;
-  }, [allItems, searchTerm, sortBy, showLowStock, suppliers]);
+  }, [allItems, searchTerm, sortBy, showLowStock, suppliers, inventoryTypeFilter]);
 
   const handleAddToQueue = async (item) => {
     try {
@@ -68,7 +82,7 @@ const StockControlDashboard = () => {
         itemName: item.name,
         supplierId: item.supplierId,
         itemCode: item.itemCode || '',
-        category: item.category,
+        category: item.category, // Ensure category is passed
         currentStock: item.currentStock,
         reorderLevel: item.reorderLevel,
         standardStockLevel: item.standardStockLevel,
@@ -102,13 +116,22 @@ const StockControlDashboard = () => {
             <input type="checkbox" id="lowStockToggle" checked={showLowStock} onChange={e => setShowLowStock(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
             <label htmlFor="lowStockToggle" className="text-sm font-medium">Show only low stock</label>
           </div>
+          {/* New Filter for Inventory Type */}
+          <div className="flex items-center space-x-2 text-white">
+            <label htmlFor="inventoryTypeFilter" className="text-sm font-medium">Show:</label>
+            <select value={inventoryTypeFilter} onChange={e => setInventoryTypeFilter(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm">
+                <option value="all">All Inventory</option>
+                <option value="products">Manufactured Products</option>
+                <option value="purchased">Purchased Items</option>
+            </select>
+          </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-gray-600">
               <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Category</th>
+              <th className="p-3 text-sm font-semibold text-gray-400">Category</th> {/* Added Category Column */}
               <th className="p-3 text-sm font-semibold text-gray-400">Supplier</th>
               <th className="p-3 text-sm font-semibold text-gray-400 w-1/4">Stock Level</th>
               <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>
@@ -118,9 +141,11 @@ const StockControlDashboard = () => {
             {(displayedItems).map(item => {
               const isQueued = queuedItemIds.has(item.id);
               return (
-                // --- THIS IS THE CORRECTED LINE ---
                 <tr key={`${item.id}-${item.category}`} className="border-b border-gray-700 hover:bg-gray-700/50">
-                  <td className="p-3 text-gray-200 font-semibold">{item.name}</td>
+                  <td className="p-3 text-gray-200 font-semibold flex items-center gap-2">
+                    {item.category === 'Product' ? <Factory size={16} className="text-teal-400"/> : <Package size={16} className="text-blue-400"/>}
+                    {item.name}
+                  </td>
                   <td className="p-3 text-gray-400">{item.category}</td>
                   <td className="p-3 text-gray-400">{getSupplierName(item.supplierId)}</td>
                   <td className="p-3">

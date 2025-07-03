@@ -1,11 +1,11 @@
-// src/pages/UserManagementPage.jsx (Upgraded with Dynamic Roles & Toasts)
+// src/pages/UserManagementPage.jsx (Upgraded with Dynamic Roles & Toasts & Discount Field)
 
 import React, { useState, useEffect } from 'react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { getAllUsers, updateUserRole, createUserWithRole, deleteUserWithRole, getRoles } from '../api/firestore';
-import { PlusCircle, Edit, Trash2, User, Mail, Shield } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, User, Mail, Shield, Percent } from 'lucide-react'; // Import Percent icon
 import toast from 'react-hot-toast';
 
 const UserManagementPage = () => {
@@ -17,11 +17,13 @@ const UserManagementPage = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState('');
+  const [newUserDiscount, setNewUserDiscount] = useState(''); // NEW: State for new user discount
   const [addingUser, setAddingUser] = useState(false);
 
   const [editingUserId, setEditingUserId] = useState(null);
   const [editingUserRole, setEditingUserRole] = useState('');
   const [editingUserName, setEditingUserName] = useState('');
+  const [editingUserDiscount, setEditingUserDiscount] = useState(''); // NEW: State for editing user discount
 
   const fetchUsersAndRoles = async () => {
     setLoading(true);
@@ -54,11 +56,13 @@ const UserManagementPage = () => {
     setAddingUser(true);
     setError(null);
     try {
-      const result = await createUserWithRole(newUserEmail, newUserPassword, newUserRole);
+      // Pass the new user discount to createUserWithRole
+      const result = await createUserWithRole(newUserEmail, newUserPassword, newUserRole, newUserDiscount);
       toast.success(`User ${result.email} created successfully!`);
       setNewUserEmail('');
       setNewUserPassword('');
       setNewUserRole('');
+      setNewUserDiscount(''); // Clear discount field
       fetchUsersAndRoles();
     } catch (err) {
       console.error("Error adding user:", err.message);
@@ -72,12 +76,14 @@ const UserManagementPage = () => {
     setEditingUserId(user.id);
     setEditingUserRole(user.role);
     setEditingUserName(user.email);
+    setEditingUserDiscount(user.discountPercentage || ''); // Set editing discount
   };
 
   const handleUpdateRole = async (userId) => {
     setError(null);
     try {
-      await updateUserRole(userId, editingUserRole);
+      // Pass the editing user discount to updateUserRole
+      await updateUserRole(userId, editingUserRole, editingUserDiscount);
       toast.success(`User role updated for ${editingUserName}!`);
       setEditingUserId(null);
       fetchUsersAndRoles();
@@ -91,6 +97,7 @@ const UserManagementPage = () => {
     setEditingUserId(null);
     setEditingUserRole('');
     setEditingUserName('');
+    setEditingUserDiscount('');
   };
 
   const handleDeleteUser = (userToDelete) => {
@@ -154,7 +161,17 @@ const UserManagementPage = () => {
             placeholder="Select a role..."
             required
           />
-          <Button type="submit" disabled={addingUser} className="col-span-1">
+          {/* NEW: Discount Percentage Input */}
+          <Input
+            label="Discount (%)"
+            type="number"
+            value={newUserDiscount}
+            onChange={(e) => setNewUserDiscount(e.target.value)}
+            placeholder="0"
+            min="0"
+            max="100"
+          />
+          <Button type="submit" disabled={addingUser} className="col-span-full"> {/* Adjusted col-span */}
             {addingUser ? 'Adding User...' : 'Add User'}
           </Button>
         </form>
@@ -168,14 +185,15 @@ const UserManagementPage = () => {
               <tr className="border-b border-gray-600">
                 <th className="p-3 text-sm font-semibold text-gray-400">Email</th>
                 <th className="p-3 text-sm font-semibold text-gray-400">Role</th>
+                <th className="p-3 text-sm font-semibold text-gray-400">Discount</th> {/* NEW */}
                 <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="3" className="text-center p-8 text-gray-400">Loading users...</td></tr>
+                <tr><td colSpan={4} className="text-center p-8 text-gray-400">Loading users...</td></tr>
               ) : users.length === 0 ? (
-                <tr><td colSpan="3" className="text-center p-8 text-gray-400">No users found.</td></tr>
+                <tr><td colSpan={4} className="text-center p-8 text-gray-400">No users found.</td></tr>
               ) : (
                 users.map(user => (
                   <tr key={user.id} className="border-b border-gray-700">
@@ -199,6 +217,24 @@ const UserManagementPage = () => {
                         </span>
                       )}
                     </td>
+                    {/* NEW: Discount Cell */}
+                    <td className="p-3">
+                        {editingUserId === user.id ? (
+                            <Input
+                                type="number"
+                                value={editingUserDiscount}
+                                onChange={(e) => setEditingUserDiscount(e.target.value)}
+                                placeholder="0"
+                                min="0"
+                                max="100"
+                            />
+                        ) : (
+                            <span className="flex items-center gap-2 text-gray-300">
+                                <Percent size={16} className="text-gray-500"/>
+                                {(user.discountPercentage || 0).toFixed(0)}%
+                            </span>
+                        )}
+                    </td>
                     <td className="p-3 flex space-x-2">
                       {editingUserId === user.id ? (
                         <>
@@ -207,7 +243,7 @@ const UserManagementPage = () => {
                         </>
                       ) : (
                         <>
-                          <Button variant="secondary" onClick={() => handleEditRole(user)} className="py-1 px-3 text-xs"><Edit size={16} className="mr-1"/> Edit Role</Button>
+                          <Button variant="secondary" onClick={() => handleEditRole(user)} className="py-1 px-3 text-xs"><Edit size={16} className="mr-1"/> Edit</Button> {/* Changed text to just 'Edit' */}
                           <Button variant="danger" onClick={() => handleDeleteUser(user)} className="py-1 px-3 text-xs"><Trash2 size={16} className="mr-1"/> Delete</Button>
                         </>
                       )}

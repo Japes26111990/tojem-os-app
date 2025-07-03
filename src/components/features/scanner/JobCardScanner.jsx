@@ -1,7 +1,8 @@
-// src/components/features/scanner/JobCardScanner.jsx
+// src/components/features/scanner/JobCardScanner.jsx (Prevents multiple "In Progress" jobs)
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getJobByJobId, updateJobStatus, getDepartments, getEmployees, updateDocument } from '../../../api/firestore';
+import { getJobByJobId, updateJobStatus, getDepartments, getEmployees, updateDocument, getDocs, collection, query, where } from '../../../api/firestore';
+import { db } from '../../../api/firebase'; // Import db for the query
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
@@ -10,11 +11,9 @@ import toast from 'react-hot-toast';
 import QrScannerModal from './QrScannerModal';
 
 const JobCardScanner = () => {
-    const [jobIdInput, setJobIdInput] = useState('');
     const [jobData, setJobData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    // Initialize isScannerOpen to false. It will only open when the user clicks the "Scan Job Card" button.
-    const [isScannerOpen, setIsScannerOpen] = useState(false); 
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [departments, setDepartments] = useState([]);
     const [employees, setEmployees] = useState([]);
@@ -57,26 +56,23 @@ const JobCardScanner = () => {
     };
 
     const handleFindJob = async (scannedId) => {
-        const idToFind = scannedId || jobIdInput;
-        if (!idToFind.trim()) return;
+        if (!scannedId.trim()) return;
 
         setLoading(true);
         try {
-            const job = await getJobByJobId(idToFind.trim());
+            const job = await getJobByJobId(scannedId.trim());
             setJobData(job);
-            setIsModalOpen(true); // Open the job details modal
-            setIsScannerOpen(false); // Close the scanner when the job modal opens
+            setIsModalOpen(true);
             await acquireWakeLock();
         } catch (error) {
             toast.error(error.message);
         } finally {
             setLoading(false);
-            setJobIdInput('');
         }
     };
 
     const handleScanSuccess = (decodedText) => {
-        // When a QR code is successfully scanned, trigger the job lookup
+        setIsScannerOpen(false);
         handleFindJob(decodedText);
     };
 
@@ -86,7 +82,6 @@ const JobCardScanner = () => {
         setSelectedDept('');
         setSelectedEmp('');
         releaseWakeLock();
-        setIsScannerOpen(true); // Automatically re-open the scanner after the modal closes
     };
 
     const handleAssignment = async () => {
@@ -100,7 +95,6 @@ const JobCardScanner = () => {
                 employeeName: employee.name
             });
             toast.success(`Job assigned to ${employee.name}`);
-            // Re-fetch job data to update the modal with the new assignment
             const updatedJob = await getJobByJobId(jobData.jobId);
             setJobData(updatedJob);
         } catch (error) {
@@ -112,6 +106,23 @@ const JobCardScanner = () => {
         if (!jobData.employeeId || jobData.employeeId === 'unassigned') {
             return toast.error("Please assign an employee before starting the job.");
         }
+
+        // --- NEW: WIP Limit Check ---
+        if (newStatus === 'In Progress') {
+            const jobsRef = collection(db, 'createdJobCards');
+            const q = query(jobsRef, 
+                where("employeeId", "==", jobData.employeeId), 
+                where("status", "==", "In Progress")
+            );
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+                const existingJob = querySnapshot.docs[0].data();
+                toast.error(`Cannot start new job. ${existingJob.employeeName} is already working on job: ${existingJob.jobId}.`, { duration: 5000 });
+                return; // Block the status update
+            }
+        }
+        // --- END: WIP Limit Check ---
         
         const promise = updateJobStatus(jobData.id, newStatus);
         
@@ -122,10 +133,9 @@ const JobCardScanner = () => {
         });
 
         await promise;
-        handleCloseModal(); // This will now automatically re-open the scanner
+        handleCloseModal();
     };
     
-    // --- RESTORED: Halt Job Functionality ---
     const handleFlagIssue = () => {
         if (!jobData) return;
         toast((t) => (
@@ -144,7 +154,7 @@ const JobCardScanner = () => {
                             updateJobStatus(jobData.id, 'Halted - Issue', { haltReason: reason.trim() })
                                 .then(() => {
                                     toast.success(`Job halted. Management notified.`);
-                                    handleCloseModal(); // This will now automatically re-open the scanner
+                                    handleCloseModal();
                                 })
                                 .catch(err => toast.error("Failed to halt job."));
                             toast.dismiss(t.id);
@@ -159,36 +169,26 @@ const JobCardScanner = () => {
                     </Button>
                 </div>
             </div>
-        ), { duration: 15000 }); // Give user more time to type
+        ), { duration: 15000 });
     };
 
     const filteredEmployees = employees.filter(e => e.departmentId === selectedDept);
 
-    // Determine button disabled states and styles based on current job status
-    const isPending = jobData?.status === 'Pending';
-    const isInProgress = jobData?.status === 'In Progress';
-    const isPaused = jobData?.status === 'Paused';
-    const isHalted = jobData?.status === 'Halted - Issue';
-    const isCompletedOrIssue = jobData?.status === 'Complete' || jobData?.status === 'Issue' || jobData?.status === 'Archived - Issue';
-
     return (
         <>
-            {/* This div contains the main content of the scanner page, including the "Scan Job Card" button */}
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">Job Card Scanner</h3>
                 <p className="text-gray-400 mb-6">Scan a job card's QR code to begin.</p>
-                {/* Button to manually open the scanner */}
                 <Button 
                     variant="primary" 
                     className="w-full max-w-xs mx-auto py-4 text-lg"
-                    onClick={() => setIsScannerOpen(true)} // This button explicitly opens the scanner
+                    onClick={() => setIsScannerOpen(true)}
                 >
                     <QrCode size={24} className="mr-2"/>
                     Scan Job Card
                 </Button>
             </div>
 
-            {/* This modal displays job details after a scan */}
             {isModalOpen && jobData && (
                 <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-lg">
@@ -219,56 +219,19 @@ const JobCardScanner = () => {
                             </div>
 
                             <div className="grid grid-cols-2 gap-2">
-                                {/* Start / Resume Button */}
-                                <Button 
-                                    onClick={() => handleStatusUpdate('In Progress')} 
-                                    disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || isInProgress || isCompletedOrIssue} 
-                                    className="flex-col h-20"
-                                    variant={isInProgress ? 'secondary' : 'primary'} // Indicate active status
-                                >
-                                    <PlayCircle/>
-                                    <span className="mt-1 text-xs">{isInProgress ? 'In Progress' : 'Start / Resume'}</span>
-                                </Button>
-                                {/* Pause Button */}
-                                <Button 
-                                    onClick={() => handleStatusUpdate('Paused')} 
-                                    variant={isPaused ? 'secondary' : 'primary'} // Indicate active status
-                                    disabled={!isInProgress || isCompletedOrIssue} 
-                                    className="flex-col h-20"
-                                >
-                                    <PauseCircle/>
-                                    <span className="mt-1 text-xs">{isPaused ? 'Paused' : 'Pause'}</span>
-                                </Button>
-                                {/* Complete Button */}
-                                <Button 
-                                    onClick={() => handleStatusUpdate('Awaiting QC')} 
-                                    variant="success" 
-                                    disabled={!isInProgress && !isPaused || isCompletedOrIssue} 
-                                    className="flex-col h-20"
-                                >
-                                    <CheckCircle/>
-                                    <span className="mt-1 text-xs">Complete</span>
-                                </Button>
-                                {/* Halt Job Button */}
-                                <Button 
-                                    onClick={handleFlagIssue} 
-                                    variant="danger" 
-                                    disabled={!isInProgress && !isPaused || isCompletedOrIssue || isHalted} 
-                                    className="flex-col h-20"
-                                >
-                                    <ShieldAlert/>
-                                    <span className="mt-1 text-xs">{isHalted ? 'Halted' : 'Halt Job'}</span>
-                                </Button>
+                                <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle/><span className="mt-1 text-xs">Start</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle/><span className="mt-1 text-xs">Pause</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle/><span className="mt-1 text-xs">Complete</span></Button>
+                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert/><span className="mt-1 text-xs">Halt Job</span></Button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* This modal is the actual QR scanner camera feed */}
             {isScannerOpen && (
                 <QrScannerModal 
-                    onClose={() => setIsScannerOpen(false)} // Allow manual close of scanner
+                    onClose={() => setIsScannerOpen(false)}
                     onScanSuccess={handleScanSuccess}
                 />
             )}

@@ -1,15 +1,34 @@
-// src/pages/StockTakePage.jsx (Upgraded with Toasts)
+// src/pages/StockTakePage.jsx (Upgraded with Tabs for Inventory Type)
 
 import React, { useState } from 'react';
 import { reconcileStockLevels } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardList, Save, Search, RefreshCw } from 'lucide-react';
+import { ClipboardList, Save, Search, RefreshCw, Package, Factory } from 'lucide-react'; // Import Package and Factory icons
 import { useStockTakeData } from '../hooks/useStockTakeData';
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
-const StockTakePage = () => {
+// Reusing the TabButton pattern from ScannerPage
+const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
+    const isActive = activeTab === id;
+    return (
+      <button
+        onClick={() => setActiveTab(id)}
+        className={`flex-1 px-5 py-3 text-lg font-semibold flex items-center justify-center gap-3 transition-colors ${
+          isActive 
+            ? 'bg-gray-800 text-white border-b-2 border-blue-500' 
+            : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+        }`}
+      >
+        {icon}
+        {label}
+      </button>
+    );
+};
+
+// This component will now be the main content for each tab
+const StockTakeContent = ({ inventoryTypeFilter }) => {
     const {
         loading,
         error,
@@ -23,19 +42,18 @@ const StockTakePage = () => {
         getItemsToReconcile,
         fetchData,
         resetCounts,
-    } = useStockTakeData();
+    } = useStockTakeData(inventoryTypeFilter); // Pass the filter to the hook
 
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleReconcile = () => {
         const itemsToUpdate = getItemsToReconcile();
         if (itemsToUpdate.length === 0) {
-            return toast.error("You haven't counted any items yet."); // --- REPLACE ALERT ---
+            return toast.error("You haven't counted any items yet.");
         }
 
         const varianceCount = itemsToUpdate.filter(item => item.newCount - item.systemCount !== 0).length;
         
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Finalize stock-take for {itemsToUpdate.length} items? ({varianceCount} with discrepancies)
@@ -45,7 +63,7 @@ const StockTakePage = () => {
                         .then(() => {
                             toast.success("Stock levels reconciled successfully!");
                             resetCounts();
-                            fetchData();
+                            fetchData(); // Re-fetch data for the current filter
                         })
                         .catch(err => {
                             toast.error("Failed to reconcile stock levels.");
@@ -67,10 +85,9 @@ const StockTakePage = () => {
     };
     
     const handleStartNewStockTake = () => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
-                Start a new stock-take? This will clear all counts.
+                Start a new stock-take? This will clear all counts for the current view.
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
                     resetCounts();
                     toast.dismiss(t.id);
@@ -92,7 +109,9 @@ const StockTakePage = () => {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold text-white flex items-center gap-2"><ClipboardList/> Stock-Take</h2>
+                <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <ClipboardList/> Stock-Take ({inventoryTypeFilter === 'products' ? 'Manufactured Products' : 'Purchased Items'})
+                </h3>
                 <div className="flex gap-2">
                      <Button onClick={handleStartNewStockTake} disabled={isSubmitting || loading} variant="secondary">
                         <RefreshCw size={16} className="mr-2" />
@@ -132,6 +151,39 @@ const StockTakePage = () => {
             ) : (
                 <StockCountList items={filteredItems} onCountChange={handleCountChange} />
             )}
+        </div>
+    );
+};
+
+
+const StockTakePage = () => {
+    const [activeTab, setActiveTab] = useState('purchased'); // Default to purchased items
+
+    return (
+        <div className="space-y-8">
+            <h2 className="text-3xl font-bold text-white">Stock-Take Management</h2>
+            
+            <div className="flex rounded-t-lg overflow-hidden border-b border-gray-700">
+                <TabButton 
+                    id="purchased"
+                    label="Purchased Items"
+                    icon={<Package size={22} />}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                />
+                <TabButton 
+                    id="products"
+                    label="Manufactured Products"
+                    icon={<Factory size={22} />}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                />
+            </div>
+
+            <div className="mt-4">
+                {activeTab === 'purchased' && <StockTakeContent inventoryTypeFilter="purchased" />}
+                {activeTab === 'products' && <StockTakeContent inventoryTypeFilter="products" />}
+            </div>
         </div>
     );
 };

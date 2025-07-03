@@ -1,16 +1,16 @@
-// src/components/features/tracking/JobDetailsModal.jsx (Refactored & Path Corrected)
+// src/components/features/tracking/JobDetailsModal.jsx (Corrected Cost Calculation)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Textarea from '../../ui/Textarea';
 import Dropdown from '../../ui/Dropdown';
-import { X, CheckCircle2, DollarSign, Clock, Zap, Edit, Trash2, Save, XCircle, Award } from 'lucide-react';
+import { X, CheckCircle2, DollarSign, Clock, Zap, Edit, Trash2, Save, XCircle, Award, RefreshCw } from 'lucide-react';
 import { processConsumables, calculateJobDuration } from '../../../utils/jobUtils';
 import { useAuth } from '../../../contexts/AuthContext';
-import { giveKudosToJob } from '../../../api/firestore';
-// --- CORRECTED IMPORT PATH ---
+import { giveKudosToJob, updateDocument, updateStandardRecipe } from '../../../api/firestore';
 import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.jsx';
+import toast from 'react-hot-toast';
 
 const DetailRow = ({ label, value, className = 'text-gray-300' }) => (
     <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
@@ -30,6 +30,11 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
         selectedAccessories: new Set(job.accessories?.map(a => a.id) || []),
         selectedConsumables: job.consumables || [],
     }));
+
+    const employeesInDepartment = useMemo(() => {
+        return allEmployees.filter(emp => emp.departmentId === job.departmentId);
+    }, [allEmployees, job.departmentId]);
+
 
     useEffect(() => {
         setEditableJobData({
@@ -61,15 +66,46 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
         return `${Math.round((estimatedMinutes / actualMinutes) * 100)}%`;
     };
 
+    // --- UPDATED: Comprehensive Live Cost Calculation ---
     const calculateLiveTotalCost = (j, cTime, rates) => {
-        if (typeof j.totalCost === 'number' && j.totalCost !== null) return `R${j.totalCost.toFixed(2)}`;
-        if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
-        const hourlyRate = rates[j.employeeId];
-        const durationResult = calculateJobDuration(j, cTime);
-        let liveLaborCost = 0;
-        if (durationResult) { liveLaborCost = (durationResult.totalMinutes / 60) * hourlyRate; }
-        const currentMaterialCost = j.materialCost || 0;
-        const totalLiveCost = liveLaborCost + currentMaterialCost;
+        // If the job is complete, use the final stored cost for perfect accuracy.
+        if (typeof j.totalCost === 'number' && j.totalCost !== null) {
+            return `R${j.totalCost.toFixed(2)}`;
+        }
+
+        // --- Live Material Cost Calculation ---
+        const materialCost = (j.processedConsumables || []).reduce((sum, consumable) => {
+            const price = consumable.price || 0;
+            const quantity = consumable.quantity || 0;
+            return sum + (price * quantity);
+        }, 0);
+
+        // --- Live Labor Cost Calculation ---
+        let laborCost = 0;
+        if (j.employeeId && rates[j.employeeId]) {
+            const hourlyRate = rates[j.employeeId];
+            const durationResult = calculateJobDuration(j, cTime);
+            if (durationResult) {
+                laborCost = (durationResult.totalMinutes / 60) * hourlyRate;
+            }
+        }
+        
+        // --- Live Machine Cost Calculation (based on estimated recipe times) ---
+        const machineCost = (j.tools || []).reduce((sum, tool) => {
+            const toolDetails = allTools.find(t => t.id === tool.id);
+            const hourlyRate = toolDetails?.hourlyRate || 0;
+            // This is an estimation as we don't track live step times.
+            // A more advanced implementation could track this.
+            // For now, we assume machine time equals labor time for a rough estimate.
+            const durationResult = calculateJobDuration(j, cTime);
+            if (durationResult && hourlyRate > 0) {
+                 const activeHours = durationResult.totalMinutes / 60;
+                 return sum + (activeHours * hourlyRate);
+            }
+            return sum;
+        }, 0);
+
+        const totalLiveCost = materialCost + laborCost + machineCost;
         return `R${totalLiveCost.toFixed(2)}`;
     };
 
@@ -85,20 +121,97 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
     const handleAccessoryToggle = (accId) => { setEditableJobData(prev => { const newAccessories = new Set(prev.selectedAccessories); newAccessories.has(accId) ? newAccessories.delete(accId) : newAccessories.add(accId); return { ...prev, selectedAccessories: newAccessories }; }); };
     const handleAddConsumableToList = (consumable) => { setEditableJobData(prev => ({ ...prev, selectedConsumables: [...prev.selectedConsumables, consumable] })); };
     const handleRemoveConsumableFromList = (itemId) => { setEditableJobData(prev => ({ ...prev, selectedConsumables: prev.selectedConsumables.filter(c => c.itemId !== itemId) })); };
-    const handleSave = async () => { if (!editableJobData.partName.trim()) return alert("Part Name cannot be empty."); if (editableJobData.estimatedTime < 0) return alert("Estimated time cannot be negative."); if (!editableJobData.steps.trim()) return alert("Steps cannot be empty."); const updatedData = { partName: editableJobData.partName.trim(), description: editableJobData.description.trim(), estimatedTime: Number(editableJobData.estimatedTime), employeeId: editableJobData.employeeId || 'unassigned', employeeName: editableJobData.employeeName, steps: editableJobData.steps.split('\n').filter(s => s.trim() !== ''), tools: Array.from(editableJobData.selectedTools), accessories: Array.from(editableJobData.selectedAccessories), consumables: editableJobData.selectedConsumables, }; try { await onUpdateJob(job.id, updatedData); alert("Job updated successfully!"); setIsEditing(false); } catch (error) { console.error("Error updating job:", error); alert("Failed to update job."); } };
-    const handleDelete = async () => { if (window.confirm(`Are you sure you want to permanently delete job "${job.jobId}"? This action cannot be undone.`)) { try { await onDeleteJob(job.id); alert("Job deleted successfully!"); onClose(); } catch (error) { console.error("Error deleting job:", error); alert("Failed to delete job."); } } };
+    
+    const getFormattedDataForSave = () => {
+        return { 
+            partName: editableJobData.partName.trim(), 
+            description: editableJobData.description.trim(), 
+            estimatedTime: Number(editableJobData.estimatedTime), 
+            employeeId: editableJobData.employeeId || 'unassigned', 
+            employeeName: editableJobData.employeeName, 
+            steps: editableJobData.steps.split('\n').filter(s => s.trim() !== ''), 
+            tools: Array.from(editableJobData.selectedTools), 
+            accessories: Array.from(editableJobData.selectedAccessories), 
+            consumables: editableJobData.selectedConsumables, 
+        };
+    };
+
+    const handleSave = async () => { 
+        if (!editableJobData.partName.trim()) return toast.error("Part Name cannot be empty."); 
+        if (editableJobData.estimatedTime < 0) return toast.error("Estimated time cannot be negative."); 
+        if (!editableJobData.steps.trim()) return toast.error("Steps cannot be empty."); 
+        
+        const updatedData = getFormattedDataForSave();
+        try { 
+            await onUpdateJob(job.id, updatedData); 
+            toast.success("Job updated successfully!"); 
+            setIsEditing(false); 
+        } catch (error) { 
+            console.error("Error updating job:", error); 
+            toast.error("Failed to update job."); 
+        } 
+    };
+
+    const handleUpdateRecipe = async () => {
+        const updatedData = getFormattedDataForSave();
+        const fullJobDataForRecipe = { ...job, ...updatedData };
+
+        toast.promise(
+            updateStandardRecipe(fullJobDataForRecipe),
+            {
+                loading: 'Updating standard recipe...',
+                success: 'Standard recipe has been updated successfully!',
+                error: 'Failed to update the standard recipe.',
+            }
+        );
+    };
+
+    const handleDelete = async () => { 
+        toast((t) => (
+            <span>
+                Delete job "{job.jobId}"?
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    try {
+                        await onDeleteJob(job.id); 
+                        toast.success("Job deleted successfully!"); 
+                        onClose();
+                    } catch (error) {
+                        console.error("Error deleting job:", error); 
+                        toast.error("Failed to delete job."); 
+                    }
+                    toast.dismiss(t.id);
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
+    };
     
     const handleGiveKudos = async () => {
-        if (window.confirm("Give kudos for this job? The employee will be recognized for excellent work.")) {
-            try {
-                await giveKudosToJob(job.id);
-                alert("Kudos given!");
-                onClose();
-            } catch (error) {
-                console.error("Failed to give kudos:", error);
-                alert("Could not give kudos at this time.");
-            }
-        }
+        toast((t) => (
+            <span>
+                Give kudos for this job?
+                <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
+                     try {
+                        await giveKudosToJob(job.id);
+                        toast.success("Kudos given!");
+                        onClose();
+                    } catch (error) {
+                        console.error("Failed to give kudos:", error);
+                        toast.error("Could not give kudos at this time.");
+                    }
+                    toast.dismiss(t.id);
+                }}>
+                    Confirm
+                </Button>
+                 <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '🏆' });
     };
     
     return (
@@ -118,7 +231,7 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                     {isEditing ? (
                         <div className="space-y-4">
                             <Input label="Part Name" name="partName" value={editableJobData.partName} onChange={handleInputChange} />
-                            <Dropdown label="Assigned Employee" name="employeeId" value={editableJobData.employeeId} onChange={handleEmployeeChange} options={allEmployees} placeholder="Select Employee..."/>
+                            <Dropdown label="Assigned Employee" name="employeeId" value={editableJobData.employeeId} onChange={handleEmployeeChange} options={employeesInDepartment} placeholder="Select Employee..."/>
                             <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={editableJobData.estimatedTime} onChange={handleInputChange}/>
                             <Textarea label="Description" name="description" value={editableJobData.description} onChange={handleInputChange} rows={3} />
                             <Textarea label="Steps (one per line)" name="steps" value={editableJobData.steps} onChange={handleInputChange} rows={5} />
@@ -146,7 +259,6 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                                 </div>
                             </div>
                             
-                            {/* --- REPLACEMENT --- */}
                             <ConsumableEditor
                                 allConsumables={allInventoryItems}
                                 selectedConsumables={editableJobData.selectedConsumables}
@@ -156,7 +268,12 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
 
                             <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-700">
                                 <Button onClick={() => setIsEditing(false)} variant="secondary"><XCircle size={18} className="mr-2"/> Cancel</Button>
-                                <Button onClick={handleSave} variant="primary"><Save size={18} className="mr-2"/> Save Changes</Button>
+                                {!job.isCustomJob && (
+                                    <Button onClick={handleUpdateRecipe} variant="primary" className="bg-purple-600 hover:bg-purple-700">
+                                        <RefreshCw size={18} className="mr-2"/> Update Standard Recipe
+                                    </Button>
+                                )}
+                                <Button onClick={handleSave} variant="primary"><Save size={18} className="mr-2"/> Save Changes to this Job</Button>
                             </div>
                         </div>
                     ) : (

@@ -20,38 +20,78 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
+// --- NEW: Update a standard recipe from a completed job's data ---
+export const updateStandardRecipe = async (jobData) => {
+    if (!jobData.partId || !jobData.departmentId) {
+        throw new Error("Cannot update recipe without a valid Part ID and Department ID.");
+    }
+    const recipeId = `${jobData.partId}_${jobData.departmentId}`;
+    const recipeRef = doc(db, 'jobStepDetails', recipeId);
+
+    const recipeDataToUpdate = {
+        description: jobData.description,
+        estimatedTime: jobData.estimatedTime,
+        steps: jobData.steps.map((step, index) => ({ text: step, time: 0, order: index })),
+        tools: jobData.tools.map(tool => tool.id),
+        accessories: jobData.accessories.map(acc => acc.id),
+        consumables: jobData.consumables,
+    };
+
+    return updateDoc(recipeRef, recipeDataToUpdate);
+};
+
+
+// --- NEW: Update the priority field for multiple jobs ---
+export const updateJobPriorities = async (orderedJobs) => {
+    const batch = writeBatch(db);
+    orderedJobs.forEach((job, index) => {
+        const jobRef = doc(db, 'createdJobCards', job.id);
+        batch.update(jobRef, { priority: index });
+    });
+    return batch.commit();
+};
+
 // --- NEW: Find an inventory item by its unique item code ---
 export const findInventoryItemByItemCode = async (itemCode) => {
     if (!itemCode) throw new Error("Item code is required.");
-
     const collectionsToSearch = ['components', 'rawMaterials', 'workshopSupplies'];
-    
     for (const collectionName of collectionsToSearch) {
         const q = query(collection(db, collectionName), where("itemCode", "==", itemCode));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
             const itemDoc = querySnapshot.docs[0];
-            // Return the category along with the item data
             return { id: itemDoc.id, category: collectionName, ...itemDoc.data() };
         }
     }
-
     throw new Error(`No inventory item found with code: ${itemCode}`);
 };
 
-// --- NEW: Update an item's stock level and tag it with the session ID ---
-export const updateStockCount = async (itemId, category, newStock, sessionId) => {
-    if (!itemId || !category || isNaN(newStock) || !sessionId) {
-        throw new Error("Item ID, category, a valid stock count, and session ID are required.");
+// --- NEW: Update stock level based on a weight measurement ---
+export const updateStockByWeight = async (itemId, category, grossWeight) => {
+    if (!itemId || !category || isNaN(parseFloat(grossWeight))) {
+        throw new Error("Item ID, category, and a valid gross weight are required.");
     }
     const itemRef = doc(db, category, itemId);
-    return updateDoc(itemRef, {
-        currentStock: Number(newStock),
-        lastCountedAt: serverTimestamp(),
-        lastCountedInSessionId: sessionId
+    return runTransaction(db, async (transaction) => {
+        const itemDoc = await transaction.get(itemRef);
+        if (!itemDoc.exists()) {
+            throw new Error("Inventory item not found.");
+        }
+        const itemData = itemDoc.data();
+        const tareWeight = parseFloat(itemData.tareWeight) || 0;
+        const unitWeight = parseFloat(itemData.unitWeight) || 1;
+        if (unitWeight <= 0) {
+            throw new Error("Item has an invalid unit weight of zero or less.");
+        }
+        const netWeight = parseFloat(grossWeight) - tareWeight;
+        const newQuantity = Math.round(netWeight / unitWeight);
+        if (newQuantity < 0) {
+            throw new Error("Calculated quantity is negative. Please check weights.");
+        }
+        transaction.update(itemRef, { currentStock: newQuantity });
+        return { newQuantity };
     });
 };
-
 
 // --- SYSTEM STATUS API ---
 export const listenToSystemStatus = (callback) => {
@@ -497,7 +537,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         rejectionReason = '', 
         preventStockDeduction = false, 
         reworkDetails = null 
-     } = options;
+    } = options;
 
     const allTools = await getTools();
     const toolsMap = new Map(allTools.map(t => [t.id, t]));
@@ -521,14 +561,14 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         if (isApproved) {
             dataToUpdate.status = 'Complete';
             if (!currentJobData.completedAt) dataToUpdate.completedAt = serverTimestamp();
-            let materialCost = 0;
-            if (currentJobData.processedConsumables && currentJobData.processedConsumables.length > 0) {
-                for (const consumable of currentJobData.processedConsumables) {
-                    const price = consumable.price !== undefined ? consumable.price : (inventoryMap.get(consumable.id)?.price || 0);
-                    materialCost += (price * consumable.quantity);
-                }
-            }
+            
+            // --- UPDATED: Final Cost Calculation ---
+            const materialCost = (currentJobData.processedConsumables || []).reduce((sum, con) => {
+                const price = con.price || 0;
+                return sum + (price * con.quantity);
+            }, 0);
             dataToUpdate.materialCost = materialCost;
+
             let laborCost = 0;
             const employee = employeeMap.get(currentJobData.employeeId);
             const hourlyRate = employee?.hourlyRate || 0;
@@ -540,20 +580,21 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
                 laborCost = activeHours > 0 ? activeHours * hourlyRate : 0;
             }
             dataToUpdate.laborCost = laborCost;
+
             let machineCost = 0;
-            if (recipe && recipe.steps) {
-                recipe.steps.forEach(step => {
-                    if (step.toolId && step.time > 0) {
-                        const tool = toolsMap.get(step.toolId);
-                        if (tool && tool.hourlyRate > 0) {
-                            const stepHours = step.time / 60;
-                            machineCost += stepHours * tool.hourlyRate;
-                        }
+            if (recipe && recipe.tools) {
+                const jobDurationHours = ((currentJobData.completedAt?.toDate() || new Date()).getTime() - currentJobData.startedAt.toDate().getTime() - (currentJobData.totalPausedMilliseconds || 0)) / 3600000;
+                
+                recipe.tools.forEach(toolId => {
+                    const toolDetails = toolsMap.get(toolId);
+                    if (toolDetails && toolDetails.hourlyRate > 0) {
+                        machineCost += jobDurationHours * toolDetails.hourlyRate;
                     }
                 });
             }
             dataToUpdate.machineCost = machineCost;
             dataToUpdate.totalCost = materialCost + laborCost + machineCost;
+
         } else {
             if (reworkDetails && reworkDetails.requeue) {
                 dataToUpdate.status = 'Pending';
@@ -680,24 +721,10 @@ export const deleteUserWithRole = async (userId) => {
 };
 
 // --- ROLES API (NEW) ---
-const rolesCollection = collection(db, 'roles'); // Define rolesCollection
 export const getRoles = async () => {
+    const rolesCollection = collection(db, 'roles');
     const snapshot = await getDocs(rolesCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-// Function to add a new role with permissions, landing page, and sidebar visibility
-export const addRole = (roleData) => {
-    return addDoc(rolesCollection, roleData);
-};
-// Function to update an existing role, including permissions, landing page, and sidebar visibility
-export const updateRole = (roleId, updatedData) => {
-    const roleDocRef = doc(db, 'roles', roleId);
-    return updateDoc(roleDocRef, updatedData);
-};
-// Function to delete a role
-export const deleteRole = (roleId) => {
-    const roleDocRef = doc(db, 'roles', roleId);
-    return deleteDoc(roleDocRef);
 };
 
 // --- MARKETING & SALES API ---
