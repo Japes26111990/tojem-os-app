@@ -1,4 +1,4 @@
-// src/components/features/quotes/QuoteCreator.jsx (Final Version with all buttons)
+// src/components/features/quotes/QuoteCreator.jsx (FIXED: Missing export)
 
 import React, { useState, useMemo } from 'react';
 import { addQuote } from '../../../api/firestore';
@@ -7,7 +7,8 @@ import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
 import { X, PlusCircle, Trash2, DollarSign, Percent, FileText, Package, Wrench, ShoppingBag } from 'lucide-react';
 import AddCustomWorkModal from './AddCustomWorkModal';
-import AddPurchasedItemModal from './AddPurchasedItemModal'; // Import the modal
+import AddPurchasedItemModal from './AddPurchasedItemModal';
+import toast from 'react-hot-toast';
 
 const QuoteCreator = ({ onClose, calculationData }) => {
     const { products, allRecipes, inventoryItems, averageBurdenedRate } = calculationData;
@@ -18,12 +19,11 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     const [margin, setMargin] = useState('40');
     
     const [isCustomWorkModalOpen, setCustomWorkModalOpen] = useState(false);
-    const [isPurchasedItemModalOpen, setPurchasedItemModalOpen] = useState(false); // State for the new modal
+    const [isPurchasedItemModalOpen, setPurchasedItemModalOpen] = useState(false);
 
     const [catalogProductId, setCatalogProductId] = useState('');
 
     const handleAddLineItem = (item) => {
-        // Add flags to differentiate line item types
         const newItem = { ...item, id: Date.now() };
         if (item.isCustomWork) {
             newItem.isCustomWork = true;
@@ -38,9 +38,9 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     const handleAddCatalogItem = () => {
         if (!catalogProductId) return;
         const product = products.find(p => p.id === catalogProductId);
-        if (!product) return alert("Selected product not found.");
+        if (!product) return toast.error("Selected product not found.");
         const productRecipes = allRecipes.filter(r => r.productId === product.id);
-        if (productRecipes.length === 0) return alert("This product has no recipes defined. Cannot calculate cost.");
+        if (productRecipes.length === 0) return toast.error("This product has no recipes defined. Cannot calculate cost.");
 
         const inventoryMap = new Map(inventoryItems.map(item => [item.id, item]));
         let totalMaterialCost = 0;
@@ -71,16 +71,26 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     }, [lineItems, margin]);
 
     const handleSaveQuote = async () => {
-        if (!customerName) return alert("Please enter a customer name.");
-        if (lineItems.length === 0) return alert("Please add at least one line item.");
-        const quoteData = { customerName, customerEmail, lineItems: lineItems.map(({ id, ...rest }) => rest), subtotal: totals.subtotal, margin: parseFloat(margin), total: totals.total, quoteId: `Q-${Date.now()}` };
+        if (!customerName) return toast.error("Please enter a customer name.");
+        if (lineItems.length === 0) return toast.error("Please add at least one line item.");
+        
+        const quoteData = { 
+            customerName, 
+            customerEmail, 
+            lineItems: lineItems.map(({ id, ...rest }) => rest), 
+            subtotal: totals.subtotal, 
+            margin: parseFloat(margin), 
+            total: totals.total, 
+            quoteId: `Q-${Date.now()}` 
+        };
+
         try {
             await addQuote(quoteData);
-            alert(`Quote ${quoteData.quoteId} saved successfully!`);
+            toast.success(`Quote ${quoteData.quoteId} saved successfully!`);
             onClose();
         } catch (error) {
             console.error("Error saving quote:", error);
-            alert("Failed to save quote. See console for details.");
+            toast.error("Failed to save quote. See console for details.");
         }
     };
 
@@ -118,7 +128,6 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                                 <Button onClick={handleAddCatalogItem} variant="secondary"><Package size={16} className="mr-2"/>Add Product</Button>
                                 <div className="border-l border-gray-600 h-10 mx-2"></div>
                                 <Button onClick={() => setCustomWorkModalOpen(true)} variant="secondary"><Wrench size={16} className="mr-2"/>Add Custom Work</Button>
-                                {/* THIS IS THE NEW BUTTON */}
                                 <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
                             </div>
                         </div>
@@ -164,4 +173,4 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     );
 };
 
-export default QuoteCreator;
+export default QuoteCreator; // --- THIS LINE WAS MISSING ---

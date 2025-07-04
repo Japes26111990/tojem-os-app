@@ -37,7 +37,7 @@ const PerformancePage = () => {
                     getOverheadCategories(),
                     getDepartments()
                 ]);
-                
+
                 setDepartments(fetchedDepartments);
                 
                 const departmentsMap = new Map(fetchedDepartments.map(d => [d.id, d.name]));
@@ -89,8 +89,9 @@ const PerformancePage = () => {
         let employeeMetrics = (employees || []).map(emp => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
             const empJobsCompleted = empJobs.length;
-            const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
-            
+            const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue');
+            const empKudosJobs = empJobs.filter(j => j.kudos === true); // ** NEW: Count kudos jobs **
+
             let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0, jobsWithTime = 0;
             empJobs.forEach(job => {
                 if (job.startedAt && job.completedAt) {
@@ -115,10 +116,12 @@ const PerformancePage = () => {
                 jobsCompleted: empJobsCompleted,
                 avgEfficiency: empAvgEfficiency,
                 netValueAdded: empTotalJobValue - totalLaborCost,
-                reworkRate: empJobsCompleted > 0 ? (empIssueJobs / empJobsCompleted) * 100 : 0,
+                reworkRate: empJobsCompleted > 0 ? (empIssueJobs.length / empJobsCompleted) * 100 : 0,
+                reworkCount: empIssueJobs.length, // ** NEW: Pass the count **
+                kudosCount: empKudosJobs.length, // ** NEW: Pass the count **
             };
         });
-        
+
         const maxNetValue = Math.max(1, ...employeeMetrics.map(e => e.netValueAdded));
         const maxEfficiency = Math.max(100, ...employeeMetrics.map(e => e.avgEfficiency));
         
@@ -166,13 +169,13 @@ const PerformancePage = () => {
                             onChange={(e) => setLeaderboardDepartmentFilter(e.target.value)}
                             options={[{ id: 'all', name: 'Overall Company' }, ...departments]}
                         />
-                    </div>
+                     </div>
                 </div>
                 <PerformanceLeaderboard
                     employees={leaderboardDepartmentFilter === 'all' ? performanceData.employeePerformanceMetrics : performanceData.employeePerformanceMetrics.filter(e => e.departmentId === leaderboardDepartmentFilter)}
                     activeSortKey={leaderboardSortKey}
                     setActiveSortKey={setLeaderboardSortKey}
-                />
+                 />
             </div>
         </div>
     );

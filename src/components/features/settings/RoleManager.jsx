@@ -1,12 +1,12 @@
-// src/components/features/settings/RoleManager.jsx (Corrected Imports)
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Shield, Lock, Unlock, PlusCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// src/components/features/settings/RoleManager.jsx
 
 const ALL_PERMISSIONS = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -29,6 +29,13 @@ const ALL_PERMISSIONS = [
     { id: 'payroll', label: 'Payroll' },
     { id: 'settings', label: 'Settings' },
     { id: 'hideSidebar', label: 'Hide Sidebar (Tablet UI)' },
+    { id: 'access_portal', label: 'Access Customer Portal' },
+    // --- NEW PERMISSIONS ADDED ---
+    { id: 'multiStage', label: 'Multi-Stage Wizard' },
+    { id: 'jobHistory', label: 'Job History' },
+    { id: 'reworkQueue', label: 'Rework Queue' },
+    { id: 'stockAdjust', label: 'Stock Adjustment' },
+    { id: 'jobReprint', label: 'Reprint Jobs' },
 ];
 
 const RoleManager = () => {
@@ -98,14 +105,20 @@ const RoleManager = () => {
         }
     };
 
+    // --- THIS IS THE CORRECTED FUNCTION ---
     const handleAddNewRole = async () => {
         if (!newRoleName.trim()) return toast.error("Role name cannot be empty.");
+        
+        const roleId = newRoleName.trim(); // Use the role's name as its document ID
+        const roleRef = doc(db, 'roles', roleId); // Create a reference with the correct ID
+
         try {
-            await addDoc(collection(db, 'roles'), {
-                name: newRoleName.trim(),
+            // Use setDoc to create a document with a specific ID
+            await setDoc(roleRef, {
+                name: roleId,
                 permissions: {}
             });
-            toast.success(`Role "${newRoleName.trim()}" created.`);
+            toast.success(`Role "${roleId}" created.`);
             setNewRoleName('');
             fetchRoles();
         } catch (error) {
@@ -154,7 +167,7 @@ const RoleManager = () => {
                                         key={role.id}
                                         onClick={() => handleSelectRole(role)}
                                         className={`p-3 rounded-md cursor-pointer transition-colors flex justify-between items-center ${selectedRole?.id === role.id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}
-                                    >
+                                        >
                                         <span className="font-semibold">{role.name}</span>
                                         {role.name !== 'Manager' && (
                                             <Button variant="icon" size="sm" className="text-red-400 hover:text-red-300 p-1" onClick={(e) => { e.stopPropagation(); handleDeleteRole(role.id, role.name); }}>
@@ -178,7 +191,7 @@ const RoleManager = () => {
                 <div className="lg:col-span-2">
                     {!selectedRole ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
-                           <p>Select a role from the list to manage its permissions.</p>
+                            <p>Select a role from the list to manage its permissions.</p>
                        </div>
                     ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
@@ -200,7 +213,7 @@ const RoleManager = () => {
                              <div className="text-right border-t border-gray-700 pt-4 mt-4">
                                 <Button onClick={handleSaveRole} variant="primary">Save Changes for "{selectedRole.name}"</Button>
                             </div>
-                        </div>
+                       </div>
                     )}
                 </div>
             </div>

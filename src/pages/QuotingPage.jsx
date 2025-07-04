@@ -1,4 +1,4 @@
-// src/pages/QuotingPage.jsx (Upgraded with Toasts)
+// src/pages/QuotingPage.jsx (Corrected and Final Version)
 
 import React, { useState, useEffect } from 'react';
 import Button from '../components/ui/Button';
@@ -15,7 +15,7 @@ import {
     createSalesOrderFromQuote
 } from '../api/firestore';
 import QuoteCreator from '../components/features/quotes/QuoteCreator';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const QuotingPage = () => {
     const [quotes, setQuotes] = useState([]);
@@ -75,7 +75,6 @@ const QuotingPage = () => {
     }, []);
     
     const handleAcceptQuote = (quote) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Accept this quote and create a Sales Order?

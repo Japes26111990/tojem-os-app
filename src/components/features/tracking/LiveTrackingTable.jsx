@@ -1,9 +1,11 @@
+// src/components/features/tracking/LiveTrackingTable.jsx (Upgraded for Burdened Cost)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { calculateJobDuration } from '../../../utils/jobUtils'; // Import centralized utility
-import { useSearchParams, useNavigate } from 'react-router-dom'; // NEW: Import hooks for URL params
+import { calculateJobDuration } from '../../../utils/jobUtils';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const StatusBadge = ({ status }) => {
     const statusColors = {
@@ -29,24 +31,22 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{Math.round(efficiency)}%</span>
 };
 
-const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
-    // Use the centralized utility function for duration
+const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPerHour }) => {
     const liveDuration = calculateJobDuration(job, currentTime);
 
-    const calculateLiveCost = (j, cTime, rates) => {
-        // If totalCost is already set (e.g., after QC approval), use that value
+    const calculateLiveCost = (j, cTime, rates, overheadRate) => {
         if (typeof j.totalCost === 'number' && j.totalCost !== null) {
             return `R ${j.totalCost.toFixed(2)}`;
         }
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
-        const hourlyRate = rates[j.employeeId];
-        if (hourlyRate === 0) return 'N/A';
         
-        // Use the centralized utility for duration
+        const directRate = rates[j.employeeId];
+        const burdenedRate = directRate + overheadRate; // True cost of labor
+        
         const durationResult = calculateJobDuration(j, cTime);
         let liveLaborCost = 0;
         if (durationResult) {
-            liveLaborCost = (durationResult.totalMinutes / 60) * hourlyRate;
+            liveLaborCost = (durationResult.totalMinutes / 60) * burdenedRate;
         }
         
         const currentMaterialCost = j.materialCost || 0;
@@ -54,7 +54,7 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
         return `R ${totalLiveCost.toFixed(2)}`;
     };
 
-    const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates);
+    const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates, overheadCostPerHour);
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
         return new Date(timestamp.seconds * 1000).toLocaleString();
@@ -73,7 +73,7 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates }) => {
     );
 };
 
-const LiveTrackingTable = () => {
+const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
     const [jobs, setJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
@@ -84,8 +84,8 @@ const LiveTrackingTable = () => {
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
 
-    const [searchParams, setSearchParams] = useSearchParams(); // NEW: Get URL search params
-    const navigate = useNavigate(); // NEW: For programmatic navigation and clearing params
+    const [searchParams, setSearchParams] = useSearchParams();
+    const navigate = useNavigate();
 
     const fetchAllRequiredData = async () => {
         setLoading(true);
@@ -128,7 +128,6 @@ const LiveTrackingTable = () => {
         };
     }, []);
 
-    // NEW: Effect to open modal based on URL jobId parameter
     useEffect(() => {
         const jobIdFromUrl = searchParams.get('jobId');
         if (jobIdFromUrl && !loading && jobs.length > 0) {
@@ -137,7 +136,7 @@ const LiveTrackingTable = () => {
                 setSelectedJob(jobToOpen);
             }
         }
-    }, [searchParams, loading, jobs]); // Re-run if params, loading state, or jobs change
+    }, [searchParams, loading, jobs]);
 
     const employeeHourlyRates = useMemo(() => {
         return employees.reduce((acc, emp) => {
@@ -163,8 +162,7 @@ const LiveTrackingTable = () => {
                 return 0;
             });
         const completed = jobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
-        return { activeJobs: active, completedAndArchivedJobs: completed 
-        };
+        return { activeJobs: active, completedAndArchivedJobs: completed };
     }, [jobs]);
 
     const handleUpdateJob = async (jobId, updatedData) => {
@@ -185,10 +183,8 @@ const LiveTrackingTable = () => {
         }
     };
 
-    // NEW: Function to close the modal and clear the URL parameter
     const handleCloseModal = () => {
         setSelectedJob(null);
-        // Clear jobId from URL without navigating away from /tracking
         navigate('/tracking', { replace: true });
     };
 
@@ -218,6 +214,7 @@ const LiveTrackingTable = () => {
                                     onClick={() => setSelectedJob(job)}
                                     currentTime={currentTime}
                                     employeeHourlyRates={employeeHourlyRates}
+                                    overheadCostPerHour={overheadCostPerHour}
                                 />
                             ))}
                         </tbody>
@@ -248,6 +245,7 @@ const LiveTrackingTable = () => {
                                             onClick={() => setSelectedJob(job)}
                                             currentTime={currentTime}
                                             employeeHourlyRates={employeeHourlyRates}
+                                            overheadCostPerHour={overheadCostPerHour}
                                         />
                                     ))}
                                 </tbody>
@@ -258,9 +256,10 @@ const LiveTrackingTable = () => {
                 {selectedJob && (
                     <JobDetailsModal
                         job={selectedJob}
-                        onClose={handleCloseModal} // NEW: Use the new close handler
+                        onClose={handleCloseModal}
                         currentTime={currentTime}
                         employeeHourlyRates={employeeHourlyRates}
+                        overheadCostPerHour={overheadCostPerHour} // Pass it down to the modal
                         allEmployees={employees}
                         onUpdateJob={handleUpdateJob}
                         onDeleteJob={handleDeleteJob}

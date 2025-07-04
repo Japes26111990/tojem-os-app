@@ -1,3 +1,5 @@
+// src/pages/PurchasingPage.jsx (Upgraded with Toasts)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     listenToPurchaseQueue, 
@@ -7,17 +9,17 @@ import {
     markOneOffItemsAsOrdered,
     getSupplierPricingForItem,
     addSupplier,
-    listenToJobCards, // NEW: For JIT analysis
-    getAllInventoryItems, // NEW: For JIT analysis
-    addToPurchaseQueue // NEW: To programmatically add items
+    listenToJobCards,
+    getAllInventoryItems,
+    addToPurchaseQueue
 } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Mail, ThumbsUp, Truck, Package, Wrench, UserPlus, X } from 'lucide-react';
 import InTransitOrders from '../components/features/stock/InTransitOrders';
 import Dropdown from '../components/ui/Dropdown';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
-// AddSupplierModal remains unchanged...
 const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
     const [newSupplier, setNewSupplier] = useState({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
     
@@ -28,7 +30,7 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
 
     const handleSubmit = async () => {
         if (!newSupplier.name || !newSupplier.email) {
-            return alert("Supplier Name and Email are required.");
+            return toast.error("Supplier Name and Email are required.");
         }
         try {
             const supplierData = {
@@ -37,12 +39,12 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
                 minOrderAmount: parseFloat(newSupplier.minOrderAmount) || 0,
             };
             await addSupplier(supplierData);
-            alert("Supplier added successfully!");
+            toast.success("Supplier added successfully!");
             onSupplierAdded();
             onClose();
         } catch (error) {
             console.error("Error adding supplier:", error);
-            alert("Failed to add supplier.");
+            toast.error("Failed to add supplier.");
         }
     };
 
@@ -68,7 +70,6 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
 };
 
 
-// PurchaseHub component remains largely the same, handling the UI for ordering
 const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     const [allPricing, setAllPricing] = useState({});
     const [selectedSuppliers, setSelectedSuppliers] = useState({});
@@ -89,6 +90,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
             setLoadingPricing(true);
             const pricingMap = {};
             const pricingPromises = unifiedQueue.map(async (item) => {
+                if (!item.itemId) return;
                 const prices = await getSupplierPricingForItem(item.itemId);
                 pricingMap[item.itemId] = prices;
             });
@@ -97,6 +99,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
 
             const initialSelections = {};
             unifiedQueue.forEach(item => {
+                if (!item.itemId) return;
                 const prices = pricingMap[item.itemId] || [];
                 if (prices.length > 0) {
                     const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
@@ -130,6 +133,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
         const groups = { admin: { supplierDetails: { name: 'Admin Purchase Request', email: ADMIN_EMAIL }, stockItems: [], jobItems: [] } };
         
         unifiedQueue.forEach(item => {
+            if (!item.itemId) return;
             const isForAdmin = sendToAdmin[item.itemId];
             const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
 
@@ -192,14 +196,14 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
                 if (jobItems.length > 0) {
                     await markOneOffItemsAsOrdered(jobItems.map(item => item.id));
                 }
-                alert("Items have been marked as ordered and will now appear in the 'In-Transit' list.");
+                toast.success("Items marked as ordered and moved to 'In-Transit'."); // --- REPLACE ALERT ---
                 onAction();
             } catch(error) {
                 console.error("Error marking items as ordered:", error);
-                alert("Failed to mark items as ordered.");
+                toast.error("Failed to mark items as ordered."); // --- REPLACE ALERT ---
             }
         } else {
-            alert("Admin purchase request email has been generated. These items remain in the queue until a supplier is assigned.");
+            toast.success("Admin purchase request email has been generated."); // --- REPLACE ALERT ---
         }
     };
 
@@ -210,7 +214,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
         <div className="space-y-6">
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-xl font-bold text-white">Items Requiring Purchase ({unifiedQueue.length})</h3>
+                    <h3 className="text-xl font-bold text-white">Items Requiring Purchase ({unifiedQueue.length})</h3>
                      <Button onClick={() => setAddSupplierModalOpen(true)} variant="secondary"><UserPlus size={16} className="mr-2"/>Add New Supplier</Button>
                 </div>
                 <div className="space-y-4">
@@ -229,7 +233,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
                                     <p className="text-xs text-gray-400 ml-8">{item.type === 'Stock' ? (item.itemCode || 'No Code') : `For SO: ${item.salesOrderId}`}</p>
                                 </div>
                                 <div>
-                                    <Dropdown 
+                                     <Dropdown 
                                         label="Select Supplier"
                                         value={selectedSuppliers[item.itemId] || ''}
                                         onChange={(e) => handleSupplierSelection(item.itemId, e.target.value)}
@@ -242,19 +246,19 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
                                     <p className="text-xs text-green-400">Recommended: {recommendedQty}</p>
                                 </div>
                                 <div className="w-32 mx-auto">
-                                    <Input 
+                                     <Input 
                                         label="Order Qty"
                                         type="number"
                                         value={orderQuantities[item.itemId] === undefined ? recommendedQty : orderQuantities[item.itemId]}
                                         onChange={(e) => handleQuantityChange(item.itemId, e.target.value)}
                                     />
-                                </div>
+                                 </div>
                                 <div className="text-center">
                                     <label className="flex items-center justify-center gap-2 text-sm text-gray-300 cursor-pointer">
-                                        <input type="checkbox" checked={!!sendToAdmin[item.itemId]} onChange={() => handleSendToAdminToggle(item.itemId)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"/>
+                                         <input type="checkbox" checked={!!sendToAdmin[item.itemId]} onChange={() => handleSendToAdminToggle(item.itemId)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"/>
                                         Send to Admin
                                     </label>
-                                </div>
+                                 </div>
                             </div>
                         );
                     })}
@@ -263,7 +267,7 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
 
             {groupedOrders.map((group) => (
                 <div key={group.supplierDetails.email} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
-                    <div className="flex justify-between items-center mb-4">
+                     <div className="flex justify-between items-center mb-4">
                          <div>
                              <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> PO for: {group.supplierDetails.name}</h3>
                              <p className="text-sm text-gray-400">{group.supplierDetails.email}</p>
@@ -278,7 +282,6 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
 };
 
 
-// --- Main Purchasing Page ---
 const PurchasingPage = () => {
     const [activeTab, setActiveTab] = useState('queue');
     const [purchaseQueue, setPurchaseQueue] = useState([]);
@@ -300,9 +303,7 @@ const PurchasingPage = () => {
     useEffect(() => {
         fetchData();
 
-        // JIT LOGIC: This effect now also analyzes the upcoming schedule to proactively queue items.
         const runJitAnalysis = async (allJobs, currentQueue) => {
-            console.log("Running JIT Analysis...");
             const inventory = await getAllInventoryItems();
             const inventoryMap = new Map(inventory.map(i => [i.id, i]));
             const requiredForFuture = new Map();
@@ -323,7 +324,6 @@ const PurchasingPage = () => {
                 
                 if (item && !isAlreadyQueued) {
                     const projectedStock = (item.currentStock || 0) - requiredQty;
-                    // Proactively queue if projected stock falls below reorder level
                     if (projectedStock < (item.reorderLevel || 0)) {
                         console.log(`JIT: Proactively queueing ${item.name}.`);
                         await addToPurchaseQueue({
@@ -343,11 +343,9 @@ const PurchasingPage = () => {
             }
         };
 
-        // Set up all listeners
         const unsubscribeStockQueue = listenToPurchaseQueue(setPurchaseQueue);
         const unsubscribeJobQueue = listenToOneOffPurchases(items => setJobQueue(items.filter(item => item.status === 'Pending Purchase')));
         const unsubscribeJobs = listenToJobCards(allJobs => {
-            // Run JIT analysis whenever the job list or purchase queue changes
             listenToPurchaseQueue(currentQueue => {
                 runJitAnalysis(allJobs, currentQueue);
             })();

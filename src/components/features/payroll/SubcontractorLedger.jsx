@@ -1,4 +1,4 @@
-// src/components/features/payroll/SubcontractorLedger.jsx (Final Improved Version)
+// src/components/features/payroll/SubcontractorLedger.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Input from '../../ui/Input';
@@ -8,6 +8,7 @@ import { getEmployees, getProducts, listenToJobCards, addSubcontractorAdHocLog, 
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import { DollarSign, PlusCircle } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const SubcontractorLedger = () => {
     const [subcontractors, setSubcontractors] = useState([]);
@@ -20,7 +21,6 @@ const SubcontractorLedger = () => {
     const [generating, setGenerating] = useState(false);
     const [results, setResults] = useState(null);
 
-    // State for the ad-hoc logging forms
     const [adHocLog, setAdHocLog] = useState({ date: '', description: '', hours: '', rate: '' });
     const [teamLog, setTeamLog] = useState({ date: '', name: '', hours: '', rate: '' });
 
@@ -47,7 +47,6 @@ const SubcontractorLedger = () => {
         return subcontractors.find(s => s.id === selectedSubcontractorId);
     }, [selectedSubcontractorId, subcontractors]);
 
-    // Pre-fill ad-hoc rate when a subcontractor with a per-hour model is selected
     useEffect(() => {
         if (selectedSubcontractor?.paymentModel === 'per_hour') {
             setAdHocLog(prev => ({ ...prev, rate: selectedSubcontractor.rate }));
@@ -55,7 +54,6 @@ const SubcontractorLedger = () => {
             setAdHocLog(prev => ({ ...prev, rate: '' }));
         }
     }, [selectedSubcontractor]);
-
 
     const handleGenerateLedger = async () => {
         if (!selectedSubcontractor || !startDate || !endDate) return;
@@ -66,7 +64,6 @@ const SubcontractorLedger = () => {
         const endDateTime = new Date(endDate);
         endDateTime.setHours(23, 59, 59, 999);
 
-        // 1. Calculate Piece-Work Pay
         const completedJobs = allJobs.filter(job =>
             job.employeeId === selectedSubcontractor.id &&
             job.status === 'Complete' &&
@@ -85,15 +82,13 @@ const SubcontractorLedger = () => {
             }
             pieceWorkPay += lineTotal;
             return { ...job, product, lineTotal };
-        }).filter(j => j.lineTotal > 0); // Only include jobs that contribute to piece-work pay
+        }).filter(j => j.lineTotal > 0);
 
-        // 2. Fetch Ad-hoc Logs
         const adHocQuery = query(collection(db, 'subcontractorAdHocLogs'), where('subcontractorId', '==', selectedSubcontractorId), where('date', '>=', startDate), where('date', '<=', endDate));
         const adHocSnapshot = await getDocs(adHocQuery);
         const adHocLogs = adHocSnapshot.docs.map(d => d.data());
         const adHocPay = adHocLogs.reduce((sum, log) => sum + (Number(log.hours) * Number(log.rate)), 0);
 
-        // 3. Fetch Team Logs
         const teamLogQuery = query(collection(db, 'subcontractorTeamLogs'), where('subcontractorId', '==', selectedSubcontractorId), where('date', '>=', startDate), where('date', '<=', endDate));
         const teamLogSnapshot = await getDocs(teamLogQuery);
         const teamLogs = teamLogSnapshot.docs.map(d => d.data());
@@ -105,20 +100,22 @@ const SubcontractorLedger = () => {
 
     const handleAddAdHocLog = async () => {
         if (!adHocLog.date || !adHocLog.description || !adHocLog.hours || !adHocLog.rate) {
-            return alert("Please fill all fields for the ad-hoc log, including the rate.");
+            return toast.error("Please fill all fields for the ad-hoc log, including the rate."); // --- REPLACE ALERT ---
         }
         await addSubcontractorAdHocLog({ ...adHocLog, subcontractorId: selectedSubcontractorId, subcontractorName: selectedSubcontractor.name });
+        toast.success("Ad-hoc log added."); // Add success feedback
         setAdHocLog({ date: '', description: '', hours: '', rate: selectedSubcontractor?.paymentModel === 'per_hour' ? selectedSubcontractor.rate : '' });
-        handleGenerateLedger();
+        handleGenerateLedger(); // Refresh the ledger
     };
 
     const handleAddTeamLog = async () => {
         if (!teamLog.date || !teamLog.name || !teamLog.hours || !teamLog.rate) {
-            return alert("Please fill all fields for the team member log.");
+            return toast.error("Please fill all fields for the team member log."); // --- REPLACE ALERT ---
         }
         await addSubcontractorTeamLog({ ...teamLog, subcontractorId: selectedSubcontractorId, subcontractorName: selectedSubcontractor.name });
+        toast.success("Team log added."); // Add success feedback
         setTeamLog({ date: '', name: '', hours: '', rate: '' });
-        handleGenerateLedger();
+        handleGenerateLedger(); // Refresh the ledger
     };
 
     return (

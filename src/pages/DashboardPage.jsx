@@ -1,18 +1,20 @@
+// src/pages/DashboardPage.jsx (Upgraded with Throughput Graph)
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getAllInventoryItems, getProducts, getEmployees, collection, getDocs, listenToSystemStatus } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import moment from 'moment'; // Import moment for date handling
 
-// Import all the intelligence widgets with explicit .jsx extension and absolute paths
+// Import all the intelligence widgets
 import YearToDateComparison from '/src/components/intelligence/YearToDateComparison.jsx';
 import MonthlySalesTrend from '/src/components/intelligence/MonthlySalesTrend.jsx';
 import MultiYearSalesGraph from '/src/components/intelligence/MultiYearSalesGraph.jsx';
 import TopReworkCausesWidget from '/src/components/intelligence/TopReworkCausesWidget.jsx';
 import CapacityGauge from '/src/components/intelligence/CapacityGauge.jsx';
 import BottleneckWidget from '/src/components/intelligence/BottleneckWidget.jsx';
+import WorkshopThroughputGraph from '/src/components/intelligence/WorkshopThroughputGraph.jsx'; // --- IMPORT NEW COMPONENT ---
 
-// A small component for the KPI cards in the header
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
         <div className={`p-3 rounded-full ${color}`}>
@@ -27,18 +29,16 @@ const KpiCard = ({ icon, title, value, color }) => (
 
 
 const DashboardPage = () => {
-    // State for all raw data
     const [jobs, setJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
-    const [systemStatus, setSystemStatus] = useState(null); // <-- NEW: State for bottleneck data
+    const [systemStatus, setSystemStatus] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         setLoading(true);
         const fetchData = async () => {
             try {
-                // Fetch static data once
                 const [employeeItems, historicalSalesSnapshot] = await Promise.all([
                     getEmployees(), 
                     getDocs(collection(db, 'historicalSales'))
@@ -46,13 +46,11 @@ const DashboardPage = () => {
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
 
-                // Set up real-time listeners
                 const unsubscribeJobs = listenToJobCards(setJobs);
-                const unsubscribeStatus = listenToSystemStatus(setSystemStatus); // <-- NEW: Listen to system status
+                const unsubscribeStatus = listenToSystemStatus(setSystemStatus);
                 
                 setLoading(false); 
                 
-                // Return a cleanup function to unsubscribe from all listeners
                 return () => {
                     unsubscribeJobs();
                     unsubscribeStatus();
@@ -65,7 +63,6 @@ const DashboardPage = () => {
         }
         
         const unsubscribePromise = fetchData();
-        // This is the correct way to handle cleanup for async effects
         return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
     }, []);
 
@@ -135,11 +132,28 @@ const DashboardPage = () => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5);
 
+        // --- NEW: Workshop Throughput Calculation ---
+        const completedJobs = jobs.filter(j => j.status === 'Complete' && j.completedAt);
+        const weeklyBuckets = {};
+        for (let i = 0; i < 8; i++) {
+            const weekStart = moment().subtract(i, 'weeks').startOf('isoWeek').format('MMM D');
+            weeklyBuckets[weekStart] = { name: weekStart, jobs: 0 };
+        }
+        completedJobs.forEach(job => {
+            const completionWeekStart = moment(job.completedAt.toDate()).startOf('isoWeek').format('MMM D');
+            if (weeklyBuckets[completionWeekStart]) {
+                weeklyBuckets[completionWeekStart].jobs += (job.quantity || 1);
+            }
+        });
+        const jobCompletionData = Object.values(weeklyBuckets).reverse();
+        // --- END OF NEW LOGIC ---
+
         return {
             monthlyPercentageChange, ytdPercentageChange, multiYearSalesData, uniqueYears,
             capacityUtilization, topReworkCauses, reworkRate: reworkRate.toFixed(1),
             activeJobs: jobs.filter(j => ['In Progress', 'Halted - Issue'].includes(j.status)).length,
             jobsInQc: jobs.filter(j => j.status === 'Awaiting QC').length,
+            jobCompletionData, // Add new data to the returned object
         };
     }, [jobs, employees, historicalSales, loading]);
 
@@ -151,8 +165,7 @@ const DashboardPage = () => {
         <div className="space-y-8">
             <h2 className="text-3xl font-bold text-white">Mission Control</h2>
 
-            {/* KPI Header */}
-             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <KpiCard icon={<HeartPulse size={24} />} title="Company Health" value={`${(100 - parseFloat(dashboardData.reworkRate)).toFixed(0)} / 100`} color="bg-red-500/20 text-red-400" />
                 <KpiCard icon={<HardHat size={24} />} title="Active Jobs" value={dashboardData.activeJobs} color="bg-blue-500/20 text-blue-400" />
                 <KpiCard icon={<CheckCircle2 size={24} />} title="Jobs in QC" value={dashboardData.jobsInQc} color="bg-purple-500/20 text-purple-400" />
@@ -173,9 +186,9 @@ const DashboardPage = () => {
             </div>
             
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* NEW: Bottleneck Widget added to the dashboard */}
+                {/* --- RENDER NEW COMPONENT HERE --- */}
+                <WorkshopThroughputGraph jobCompletionData={dashboardData.jobCompletionData} />
                 <BottleneckWidget bottleneck={systemStatus} />
-                <CapacityGauge utilization={dashboardData.capacityUtilization} />
                 <TopReworkCausesWidget data={dashboardData.topReworkCauses} />
             </div>
         </div>

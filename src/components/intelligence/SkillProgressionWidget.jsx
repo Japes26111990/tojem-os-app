@@ -1,8 +1,9 @@
-// src/components/intelligence/SkillProgressionWidget.jsx
+// src/components/intelligence/SkillProgressionWidget.jsx (Upgraded with Toasts)
 import React, { useState, useEffect } from 'react';
 import { getSkillHistoryForEmployee, getSkills, deleteDocument } from '../../api/firestore';
 import Button from '../ui/Button';
 import { Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
 const SkillProgressionWidget = ({ employeeId }) => {
     const [skillHistory, setSkillHistory] = useState([]);
@@ -38,6 +39,7 @@ const SkillProgressionWidget = ({ employeeId }) => {
             }
         } catch (error) {
             console.error("Error fetching skill progression data:", error);
+            toast.error("Could not load skill history.");
         }
         setLoading(false);
     };
@@ -47,14 +49,28 @@ const SkillProgressionWidget = ({ employeeId }) => {
     }, [employeeId]);
 
     const handleDeleteHistory = async (recordId) => {
-        if (window.confirm("Are you sure you want to permanently delete this history record?")) {
-            try {
-                await deleteDocument('skillHistory', recordId);
-                setSkillHistory(prev => prev.filter(record => record.id !== recordId));
-            } catch (error) {
-                console.error("Error deleting history record:", error);
-            }
-        }
+        // --- REPLACED window.confirm with toast confirmation ---
+        toast((t) => (
+            <span>
+                Delete this history record?
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    toast.dismiss(t.id);
+                    try {
+                        await deleteDocument('skillHistory', recordId);
+                        setSkillHistory(prev => prev.filter(record => record.id !== recordId));
+                        toast.success("Record deleted.");
+                    } catch (error) {
+                        console.error("Error deleting history record:", error);
+                        toast.error("Failed to delete record.");
+                    }
+                }}>
+                    Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
     };
 
     const filteredHistory = skillHistory.filter(record => record.skillId === selectedSkillId);

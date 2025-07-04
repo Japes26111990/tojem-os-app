@@ -1,13 +1,12 @@
-// src/pages/QcPage.jsx (Upgraded with Toast Notifications)
+// src/pages/QcPage.jsx (Upgraded with Toasts & Rejection Modal)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { X } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- 1. IMPORT toast
+import toast from 'react-hot-toast';
 
-// The RejectionModal component remains the same internally but will now be called by functions using toast.
 const RejectionModal = ({ job, reasons, onReject, onClose }) => {
     const [rejectionReasonId, setRejectionReasonId] = useState('');
     const [notes, setNotes] = useState('');
@@ -97,7 +96,7 @@ const QcPage = () => {
   const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [rejectionReasons, setRejectionReasons] = useState([]);
-  const [jobToReject, setJobToReject] = useState(null);
+  const [jobToReject, setJobToReject] = useState(null); // State to control the modal
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -107,7 +106,7 @@ const QcPage = () => {
     fetchReasons();
 
     const unsubscribe = listenToJobCards((fetchedJobs) => {
-      setAllJobs(fetchedJobs);
+       setAllJobs(fetchedJobs);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -118,25 +117,30 @@ const QcPage = () => {
   }, [allJobs]);
 
   const handleApprove = async (job) => {
-    if (window.confirm(`Are you sure you want to approve this job? This will deduct used items from stock.`)) {
-      try {
-        await processQcDecision(job, true);
-        toast.success('Job approved and stock updated!'); // --- 2. REPLACE alert
-      } catch (err) {
-        toast.error('Failed to process approval.'); // --- 2. REPLACE alert
-        console.error(err);
-      }
-    }
+    // We use toast.promise to give the user immediate feedback
+    const promise = processQcDecision(job, true);
+
+    toast.promise(promise, {
+        loading: `Approving job ${job.jobId}...`,
+        success: 'Job approved and stock updated!',
+        error: 'Failed to process approval.'
+    });
   };
 
   const handleReject = async (job, options) => {
+    const promise = processQcDecision(job, false, options);
+    
+    toast.promise(promise, {
+        loading: 'Processing rejection...',
+        success: 'Job rejection processed successfully.',
+        error: 'Failed to process rejection.'
+    });
+
     try {
-      await processQcDecision(job, false, options);
-      toast.success('Job rejection processed successfully.'); // --- 2. REPLACE alert
-      setJobToReject(null);
+        await promise;
+        setJobToReject(null); // Close the modal on success
     } catch (err) {
-      toast.error('Failed to process rejection.'); // --- 2. REPLACE alert
-      console.error(err);
+        console.error(err); // The error is already shown by the toast
     }
   };
 
@@ -151,7 +155,7 @@ const QcPage = () => {
                     <table className="w-full text-left">
                        <thead>
                             <tr className="border-b border-gray-600">
-                                <th className="p-3 text-sm font-semibold text-gray-400">Job ID</th>
+                                 <th className="p-3 text-sm font-semibold text-gray-400">Job ID</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Part</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>
@@ -159,17 +163,17 @@ const QcPage = () => {
                         </thead>
                         <tbody>
                             {(qcJobs || []).map(job => (
-                                <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                 <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
                                     <td className="p-3 text-gray-300">{job.partName}</td>
-                                    <td className="p-3 text-gray-300">{job.employeeName}</td>
+                                     <td className="p-3 text-gray-300">{job.employeeName}</td>
                                     <td className="p-3 flex space-x-2">
                                         <Button onClick={() => handleApprove(job)} variant="primary" className="bg-green-600 hover:bg-green-700 py-1 px-3 text-sm">Approve</Button>
-                                        <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
+                                         <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
                                     </td>
                                 </tr>
                             ))}
-                        </tbody>
+                         </tbody>
                     </table>
                     {qcJobs.length === 0 && !loading && <p className="text-center p-8 text-gray-400">The QC queue is empty.</p>}
                 </div>
@@ -177,7 +181,7 @@ const QcPage = () => {
         </div>
         
         {jobToReject && (
-            <RejectionModal 
+             <RejectionModal 
                 job={jobToReject}
                 reasons={rejectionReasons}
                 onClose={() => setJobToReject(null)}

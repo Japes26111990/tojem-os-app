@@ -1,4 +1,4 @@
-// src/components/features/tracking/JobDetailsModal.jsx (Corrected Cost Calculation)
+// src/components/features/tracking/JobDetailsModal.jsx (Upgraded for Burdened Cost)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../../ui/Button';
@@ -19,7 +19,7 @@ const DetailRow = ({ label, value, className = 'text-gray-300' }) => (
     </div>
 );
 
-const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEmployees, onUpdateJob, onDeleteJob, allInventoryItems, allTools, allToolAccessories }) => {
+const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, overheadCostPerHour, allEmployees, onUpdateJob, onDeleteJob, allInventoryItems, allTools, allToolAccessories }) => {
     const { user } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [editableJobData, setEditableJobData] = useState(() => ({
@@ -66,52 +66,45 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
         return `${Math.round((estimatedMinutes / actualMinutes) * 100)}%`;
     };
 
-    // --- UPDATED: Comprehensive Live Cost Calculation ---
-    const calculateLiveTotalCost = (j, cTime, rates) => {
-        // If the job is complete, use the final stored cost for perfect accuracy.
+    const calculateLiveTotalCost = (j, cTime, rates, overheadRate) => {
         if (typeof j.totalCost === 'number' && j.totalCost !== null) {
-            return `R${j.totalCost.toFixed(2)}`;
+            return `R ${j.totalCost.toFixed(2)}`;
         }
 
-        // --- Live Material Cost Calculation ---
         const materialCost = (j.processedConsumables || []).reduce((sum, consumable) => {
-            const price = consumable.price || 0;
-            const quantity = consumable.quantity || 0;
-            return sum + (price * quantity);
+            return sum + ((consumable.price || 0) * (consumable.quantity || 0));
         }, 0);
 
-        // --- Live Labor Cost Calculation ---
         let laborCost = 0;
-        if (j.employeeId && rates[j.employeeId]) {
-            const hourlyRate = rates[j.employeeId];
+        if (j.employeeId && rates[j.employeeId] !== undefined) {
+            const directRate = rates[j.employeeId];
+            const burdenedRate = directRate + overheadRate;
             const durationResult = calculateJobDuration(j, cTime);
             if (durationResult) {
-                laborCost = (durationResult.totalMinutes / 60) * hourlyRate;
+                laborCost = (durationResult.totalMinutes / 60) * burdenedRate;
             }
         }
         
-        // --- Live Machine Cost Calculation (based on estimated recipe times) ---
         const machineCost = (j.tools || []).reduce((sum, tool) => {
             const toolDetails = allTools.find(t => t.id === tool.id);
-            const hourlyRate = toolDetails?.hourlyRate || 0;
-            // This is an estimation as we don't track live step times.
-            // A more advanced implementation could track this.
-            // For now, we assume machine time equals labor time for a rough estimate.
-            const durationResult = calculateJobDuration(j, cTime);
-            if (durationResult && hourlyRate > 0) {
-                 const activeHours = durationResult.totalMinutes / 60;
-                 return sum + (activeHours * hourlyRate);
+            if (toolDetails && toolDetails.hourlyRate > 0) {
+                const durationResult = calculateJobDuration(j, cTime);
+                if (durationResult) {
+                    const activeHours = durationResult.totalMinutes / 60;
+                    return sum + (activeHours * toolDetails.hourlyRate);
+                }
             }
             return sum;
         }, 0);
 
         const totalLiveCost = materialCost + laborCost + machineCost;
-        return `R${totalLiveCost.toFixed(2)}`;
+        return `R ${totalLiveCost.toFixed(2)}`;
     };
 
     const liveDurationFormatted = calculateJobDuration(job, currentTime)?.text || 'N/A';
     const liveEfficiencyFormatted = formatEfficiency(job, currentTime);
-    const liveTotalCostFormatted = calculateLiveTotalCost(job, currentTime, employeeHourlyRates);
+    const liveTotalCostFormatted = calculateLiveTotalCost(job, currentTime, employeeHourlyRates, overheadCostPerHour);
+
     const isJobActive = ['In Progress', 'Awaiting QC'].includes(job.status);
     const canEdit = !isJobActive && ['Pending', 'Paused', 'Complete', 'Issue', 'Archived - Issue'].includes(job.status);
     const canDelete = !isJobActive && ['Pending', 'Paused', 'Complete', 'Issue', 'Archived - Issue'].includes(job.status);
@@ -183,7 +176,7 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                 }}>
                     Delete
                 </Button>
-                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                 <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
                     Cancel
                 </Button>
             </span>
@@ -194,17 +187,17 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
         toast((t) => (
             <span>
                 Give kudos for this job?
-                <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
+                 <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
                      try {
                         await giveKudosToJob(job.id);
                         toast.success("Kudos given!");
                         onClose();
-                    } catch (error) {
+                     } catch (error) {
                         console.error("Failed to give kudos:", error);
                         toast.error("Could not give kudos at this time.");
                     }
                     toast.dismiss(t.id);
-                }}>
+                 }}>
                     Confirm
                 </Button>
                  <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
@@ -224,53 +217,53 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                             {job.kudos && <Award className="text-yellow-400" title="Kudos awarded for this job!" />}
                         </h2>
                         <p className="text-xs font-mono text-gray-500">{job.jobId}</p>
-                    </div>
+                     </div>
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-6">
                     {isEditing ? (
                         <div className="space-y-4">
-                            <Input label="Part Name" name="partName" value={editableJobData.partName} onChange={handleInputChange} />
+                             <Input label="Part Name" name="partName" value={editableJobData.partName} onChange={handleInputChange} />
                             <Dropdown label="Assigned Employee" name="employeeId" value={editableJobData.employeeId} onChange={handleEmployeeChange} options={employeesInDepartment} placeholder="Select Employee..."/>
                             <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={editableJobData.estimatedTime} onChange={handleInputChange}/>
                             <Textarea label="Description" name="description" value={editableJobData.description} onChange={handleInputChange} rows={3} />
                             <Textarea label="Steps (one per line)" name="steps" value={editableJobData.steps} onChange={handleInputChange} rows={5} />
                             <div>
                                 <h5 className="font-semibold text-white mb-2">Required Tools & Accessories</h5>
-                                <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
+                                 <div className="max-h-40 overflow-y-auto space-y-2 p-3 bg-gray-800 rounded-lg">
                                     {(allTools || []).map(tool => (
                                         <div key={tool.id}>
-                                            <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200">
+                                             <label className="flex items-center space-x-2 text-sm font-semibold text-gray-200">
                                                 <input type="checkbox" checked={editableJobData.selectedTools.has(tool.id)} onChange={() => handleToolToggle(tool.id)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
-                                                <span>{tool.name}</span>
+                                                 <span>{tool.name}</span>
                                             </label>
                                             {editableJobData.selectedTools.has(tool.id) && (
-                                                <div className="pl-6 mt-1 space-y-1 text-xs border-l-2 border-gray-700">
+                                                 <div className="pl-6 mt-1 space-y-1 text-xs border-l-2 border-gray-700">
                                                     {(allToolAccessories.filter(acc => acc.toolId === tool.id)).map(accessory => (
-                                                        <label key={accessory.id} className="flex items-center space-x-2 text-xs text-gray-300">
+                                                         <label key={accessory.id} className="flex items-center space-x-2 text-xs text-gray-300">
                                                             <input type="checkbox" checked={editableJobData.selectedAccessories.has(accessory.id)} onChange={() => handleAccessoryToggle(accessory.id)} className="h-3 w-3 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
-                                                            <span>{accessory.name}</span>
+                                                              <span>{accessory.name}</span>
                                                         </label>
-                                                    ))}
+                                                     ))}
                                                 </div>
                                             )}
-                                        </div>
+                                         </div>
                                     ))}
                                 </div>
                             </div>
-                            
+                         
                             <ConsumableEditor
                                 allConsumables={allInventoryItems}
                                 selectedConsumables={editableJobData.selectedConsumables}
-                                onAdd={handleAddConsumableToList}
+                                 onAdd={handleAddConsumableToList}
                                 onRemove={handleRemoveConsumableFromList}
                             />
 
                             <div className="flex justify-end gap-3 mt-4 pt-4 border-t border-gray-700">
-                                <Button onClick={() => setIsEditing(false)} variant="secondary"><XCircle size={18} className="mr-2"/> Cancel</Button>
+                                 <Button onClick={() => setIsEditing(false)} variant="secondary"><XCircle size={18} className="mr-2"/> Cancel</Button>
                                 {!job.isCustomJob && (
                                     <Button onClick={handleUpdateRecipe} variant="primary" className="bg-purple-600 hover:bg-purple-700">
-                                        <RefreshCw size={18} className="mr-2"/> Update Standard Recipe
+                                         <RefreshCw size={18} className="mr-2"/> Update Standard Recipe
                                     </Button>
                                 )}
                                 <Button onClick={handleSave} variant="primary"><Save size={18} className="mr-2"/> Save Changes to this Job</Button>
@@ -278,62 +271,62 @@ const JobDetailsModal = ({ job, onClose, currentTime, employeeHourlyRates, allEm
                         </div>
                     ) : (
                         <>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
                                 <DetailRow label="Employee" value={job.employeeName} />
                                 <DetailRow label="Status" value={job.status} />
                                 <DetailRow label="Created On" value={formatDate(job.createdAt)} />
-                                <DetailRow label="Started On" value={formatDate(job.startedAt)} />
+                                 <DetailRow label="Started On" value={formatDate(job.startedAt)} />
                                 <DetailRow label="Completed On" value={formatDate(job.completedAt)} />
                                 {job.status === 'Paused' && job.pausedAt && (<DetailRow label="Paused At" value={formatDate(job.pausedAt)} />)}
-                                {job.status === 'Issue' && <DetailRow label="Issue Reason" value={job.issueReason || 'N/A'} className="text-red-400 font-semibold" />}
+                                 {job.status === 'Issue' && <DetailRow label="Issue Reason" value={job.issueReason || 'N/A'} className="text-red-400 font-semibold" />}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
-                                    <Clock size={20} className="mx-auto mb-2 text-blue-400" />
+                                     <Clock size={20} className="mx-auto mb-2 text-blue-400" />
                                     <p className="text-xs text-gray-400">Est. Time</p>
                                     <p className="font-bold">{job.estimatedTime || 'N/A'} min</p>
-                                </div>
+                                 </div>
                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
                                     <CheckCircle2 size={20} className="mx-auto mb-2 text-green-400" />
-                                    <p className="text-xs text-gray-400">Actual Time</p>
+                                     <p className="text-xs text-gray-400">Actual Time</p>
                                     <p className="font-bold">{liveDurationFormatted}</p>
                                 </div>
                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
-                                    <Zap size={20} className="mx-auto mb-2 text-purple-400" />
+                                     <Zap size={20} className="mx-auto mb-2 text-purple-400" />
                                     <p className="text-xs text-gray-400">Efficiency</p>
                                     <p className="font-bold">{liveEfficiencyFormatted}</p>
-                                </div>
+                                 </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
-                                    <p className="text-xs text-gray-400">Material Cost</p>
-                                    <p className="font-bold font-mono">R{job.materialCost?.toFixed(2) || '0.00'}</p>
+                                     <p className="text-xs text-gray-400">Material Cost</p>
+                                    <p className="font-bold font-mono">R {job.materialCost?.toFixed(2) || '0.00'}</p>
                                 </div>
-                                <div className="bg-gray-900/50 p-4 rounded-lg text-center">
+                                 <div className="bg-gray-900/50 p-4 rounded-lg text-center">
                                     <p className="text-xs text-gray-400">Labor Cost</p>
-                                    <p className="font-bold font-mono">R{job.laborCost?.toFixed(2) || '0.00'}</p>
+                                    <p className="font-bold font-mono">R {job.laborCost?.toFixed(2) || '0.00'}</p>
                                 </div>
-                                <div className="bg-gray-900/50 p-4 rounded-lg text-center">
+                                     <div className="bg-gray-900/50 p-4 rounded-lg text-center">
                                     <DollarSign size={20} className="mx-auto mb-2 text-yellow-400" />
                                     <p className="text-xs text-gray-400">Total Job Cost</p>
-                                    <p className="font-bold font-mono">{liveTotalCostFormatted}</p>
+                                     <p className="font-bold font-mono">{liveTotalCostFormatted}</p>
                                 </div>
                             </div>
                             <div>
-                                <h4 className="font-semibold text-gray-200 mb-2">Consumables Used</h4>
+                                 <h4 className="font-semibold text-gray-200 mb-2">Consumables Used</h4>
                                 <ul className="text-sm text-gray-400 list-disc list-inside bg-gray-900/50 p-4 rounded-lg">
-                                     {processedConsumablesForDisplay?.length > 0 ? processedConsumablesForDisplay.map((c, i) => (<li key={i}>{c.name} (Qty: {c.quantity?.toFixed(3) || 'N/A'} {c.unit || ''}) (R{c.price?.toFixed(2) || '0.00'})</li>)) : <li>None</li>}
+                                     {processedConsumablesForDisplay?.length > 0 ? processedConsumablesForDisplay.map((c, i) => (<li key={i}>{c.name} (Qty: {c.quantity?.toFixed(3) || 'N/A'} {c.unit || ''}) (R {c.price?.toFixed(2) || '0.00'})</li>)) : <li>None</li>}
                                  </ul>
                             </div>
                             <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-700">
                                 {user?.role === 'Manager' && job.status === 'Complete' && !job.kudos && (
                                     <Button onClick={handleGiveKudos} variant="primary" className="bg-yellow-600 hover:bg-yellow-700">
                                         <Award size={18} className="mr-2"/> Give Kudos
-                                    </Button>
+                                     </Button>
                                 )}
                                 {canEdit && (<Button onClick={() => setIsEditing(true)} variant="secondary"><Edit size={18} className="mr-2"/> Edit Job</Button>)}
                                 {canDelete && (<Button onClick={handleDelete} variant="danger"><Trash2 size={18} className="mr-2"/> Delete Job</Button>)}
-                            </div>
+                             </div>
                         </>
                     )}
                 </div>

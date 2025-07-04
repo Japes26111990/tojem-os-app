@@ -2,13 +2,13 @@
 
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Star } from 'lucide-react';
+import { Star, AlertTriangle } from 'lucide-react'; // Import AlertTriangle
 
 const SortButton = ({ label, active, onClick }) => (
     <button
         onClick={onClick}
         className={`px-4 py-2 text-sm font-semibold rounded-md transition-colors flex items-center gap-2 ${
-            active
+             active
                 ? 'bg-blue-600 text-white shadow-md'
                 : 'bg-gray-700/50 text-gray-300 hover:bg-gray-600'
         }`}
@@ -55,7 +55,7 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
     return (
         <div>
             <div className="flex flex-wrap gap-2 mb-4">
-                <SortButton label={<><Star size={16}/> Rank by OPS</>} active={activeSortKey === 'ops'} onClick={() => setActiveSortKey('ops')} />
+                 <SortButton label={<><Star size={16}/> Rank by OPS</>} active={activeSortKey === 'ops'} onClick={() => setActiveSortKey('ops')} />
                 <SortButton label="Rank by Net Value" active={activeSortKey === 'netValueAdded'} onClick={() => setActiveSortKey('netValueAdded')} />
                 <SortButton label="Rank by Efficiency" active={activeSortKey === 'avgEfficiency'} onClick={() => setActiveSortKey('avgEfficiency')} />
                 <SortButton label="Rank by Quality" active={activeSortKey === 'reworkRate'} onClick={() => setActiveSortKey('reworkRate')} />
@@ -71,25 +71,30 @@ const PerformanceLeaderboard = ({ employees, activeSortKey, setActiveSortKey }) 
 
                     return (
                         <div key={emp.id} className={`flex items-center p-3 rounded-lg border-l-4 transition-all ${rankColor}`}>
-                            <span className="font-bold text-lg text-white w-8">{rank}.</span>
+                             <span className="font-bold text-lg text-white w-8">{rank}.</span>
                             <div className="flex-grow">
-                                <Link to={`/employee/${emp.id}`} className="font-semibold text-blue-400 hover:underline">
-                                    {emp.name}
-                                </Link>
+                                <div className="flex items-center gap-2">
+                                    <Link to={`/employee/${emp.id}`} className="font-semibold text-blue-400 hover:underline">
+                                        {emp.name}
+                                    </Link>
+                                    {/* ** NEW: Kudos and Rework Icons ** */}
+                                    {emp.kudosCount > 0 && <Star size={14} className="text-yellow-400" title={`${emp.kudosCount} Kudos Received`} />}
+                                    {emp.reworkCount > 0 && <AlertTriangle size={14} className="text-red-400" title={`${emp.reworkCount} Reworks`} />}
+                                </div>
                                 <p className="text-xs text-gray-400">Department: {emp.departmentName || 'N/A'}</p>
                             </div>
-                            <div className="text-right">
+                             <div className="text-right">
                                 <p className="font-bold text-lg text-blue-400">{formatValue(value, unit)}</p>
                                 <p className="text-xs text-gray-500">{sortConfig[activeSortKey]?.label}</p>
                             </div>
-                        </div>
+                         </div>
                     );
                 })}
                  {sortedEmployees.length === 0 && (
                     <div className="text-center py-10 text-gray-500">
                         No employee data to display for the selected filter.
                     </div>
-                )}
+                 )}
             </div>
         </div>
     );

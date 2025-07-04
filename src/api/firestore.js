@@ -1,3 +1,5 @@
+// src/api/firestore.js (MERGED)
+
 import {
     collection,
     getDocs,
@@ -20,7 +22,7 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
-// --- NEW: Update a standard recipe from a completed job's data ---
+// --- Update a standard recipe from a completed job's data ---
 export const updateStandardRecipe = async (jobData) => {
     if (!jobData.partId || !jobData.departmentId) {
         throw new Error("Cannot update recipe without a valid Part ID and Department ID.");
@@ -41,7 +43,7 @@ export const updateStandardRecipe = async (jobData) => {
 };
 
 
-// --- NEW: Update the priority field for multiple jobs ---
+// --- Update the priority field for multiple jobs ---
 export const updateJobPriorities = async (orderedJobs) => {
     const batch = writeBatch(db);
     orderedJobs.forEach((job, index) => {
@@ -51,22 +53,29 @@ export const updateJobPriorities = async (orderedJobs) => {
     return batch.commit();
 };
 
-// --- NEW: Find an inventory item by its unique item code ---
+// --- Find an inventory item by its unique item code ---
 export const findInventoryItemByItemCode = async (itemCode) => {
     if (!itemCode) throw new Error("Item code is required.");
-    const collectionsToSearch = ['components', 'rawMaterials', 'workshopSupplies'];
+    const collectionsToSearch = ['components', 'rawMaterials', 'workshopSupplies', 'products'];
     for (const collectionName of collectionsToSearch) {
         const q = query(collection(db, collectionName), where("itemCode", "==", itemCode));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
             const itemDoc = querySnapshot.docs[0];
-            return { id: itemDoc.id, category: collectionName, ...itemDoc.data() };
+            const categoryMap = {
+                components: 'Component',
+                rawMaterials: 'Raw Material',
+                workshopSupplies: 'Workshop Supply',
+                products: 'Product'
+            };
+            return { id: itemDoc.id, category: categoryMap[collectionName], ...itemDoc.data() };
         }
     }
     throw new Error(`No inventory item found with code: ${itemCode}`);
 };
 
-// --- NEW: Update stock level based on a weight measurement ---
+
+// --- Update stock level based on a weight measurement ---
 export const updateStockByWeight = async (itemId, category, grossWeight) => {
     if (!itemId || !category || isNaN(parseFloat(grossWeight))) {
         throw new Error("Item ID, category, and a valid gross weight are required.");
@@ -327,13 +336,14 @@ export const deleteRawMaterial = async (materialId) => {
 
 // --- MASTER INVENTORY API ---
 export const getAllInventoryItems = async () => {
-    const [components, rawMaterials, workshopSupplies] = await Promise.all([
-        getComponents(), getRawMaterials(), getWorkshopSupplies()
+    const [components, rawMaterials, workshopSupplies, products] = await Promise.all([
+        getComponents(), getRawMaterials(), getWorkshopSupplies(), getProducts()
     ]);
     return [
         ...components.map(item => ({ ...item, category: 'Component' })),
         ...rawMaterials.map(item => ({ ...item, category: 'Raw Material' })),
         ...workshopSupplies.map(item => ({ ...item, category: 'Workshop Supply' })),
+        ...products.map(item => ({ ...item, category: 'Product' })),
     ];
 };
 
@@ -499,7 +509,7 @@ export const updateJobStatus = async (docId, newStatus, options = {}) => {
         dataToUpdate.haltedAt = serverTimestamp();
         dataToUpdate.issueLog = [
             ...(currentData.issueLog || []),
-            { reason: haltReason, timestamp: serverTimestamp(), user: 'SYSTEM' } 
+            { reason: haltReason, timestamp: serverTimestamp(), user: 'SYSTEM' }
         ];
     }
 
@@ -515,7 +525,7 @@ export const updateJobStatus = async (docId, newStatus, options = {}) => {
     const batch = writeBatch(db);
     batch.update(jobDocRef, dataToUpdate);
     batch.set(scanEventRef, scanEventData);
-    
+
     if (newStatus === 'Halted - Issue') {
         const notificationRef = doc(collection(db, 'notifications'));
         const notificationData = {
@@ -528,29 +538,34 @@ export const updateJobStatus = async (docId, newStatus, options = {}) => {
         };
         batch.set(notificationRef, notificationData);
     }
-    
+
     return batch.commit();
 };
 
 export const processQcDecision = async (job, isApproved, options = {}) => {
-    const { 
-        rejectionReason = '', 
-        preventStockDeduction = false, 
-        reworkDetails = null 
+    const {
+        rejectionReason = '',
+        preventStockDeduction = false,
+        reworkDetails = null
     } = options;
 
     const allTools = await getTools();
     const toolsMap = new Map(allTools.map(t => [t.id, t]));
-    
+
     return runTransaction(db, async (transaction) => {
         const jobRef = doc(db, 'createdJobCards', job.id);
         const jobDoc = await transaction.get(jobRef);
         if (!jobDoc.exists()) throw "Job document does not exist!";
-        
+
         const allInventory = await getAllInventoryItems();
         const inventoryMap = new Map(allInventory.map(item => [item.id, item]));
         const allEmployees = await getEmployees();
         const employeeMap = new Map(allEmployees.map(emp => [emp.id, emp]));
+
+        const overheads = await getOverheadCategories().then(cats => Promise.all(cats.map(cat => getOverheadExpenses(cat.id)))).then(res => res.flat());
+        const totalMonthlyOverheads = overheads.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+        const overheadCostPerHour = allEmployees.length > 0 ? totalMonthlyOverheads / (allEmployees.length * 173.2) : 0;
+
         const recipeId = `${job.partId || job.productId}_${job.departmentId}`;
         const recipeDocRef = doc(db, "jobStepDetails", recipeId);
         const recipeDoc = await transaction.get(recipeDocRef);
@@ -561,8 +576,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         if (isApproved) {
             dataToUpdate.status = 'Complete';
             if (!currentJobData.completedAt) dataToUpdate.completedAt = serverTimestamp();
-            
-            // --- UPDATED: Final Cost Calculation ---
+
             const materialCost = (currentJobData.processedConsumables || []).reduce((sum, con) => {
                 const price = con.price || 0;
                 return sum + (price * con.quantity);
@@ -571,20 +585,22 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
 
             let laborCost = 0;
             const employee = employeeMap.get(currentJobData.employeeId);
-            const hourlyRate = employee?.hourlyRate || 0;
-            if (currentJobData.startedAt && hourlyRate > 0) {
+            const directRate = employee?.hourlyRate || 0;
+            const burdenedRate = directRate + overheadCostPerHour;
+
+            if (currentJobData.startedAt && burdenedRate > 0) {
                 const completedAt = currentJobData.completedAt?.toDate() || new Date();
                 const startedAt = currentJobData.startedAt.toDate();
                 const pauseMs = currentJobData.totalPausedMilliseconds || 0;
                 const activeHours = (completedAt.getTime() - startedAt.getTime() - pauseMs) / 3600000;
-                laborCost = activeHours > 0 ? activeHours * hourlyRate : 0;
+                laborCost = activeHours > 0 ? activeHours * burdenedRate : 0;
             }
             dataToUpdate.laborCost = laborCost;
 
             let machineCost = 0;
             if (recipe && recipe.tools) {
                 const jobDurationHours = ((currentJobData.completedAt?.toDate() || new Date()).getTime() - currentJobData.startedAt.toDate().getTime() - (currentJobData.totalPausedMilliseconds || 0)) / 3600000;
-                
+
                 recipe.tools.forEach(toolId => {
                     const toolDetails = toolsMap.get(toolId);
                     if (toolDetails && toolDetails.hourlyRate > 0) {
@@ -594,6 +610,14 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
             }
             dataToUpdate.machineCost = machineCost;
             dataToUpdate.totalCost = materialCost + laborCost + machineCost;
+
+            if (job.partId) {
+                const productRef = doc(db, 'products', job.partId);
+                const productDoc = await transaction.get(productRef);
+                if (productDoc.exists()) {
+                    transaction.update(productRef, { currentStock: increment(job.quantity || 1) });
+                }
+            }
 
         } else {
             if (reworkDetails && reworkDetails.requeue) {
@@ -612,8 +636,13 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
             for (const consumable of currentJobData.processedConsumables) {
                 const inventoryItem = inventoryMap.get(consumable.id);
                 if (!inventoryItem) continue;
-                const collectionName = `${inventoryItem.category.replace(' ', '').charAt(0).toLowerCase()}${inventoryItem.category.replace(' ', '').slice(1)}s`;
-                if (['components', 'rawMaterials', 'workshopSupplies'].includes(collectionName)) {
+
+                let collectionName;
+                if(inventoryItem.category === "Component") collectionName = 'components';
+                else if(inventoryItem.category === "Raw Material") collectionName = 'rawMaterials';
+                else if(inventoryItem.category === "Workshop Supply") collectionName = 'workshopSupplies';
+
+                if (collectionName) {
                     const itemRef = doc(db, collectionName, consumable.id);
                     transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
                     const newStockLevel = Number(inventoryItem.currentStock) - consumable.quantity;
@@ -629,7 +658,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
                 }
             }
         }
-        
+
         transaction.update(jobRef, dataToUpdate);
     });
 };
@@ -665,9 +694,33 @@ export const addProduct = async (productData) => {
     const q = query(productsCollection, where("partNumber", "==", productData.partNumber));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) throw new Error(`A product with Part Number "${productData.partNumber}" already exists.`);
-    return addDoc(productsCollection, { ...productData, sellingPrice: Number(productData.sellingPrice) || 0, createdAt: serverTimestamp() });
+
+    const dataToSave = {
+        name: productData.name || '',
+        partNumber: productData.partNumber || '',
+        categoryId: productData.categoryId || '',
+        sellingPrice: Number(productData.sellingPrice) || 0,
+        weight: Number(productData.weight) || 0,
+        currentStock: Number(productData.currentStock) || 0,
+        reorderLevel: Number(productData.reorderLevel) || 0,
+        standardStockLevel: Number(productData.standardStockLevel) || 0,
+        countMethod: productData.countMethod || 'Quantity',
+        unitWeight: Number(productData.unitWeight) || 0,
+        tareWeight: Number(productData.tareWeight) || 0,
+        unit: productData.unit || 'Each',
+        manufacturer: productData.manufacturer || '',
+        make: productData.make || '',
+        model: productData.model || '',
+        createdAt: serverTimestamp()
+    };
+
+    return addDoc(productsCollection, dataToSave);
 };
-export const updateProduct = (productId, updatedData) => updateDoc(doc(db, 'products', productId), updatedData);
+
+export const updateProduct = (productId, updatedData) => {
+    const { id, ...dataToSave } = updatedData;
+    return updateDoc(doc(db, 'products', productId), dataToSave);
+};
 export const deleteProduct = async (productId) => {
     const batch = writeBatch(db);
     batch.delete(doc(db, 'products', productId));
@@ -702,12 +755,24 @@ export const getAllUsers = async () => {
     const snapshot = await getDocs(usersCollection);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
-export const updateUserRole = async (userId, newRole) => {
-    return setDoc(doc(db, 'users', userId), { role: newRole }, { merge: true });
+export const updateUserRole = async (userId, newRole, discountPercentage, companyName) => {
+    const dataToUpdate = { role: newRole };
+    if (discountPercentage !== undefined) {
+        dataToUpdate.discountPercentage = Number(discountPercentage) || 0;
+    }
+    if (companyName !== undefined) {
+        dataToUpdate.companyName = companyName;
+    }
+    return setDoc(doc(db, 'users', userId), dataToUpdate, { merge: true });
 };
-export const createUserWithRole = async (email, password, role) => {
+export const createUserWithRole = async (email, password, role, discountPercentage, companyName) => {
     const functionUrl = 'https://us-central1-tojem-os-production.cloudfunctions.net/createUserAndSetRole';
-    const response = await fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, role }) });
+    const body = { email, password, role, discountPercentage: Number(discountPercentage) || 0, companyName };
+    const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Failed to create user.');
     return data;
@@ -720,7 +785,7 @@ export const deleteUserWithRole = async (userId) => {
     return data;
 };
 
-// --- ROLES API (NEW) ---
+// --- ROLES API ---
 export const getRoles = async () => {
     const rolesCollection = collection(db, 'roles');
     const snapshot = await getDocs(rolesCollection);
@@ -890,7 +955,32 @@ export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newSta
     return updateDoc(orderRef, { lineItems: updatedLineItems });
 };
 
-// --- STOCK TAKE API (NEW) ---
+// --- STOCK TAKE API ---
+export const updateStockCount = async (itemId, category, newCount, sessionId) => {
+    let collectionName;
+    switch (category) {
+        case 'Component':
+            collectionName = 'components';
+            break;
+        case 'Raw Material':
+            collectionName = 'rawMaterials';
+            break;
+        case 'Workshop Supply':
+            collectionName = 'workshopSupplies';
+            break;
+        case 'Product':
+            collectionName = 'products';
+            break;
+        default:
+            throw new Error(`Unknown inventory category: ${category}`);
+    }
+    const itemRef = doc(db, collectionName, itemId);
+    return updateDoc(itemRef, {
+        currentStock: Number(newCount),
+        lastCountedInSessionId: sessionId
+    });
+};
+
 export const reconcileStockLevels = async (itemsToReconcile) => {
     const batch = writeBatch(db);
 
@@ -918,6 +1008,41 @@ export const reconcileStockLevels = async (itemsToReconcile) => {
     return batch.commit();
 };
 
+// --- CUSTOMER ORDER API ---
+export const submitCustomerOrder = (payload) => {
+    const submitOrderFn = httpsCallable(functions, 'submitCustomerOrder');
+    return submitOrderFn(payload);
+};
+
+// --- REWORK QUEUE API ---
+export const listenToReworkQueue = (callback) => {
+    const jobsRef = collection(db, 'createdJobCards');
+    const q = query(jobsRef, where('status', 'in', ['Issue', 'Halted - Issue']));
+    return onSnapshot(q, (snapshot) => {
+        const reworkJobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(reworkJobs);
+    });
+};
+export const resolveReworkJob = (jobDocId) => {
+    const jobRef = doc(db, 'createdJobCards', jobDocId);
+    return updateDoc(jobRef, {
+        status: 'Pending',
+        issueReason: 'Rework Resolved - Re-queued'
+    });
+};
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };
+// Add this new function to src/api/firestore.js
+
+export const listenToCustomerSalesOrders = (customerEmail, callback) => {
+    const q = query(
+        salesOrdersCollection,
+        where('customerEmail', '==', customerEmail),
+        orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(orders);
+    });
+};

@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- User and Role Management ---
+    match /users/{userId} {
+      // A user can GET their own document.
+      allow get: if request.auth.uid == userId;
+      
+      // A user can UPDATE their own document.
+      allow update: if request.auth.uid == userId;
+
+      // Any authenticated user can LIST all users (for the User Management page).
+      // This could be restricted to a 'Manager' role in the future for tighter security.
+      allow list: if request.auth != null;
+    }
+    
+    // Allow any authenticated user to read roles to determine permissions.
+    match /roles/{roleId} {
+      allow read: if request.auth != null;
+    }
+
+    // --- General Read Access for Authenticated Users ---
+    // Grant read access to data collections needed across the app for UI rendering.
+    match /{collectionName}/{docId} {
+      allow read: if request.auth != null &&
+        collectionName in [
+          'createdJobCards', 'jobStepDetails', 'departments', 'employees',
+          'skills', 'skillHistory', 'tools', 'toolAccessories', 'suppliers',
+          'supplierItemPricing', 'products', 'productCategories', 'productRecipeLinks',
+          'components', 'rawMaterials', 'workshopSupplies', 'reworkReasons',
+          'overheadsCategories', 'purchaseQueue', 'oneOffPurchases',
+          'quotes', 'salesOrders', 'notifications',
+          'marketingCampaigns', 'trainingResources', 'systemStatus',
+          'historicalSales', 'subcontractorAdHocLogs', 'subcontractorTeamLogs'
+        ];
+    }
+
+    // Allow read access to the 'expenses' sub-collection within overheads.
+    match /overheadsCategories/{categoryId}/expenses/{expenseId} {
+      allow read: if request.auth != null;
+    }
+
+    // --- General Write Rules (To be expanded later) ---
+    // This placeholder allows authenticated users to write to collections
+    // to keep the app's "add" and "update" features working.
+    match /{path=**} {
+        allow write: if request.auth != null;
+    }
+  }
+}

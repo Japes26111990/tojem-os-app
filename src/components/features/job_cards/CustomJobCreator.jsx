@@ -1,4 +1,4 @@
-// src/components/features/job_cards/CustomJobCreator.jsx (Upgraded with Smart Search)
+// src/components/features/job_cards/CustomJobCreator.jsx (FIXED: Printing logic)
 
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
@@ -13,17 +13,19 @@ import {
     getToolAccessories, 
     getAllInventoryItems, 
     getDepartmentSkills,
-    listenToJobCards // --- IMPORT listenToJobCards ---
+    listenToJobCards 
 } from '../../../api/firestore';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PrintConfirmationModal from './PrintConfirmationModal';
+import QRCode from 'qrcode'; // Import QRCode library
 
 const CustomJobCreator = ({ campaignId }) => {
     const [jobData, setJobData] = useState({
         jobName: '',
         departmentId: '',
         employeeId: '',
+        quantity: 1,
         description: '',
         estimatedTime: '',
         steps: '',
@@ -32,12 +34,10 @@ const CustomJobCreator = ({ campaignId }) => {
         consumables: [],
     });
 
-    // --- NEW STATE for smart search ---
     const [allPastJobs, setAllPastJobs] = useState([]);
     const [similarJobResults, setSimilarJobResults] = useState([]);
     const searchRef = useRef(null);
-    // ---
-
+    
     const [allDepartments, setAllDepartments] = useState([]);
     const [allEmployees, setAllEmployees] = useState([]);
     const [allTools, setAllTools] = useState([]);
@@ -72,38 +72,35 @@ const CustomJobCreator = ({ campaignId }) => {
         };
         fetchData();
 
-        // --- NEW: Listen to all past jobs for searching ---
         const unsubscribe = listenToJobCards(setAllPastJobs);
         return () => unsubscribe();
     }, []);
 
-    // --- NEW: Smart search effect ---
     useEffect(() => {
         if (jobData.jobName.length > 2) {
             const searchLower = jobData.jobName.toLowerCase();
             const results = allPastJobs
-                .filter(job => job.partName.toLowerCase().includes(searchLower))
-                .slice(0, 5); // Limit to 5 results for performance
+                .filter(job => job.partName && job.partName.toLowerCase().includes(searchLower))
+                .slice(0, 5);
             setSimilarJobResults(results);
         } else {
             setSimilarJobResults([]);
         }
     }, [jobData.jobName, allPastJobs]);
     
-    // --- NEW: Handle selecting a similar job ---
     const handleSelectSimilarJob = (job) => {
         toast.success(`Loaded details from job: ${job.jobId}`);
         setJobData({
-            ...jobData, // Keep current department and employee selection
+            ...jobData,
             jobName: job.partName,
             description: job.description,
             estimatedTime: job.estimatedTime,
             steps: Array.isArray(job.steps) ? job.steps.join('\n') : '',
             selectedTools: new Set(job.tools?.map(t => t.id) || []),
             selectedAccessories: new Set(job.accessories?.map(a => a.id) || []),
-            consumables: job.processedConsumables || [], // Use processedConsumables as the base
+            consumables: job.processedConsumables || [],
         });
-        setSimilarJobResults([]); // Close the results list
+        setSimilarJobResults([]);
     };
 
     useEffect(() => {
@@ -135,7 +132,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 return { ...prev, selectedTools: newTools, selectedAccessories: newAccessories };
             } else {
                 newTools.add(toolId);
-                 return { ...prev, selectedTools: newTools };
+                return { ...prev, selectedTools: newTools };
             }
         });
     };
@@ -204,6 +201,7 @@ const CustomJobCreator = ({ campaignId }) => {
             departmentName: allDepartments.find(d => d.id === jobData.departmentId)?.name || 'Unknown',
             employeeId: jobData.employeeId || 'unassigned',
             employeeName: allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned',
+            quantity: Number(jobData.quantity) || 1,
             status: 'Pending',
             description: jobData.description.trim(),
             estimatedTime: parseFloat(jobData.estimatedTime) || 0,
@@ -225,10 +223,52 @@ const CustomJobCreator = ({ campaignId }) => {
         try {
             await addJobCard(jobToConfirm);
             toast.success(`Custom Job Card ${jobToConfirm.jobId} created successfully!`);
+            
+            // *** THIS IS THE FIX ***
+            // We now generate a full HTML document for printing.
+            const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
 
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
-                    {/* Print content remains the same */}
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                        <div>
+                            <h1 style="font-size: 28px; font-weight: bold; margin: 0;">Job Card (Custom)</h1>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${jobToConfirm.partName} (x${jobToConfirm.quantity})</span></p>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${jobToConfirm.departmentName}</span></p>
+                        </div>
+                        <div style="text-align: right;">
+                            <img src="${qrCodeDataUrl}" alt="QR Code" style="margin-bottom: 5px;"/>
+                            <p style="font-size: 10px; color: #999; margin: 0;">${jobToConfirm.jobId}</p>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            <p style="margin: 0;"><b>Employee:</b> ${jobToConfirm.employeeName}</p>
+                            <p style="margin: 0;"><b>Est. Time:</b> ${jobToConfirm.estimatedTime || 'N/A'} mins</p>
+                            <p style="margin: 0;"><b>Description:</b> ${jobToConfirm.description || 'No description.'}</p>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            <div>
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Tools & Accessories</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${jobToConfirm.tools?.length > 0 ? jobToConfirm.tools.map(tool => `<li>${tool.name}</li>`).join('') : '<li>No tools specified.</li>'}
+                                    ${jobToConfirm.accessories?.length > 0 ? jobToConfirm.accessories.map(acc => `<li style="margin-left: 15px;">${acc.name}</li>`).join('') : ''}
+                                </ul>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity} ${c.unit}</li>`).join('') : '<li>No consumables specified.</li>'}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                     <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Steps</h3>
+                        <ol style="list-style: decimal; padding-left: 20px; margin: 0;">
+                            ${jobToConfirm.steps?.length > 0 ? jobToConfirm.steps.map(step => `<li>${step}</li>`).join('') : '<li>No steps defined.</li>'}
+                        </ol>
+                    </div>
                 </div>
             `;
             
@@ -241,7 +281,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
             }
 
-            setJobData({ jobName: '', departmentId: '', employeeId: '', description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
+            setJobData({ jobName: '', departmentId: '', employeeId: '', quantity: 1, description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
             setSelectedConsumableItem(null);
             setConsumableQuantity('');
             setConsumableSearchTerm('');
@@ -261,7 +301,6 @@ const CustomJobCreator = ({ campaignId }) => {
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-4xl mx-auto">
                 <h3 className="text-lg font-semibold text-white mb-4">Create a One-Off / Custom Job Card</h3>
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {/* --- UPDATED: Job Name Input with Search --- */}
                     <div className="relative" ref={searchRef}>
                         <Input 
                             label="Job Name / Part Description" 
@@ -287,13 +326,20 @@ const CustomJobCreator = ({ campaignId }) => {
                         )}
                     </div>
                     
-                    <Dropdown label="Department" name="departmentId" value={jobData.departmentId} onChange={handleInputChange} options={allDepartments} placeholder="Select Department..." />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="md:col-span-1">
+                            <Input label="Quantity" name="quantity" type="number" min="1" value={jobData.quantity} onChange={handleInputChange} />
+                        </div>
+                        <div className="md:col-span-2">
+                            <Dropdown label="Department" name="departmentId" value={jobData.departmentId} onChange={handleInputChange} options={allDepartments} placeholder="Select Department..." />
+                        </div>
+                    </div>
+
                     <Dropdown label="Employee (Optional)" name="employeeId" value={jobData.employeeId} onChange={handleInputChange} options={allEmployees.filter(e => e.departmentId === jobData.departmentId)} placeholder="Select Employee..." />
                     <Textarea label="Job Description" name="description" value={jobData.description} onChange={handleInputChange} placeholder="e.g., Weld crack in bracket and repaint" rows={3} />
                     <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={jobData.estimatedTime} onChange={handleInputChange} placeholder="e.g., 90" />
                     <Textarea label="Steps (one per line)" name="steps" value={jobData.steps} onChange={handleInputChange} placeholder="1. Clean area&#10;2. Weld crack&#10;3. Sand smooth&#10;4. Paint" rows={5} />
 
-                    {/* Tools and Consumables sections remain the same */}
                     <div>
                         <h4 className="font-semibold text-white mb-2">Required Tools & Accessories</h4>
                         <div className="max-h-60 overflow-y-auto space-y-3 p-4 bg-gray-900/50 rounded-lg">
@@ -341,7 +387,7 @@ const CustomJobCreator = ({ campaignId }) => {
                                                     key={item.id}
                                                     className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                                     onClick={() => selectConsumableFromSearch(item)}
-                                                >
+                                                    >
                                                     {item.name} ({item.itemCode || 'N/A'}) - {item.unit} (R{item.price.toFixed(2)})
                                                 </li>
                                             ))}
@@ -369,7 +415,7 @@ const CustomJobCreator = ({ campaignId }) => {
                                             <Button type="button" onClick={() => removeConsumable(index)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
                                         </li>
                                     ))
-                                ) : (
+                                    ) : (
                                     <li className="text-gray-400 text-sm">No consumables added yet.</li>
                                 )}
                             </ul>

@@ -1,12 +1,12 @@
-// FILE: src/pages/MarketingPage.jsx (FINAL VERSION)
+// FILE: src/pages/MarketingPage.jsx (Upgraded with Toasts)
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getCampaigns, getCompletedJobsInRange } from '../api/firestore'; // getCompletedJobsInRange is not used here, but good to keep for potential future use. We will fetch all jobs.
-import { listenToJobCards } from '../api/firestore'; // We'll listen to all jobs to get sales data
+import { listenToJobCards } from '../api/firestore';
+import { getCampaigns } from '../api/firestore';
 import Button from '../components/ui/Button';
-import { DollarSign, Users, TrendingUp, Percent } from 'lucide-react';
+import { DollarSign, Users, TrendingUp } from 'lucide-react';
+import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
 
-// KPI Card component remains the same
 const KpiCard = ({ icon, title, value, color, subValue }) => (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <div className="flex items-start space-x-4">
@@ -24,7 +24,7 @@ const KpiCard = ({ icon, title, value, color, subValue }) => (
 
 const MarketingPage = () => {
     const [campaigns, setCampaigns] = useState([]);
-    const [jobs, setJobs] = useState([]); // State to hold all jobs
+    const [jobs, setJobs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [activeRange, setActiveRange] = useState('all');
 
@@ -33,25 +33,22 @@ const MarketingPage = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                // Fetch campaigns once
                 const fetchedCampaigns = await getCampaigns();
                 setCampaigns(fetchedCampaigns);
                 
-                // Listen for real-time updates on all jobs
                 unsubscribeJobs = listenToJobCards((fetchedJobs) => {
                     setJobs(fetchedJobs);
                 });
 
             } catch (error) {
                 console.error("Error fetching marketing data:", error);
-                alert("Could not load marketing data.");
+                toast.error("Could not load marketing data."); // --- REPLACED ALERT ---
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
         
-        // Cleanup the listener when the component unmounts
         return () => unsubscribeJobs();
     }, []);
 
@@ -73,27 +70,20 @@ const MarketingPage = () => {
         
         const completedJobs = jobs.filter(j => j.status === 'Complete' && j.campaignId);
 
-        // Enhance campaign data with sales metrics
         const campaignsWithMetrics = filteredCampaigns.map(campaign => {
             const associatedJobs = completedJobs.filter(job => job.campaignId === campaign.id);
             const salesCount = associatedJobs.length;
-            const revenue = associatedJobs.reduce((sum, job) => sum + (job.totalCost || 0), 0); // Using totalCost as proxy for sale value for now
+            const revenue = associatedJobs.reduce((sum, job) => sum + (job.totalCost || 0), 0);
             
-            // Calculate profit (Revenue - COGS). Here, we assume totalCost IS the COGS.
-            // A more advanced model might use a separate 'sellingPrice' field.
-            // For now, let's calculate profit based on an assumed margin, e.g., 30% of the job cost.
-            // THIS IS A KEY AREA FOR FUTURE IMPROVEMENT
             const estimatedProfit = associatedJobs.reduce((sum, job) => {
                 const jobCost = job.totalCost || 0;
-                // Let's assume a simple 30% profit margin for calculation purposes.
-                // In a real scenario, you'd have: Profit = SellingPrice - totalCost
                 return sum + (jobCost * 0.30);
             }, 0);
 
             const budget = campaign.budget || 0;
             const leads = campaign.leadsGenerated || 0;
             const conversionRate = leads > 0 ? (salesCount / leads) * 100 : 0;
-            const roi = budget > 0 ? (estimatedProfit / budget) * 100 : 0; // Return on Investment in %
+            const roi = budget > 0 ? (estimatedProfit / budget) * 100 : 0;
             const costPerLead = leads > 0 ? budget / leads : 0;
 
             return {

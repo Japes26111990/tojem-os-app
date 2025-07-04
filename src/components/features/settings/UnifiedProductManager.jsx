@@ -1,16 +1,15 @@
-// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Toasts & Stock Fields)
+// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Metadata Fields)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     getProducts, addProduct, updateProduct, deleteProduct,
     getProductCategories, addProductCategory,
-    getJobStepDetails, getDepartments
 } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
-import { Trash2, Save, Package, Settings2, Search, ChevronDown, ChevronRight, PackagePlus, FolderPlus, Hash, Scale } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { Trash2, Save, Package, ChevronDown, ChevronRight, PackagePlus, FolderPlus } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const UnifiedProductManager = () => {
     const [products, setProducts] = useState([]);
@@ -20,25 +19,25 @@ const UnifiedProductManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState({});
     
-    // State for new product form (includes new stock fields)
     const [newProduct, setNewProduct] = useState({ 
         name: '', 
         partNumber: '', 
         sellingPrice: '', 
         categoryId: '', 
         weight: '',
-        currentStock: '', // New
-        reorderLevel: '', // New
-        standardStockLevel: '', // New
-        countMethod: 'Quantity', // New
-        unitWeight: '', // New
-        tareWeight: '', // New
-        unit: 'Each', // New default unit
+        currentStock: '',
+        reorderLevel: '',
+        standardStockLevel: '',
+        countMethod: 'Quantity',
+        unitWeight: '',
+        tareWeight: '',
+        unit: 'Each',
+        manufacturer: '', // New Metadata
+        make: '',         // New Metadata
+        model: '',        // New Metadata
     });
 
-    // State for editing existing product (includes new stock fields)
     const [editProductData, setEditProductData] = useState(null);
-    
     const [newCategoryName, setNewCategoryName] = useState('');
     
     const fetchData = async () => {
@@ -61,7 +60,6 @@ const UnifiedProductManager = () => {
     useEffect(() => {
         if (selectedProductId) {
             const product = products.find(p => p.id === selectedProductId);
-            // Ensure all stock fields are present when editing, even if undefined in DB
             setEditProductData({
                 ...product,
                 currentStock: product.currentStock || '',
@@ -71,6 +69,9 @@ const UnifiedProductManager = () => {
                 unitWeight: product.unitWeight || '',
                 tareWeight: product.tareWeight || '',
                 unit: product.unit || 'Each',
+                manufacturer: product.manufacturer || '',
+                make: product.make || '',
+                model: product.model || '',
             });
         } else {
             setEditProductData(null);
@@ -103,22 +104,13 @@ const UnifiedProductManager = () => {
             return toast.error('Category, Product Name, and Part Number are required.');
         }
         try {
-            const productData = { 
-                ...newProduct, 
-                sellingPrice: Number(newProduct.sellingPrice) || 0,
-                weight: Number(newProduct.weight) || 0,
-                currentStock: Number(newProduct.currentStock) || 0,
-                reorderLevel: Number(newProduct.reorderLevel) || 0,
-                standardStockLevel: Number(newProduct.standardStockLevel) || 0,
-                unitWeight: Number(newProduct.unitWeight) || 0,
-                tareWeight: Number(newProduct.tareWeight) || 0,
-            };
-            await addProduct(productData);
+            await addProduct(newProduct);
             toast.success("Product added successfully.");
             setNewProduct({ 
                 name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '',
                 currentStock: '', reorderLevel: '', standardStockLevel: '',
                 countMethod: 'Quantity', unitWeight: '', tareWeight: '', unit: 'Each',
+                manufacturer: '', make: '', model: '',
             });
             fetchData();
         } catch (error) { 
@@ -130,21 +122,7 @@ const UnifiedProductManager = () => {
     const handleUpdateProduct = async () => {
         if (!editProductData.name || !editProductData.partNumber) return toast.error('Product Name and Part Number are required.');
         try {
-            await updateProduct(selectedProductId, {
-                name: editProductData.name, 
-                partNumber: editProductData.partNumber,
-                sellingPrice: Number(editProductData.sellingPrice) || 0,
-                photoUrl: editProductData.photoUrl || '',
-                categoryId: editProductData.categoryId || '',
-                weight: Number(editProductData.weight) || 0,
-                currentStock: Number(editProductData.currentStock) || 0, // Update stock
-                reorderLevel: Number(editProductData.reorderLevel) || 0, // Update reorder level
-                standardStockLevel: Number(editProductData.standardStockLevel) || 0, // Update standard stock
-                countMethod: editProductData.countMethod || 'Quantity', // Update count method
-                unitWeight: Number(editProductData.unitWeight) || 0, // Update unit weight
-                tareWeight: Number(editProductData.tareWeight) || 0, // Update tare weight
-                unit: editProductData.unit || 'Each', // Update unit
-            });
+            await updateProduct(selectedProductId, editProductData);
             toast.success('Product updated successfully!');
             fetchData();
         } catch (error) {
@@ -177,7 +155,7 @@ const UnifiedProductManager = () => {
     };
     
     if (loading) return <p className="text-gray-400">Loading Product Catalog...</p>;
-    
+
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-6">Unified Product Catalog</h3>
@@ -206,7 +184,7 @@ const UnifiedProductManager = () => {
                             ))}
                              {productsByCategory['uncategorized']?.length > 0 && (
                                 <div>
-                                     <div onClick={() => setExpandedCategories(p => ({...p, uncategorized: !p.uncategorized}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600">
+                                    <div onClick={() => setExpandedCategories(p => ({...p, uncategorized: !p.uncategorized}))} className="flex items-center justify-between p-3 rounded-lg bg-gray-700 cursor-pointer hover:bg-gray-600">
                                         <span className="font-semibold text-white">Uncategorized</span>
                                         {expandedCategories.uncategorized ? <ChevronDown/> : <ChevronRight/>}
                                     </div>
@@ -236,31 +214,11 @@ const UnifiedProductManager = () => {
                          <Dropdown label="Category" value={newProduct.categoryId} onChange={e => setNewProduct({...newProduct, categoryId: e.target.value})} options={categories} placeholder="Select category..." required/>
                          <Input label="Product Name" name="name" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} required/>
                          <Input label="Part Number" name="partNumber" value={newProduct.partNumber} onChange={e => setNewProduct({...newProduct, partNumber: e.target.value})} required/>
-                         <Input label="Selling Price (R)" name="sellingPrice" type="number" value={newProduct.sellingPrice} onChange={e => setNewProduct({...newProduct, sellingPrice: e.target.value})} />
-                         <Input label="Weight (kg)" name="weight" type="number" step="0.01" value={newProduct.weight} onChange={e => setNewProduct({...newProduct, weight: e.target.value})} />
-                         <Input label="Unit of Measure" name="unit" value={newProduct.unit} onChange={e => setNewProduct({...newProduct, unit: e.target.value})} placeholder="e.g., Each, Set" />
                          
-                         {/* New Stock Fields for Products */}
-                         <div className="grid grid-cols-3 gap-2">
-                            <Input label="In Stock" name="currentStock" type="number" value={newProduct.currentStock} onChange={e => setNewProduct({...newProduct, currentStock: e.target.value})} placeholder="0" />
-                            <Input label="Re-order At" name="reorderLevel" type="number" value={newProduct.reorderLevel} onChange={e => setNewProduct({...newProduct, reorderLevel: e.target.value})} placeholder="0" />
-                            <Input label="Standard Stock" name="standardStockLevel" type="number" value={newProduct.standardStockLevel} onChange={e => setNewProduct({...newProduct, standardStockLevel: e.target.value})} placeholder="0" />
-                        </div>
-                        <Dropdown 
-                            name="countMethod" 
-                            label="Count Method" 
-                            value={newProduct.countMethod} 
-                            onChange={e => setNewProduct({...newProduct, countMethod: e.target.value})}
-                        >
-                            <option value="Quantity">Quantity</option>
-                            <option value="Weight">Weight</option>
-                        </Dropdown>
-                        {newProduct.countMethod === 'Weight' && (
-                            <>
-                                <Input name="unitWeight" label="Weight per Unit (g)" type="number" value={newProduct.unitWeight} onChange={e => setNewProduct({...newProduct, unitWeight: e.target.value})} placeholder="0" />
-                                <Input name="tareWeight" label="Container Tare Weight (g)" type="number" value={newProduct.tareWeight} onChange={e => setNewProduct({...newProduct, tareWeight: e.target.value})} placeholder="0" />
-                            </>
-                        )}
+                         <h5 className="font-semibold text-white pt-2 border-t border-gray-600">Filtering Metadata (Optional)</h5>
+                         <Input label="Manufacturer" name="manufacturer" value={newProduct.manufacturer} onChange={e => setNewProduct({...newProduct, manufacturer: e.target.value})} placeholder="e.g., Scania, Volvo" />
+                         <Input label="Make" name="make" value={newProduct.make} onChange={e => setNewProduct({...newProduct, make: e.target.value})} placeholder="e.g., R-Series, FH" />
+                         <Input label="Model" name="model" value={newProduct.model} onChange={e => setNewProduct({...newProduct, model: e.target.value})} placeholder="e.g., 2018-2022" />
 
                          <Button type="submit" variant="primary" className="w-full"><PackagePlus size={16} className="mr-2"/>Create New Product</Button>
                     </form>
@@ -269,26 +227,31 @@ const UnifiedProductManager = () => {
                 <div className="lg:col-span-2">
                      {!selectedProductId ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
-                            <p>Select a product from the list to view its details and associated manufacturing recipes.</p>
+                            <p>Select a product from the list to view and edit its full details.</p>
                         </div>
                      ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
                              <div className="flex justify-between items-center pb-4 mb-4 border-b border-gray-700">
                                 <h3 className="text-2xl font-bold text-white">{editProductData?.name}</h3>
                                 <Button onClick={() => handleDeleteProduct(selectedProductId)} variant="danger" size="sm" className="p-2"><Trash2 size={16}/></Button>
-                            </div>
-                            <div className="space-y-4">
+                             </div>
+                            <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-3">
                                 <Dropdown label="Category" value={editProductData?.categoryId || ''} onChange={e => setEditProductData({...editProductData, categoryId: e.target.value})} options={categories} placeholder="Choose a category..."/>
                                 <Input label="Product Name" name="name" value={editProductData?.name || ''} onChange={e => setEditProductData({...editProductData, name: e.target.value})} />
                                 <Input label="Part Number" value={editProductData?.partNumber || ''} disabled />
+                                
+                                <h5 className="font-semibold text-white pt-4 border-t border-gray-700">Filtering Metadata</h5>
+                                <Input label="Manufacturer" name="manufacturer" value={editProductData?.manufacturer || ''} onChange={e => setEditProductData({...editProductData, manufacturer: e.target.value})} />
+                                <Input label="Make" name="make" value={editProductData?.make || ''} onChange={e => setEditProductData({...editProductData, make: e.target.value})} />
+                                <Input label="Model" name="model" value={editProductData?.model || ''} onChange={e => setEditProductData({...editProductData, model: e.target.value})} />
+
+                                <h5 className="font-semibold text-white pt-4 border-t border-gray-700">Financial & Stock Details</h5>
                                 <Input label="Selling Price (R)" name="sellingPrice" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
                                 <Input label="Weight (kg)" name="weight" type="number" step="0.01" value={editProductData?.weight || ''} onChange={e => setEditProductData({...editProductData, weight: e.target.value})} />
                                 <Input label="Unit of Measure" name="unit" value={editProductData?.unit || ''} onChange={e => setEditProductData({...editProductData, unit: e.target.value})} placeholder="e.g., Each, Set" />
                                 <Input label="Photo URL" name="photoUrl" value={editProductData?.photoUrl || ''} onChange={e => setEditProductData({...editProductData, photoUrl: e.target.value})} placeholder="Paste image link here..."/>
                                 {editProductData?.photoUrl && <img src={editProductData.photoUrl} alt="Product Preview" className="w-48 h-48 rounded-lg object-cover border-2 border-gray-600" />}
                                 
-                                {/* Existing Product Stock Fields */}
-                                <h5 className="font-semibold text-white mt-6 mb-2">Stock & Inventory Settings</h5>
                                 <div className="grid grid-cols-3 gap-2">
                                     <Input label="In Stock" name="currentStock" type="number" value={editProductData?.currentStock || ''} onChange={e => setEditProductData({...editProductData, currentStock: e.target.value})} placeholder="0" />
                                     <Input label="Re-order At" name="reorderLevel" type="number" value={editProductData?.reorderLevel || ''} onChange={e => setEditProductData({...editProductData, reorderLevel: e.target.value})} placeholder="0" />
