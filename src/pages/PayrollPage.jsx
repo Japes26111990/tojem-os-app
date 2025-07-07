@@ -1,8 +1,9 @@
-// src/pages/PayrollPage.jsx (Final Correct Version)
+// src/pages/PayrollPage.jsx (UPDATED)
 
 import React, { useState } from 'react';
 import PermanentPayroll from '../components/features/payroll/PermanentPayroll';
 import SubcontractorLedger from '../components/features/payroll/SubcontractorLedger';
+import LivePayrollSummary from '../components/features/payroll/LivePayrollSummary'; // <-- ADD THIS IMPORT
 
 const TabButton = ({ id, label, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
@@ -23,8 +24,11 @@ const PayrollPage = () => {
     const [activeTab, setActiveTab] = useState('permanent');
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-8">
             <h2 className="text-3xl font-bold text-white">Payroll & Payments</h2>
+
+            {/* --- ADD THE NEW COMPONENT HERE --- */}
+            <LivePayrollSummary />
 
             <div className="border-b border-gray-700">
                 <nav className="-mb-px flex space-x-6">

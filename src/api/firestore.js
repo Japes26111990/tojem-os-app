@@ -1,4 +1,4 @@
-// src/api/firestore.js (MERGED)
+// src/api/firestore.js (MERGED & UPDATED with Kaizen Function)
 
 import {
     collection,
@@ -17,10 +17,21 @@ import {
     setDoc,
     runTransaction,
     increment,
-    limit
+    limit,
+    startAfter
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
+
+// --- NEW KAIZEN SUGGESTION API ---
+const kaizenSuggestionsCollection = collection(db, 'kaizenSuggestions');
+export const addKaizenSuggestion = (suggestionData) => {
+    return addDoc(kaizenSuggestionsCollection, {
+        ...suggestionData,
+        createdAt: serverTimestamp(),
+        status: 'new', // e.g., new, reviewed, implemented
+    });
+};
 
 // --- Update a standard recipe from a completed job's data ---
 export const updateStandardRecipe = async (jobData) => {
@@ -471,13 +482,34 @@ const jobCardsCollection = collection(db, 'createdJobCards');
 export const addJobCard = (jobCardData) => {
     return addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
 };
-export const listenToJobCards = (callback) => {
-    const q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => {
-        const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        callback(jobs);
-    });
+
+export const listenToJobCards = (callback, options = {}) => {
+    const jobsCollectionRef = collection(db, 'createdJobCards');
+    let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
+
+    if (options.limit) {
+        if (options.startAfter) {
+            q = query(q, startAfter(options.startAfter));
+        }
+        q = query(q, limit(options.limit));
+        
+        return onSnapshot(q, (snapshot) => {
+            const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+            callback({ jobs, lastVisible }); 
+        }, (error) => {
+            console.error("Error listening to paginated job cards:", error);
+        });
+    } else {
+        return onSnapshot(q, (snapshot) => {
+            const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            callback(jobs);
+        }, (error) => {
+            console.error("Error listening to all job cards:", error);
+        });
+    }
 };
+
 export const getJobByJobId = async (jobId) => {
     const q = query(jobCardsCollection, where("jobId", "==", jobId));
     const querySnapshot = await getDocs(q);

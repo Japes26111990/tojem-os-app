@@ -1,10 +1,11 @@
-// src/pages/PerformancePage.jsx
+// src/pages/PerformancePage.jsx (UPDATED)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses, getDepartments } from '../api/firestore';
 import Dropdown from '../components/ui/Dropdown';
 import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
+import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart'; // <-- IMPORT NEW CHART
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
@@ -60,6 +61,7 @@ const PerformancePage = () => {
         return () => { if (unsubscribeJobs) unsubscribeJobs(); };
     }, []);
     
+    // --- UPDATED useMemo to calculate department data ---
     const performanceData = useMemo(() => {
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
         const employeeCount = employees.length > 0 ? employees.length : 1;
@@ -70,6 +72,32 @@ const PerformancePage = () => {
             job.startedAt && 
             job.completedAt
         );
+
+        // --- Department level calculations ---
+        const departmentData = departments.map(dept => {
+            const deptJobs = validCompletedJobs.filter(j => j.departmentId === dept.id);
+            if (deptJobs.length === 0) {
+                return { name: dept.name, avgEfficiency: 0, totalValue: 0 };
+            }
+
+            const totalValue = deptJobs.reduce((sum, j) => sum + (j.totalCost || 0), 0);
+            
+            let totalEfficiencyRatio = 0;
+            let jobsWithTime = 0;
+            deptJobs.forEach(job => {
+                if (job.estimatedTime > 0) {
+                    const durationSeconds = (job.completedAt.seconds - job.startedAt.seconds) - (job.totalPausedMilliseconds / 1000 || 0);
+                    if (durationSeconds > 0) {
+                        totalEfficiencyRatio += ((job.estimatedTime * 60) / durationSeconds);
+                        jobsWithTime++;
+                    }
+                }
+            });
+            const avgEfficiency = jobsWithTime > 0 ? (totalEfficiencyRatio / jobsWithTime) * 100 : 0;
+            
+            return { name: dept.name, avgEfficiency, totalValue };
+        });
+        // --- End of department calculations ---
 
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -90,7 +118,7 @@ const PerformancePage = () => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
             const empJobsCompleted = empJobs.length;
             const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue');
-            const empKudosJobs = empJobs.filter(j => j.kudos === true); // ** NEW: Count kudos jobs **
+            const empKudosJobs = empJobs.filter(j => j.kudos === true);
 
             let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0, jobsWithTime = 0;
             empJobs.forEach(job => {
@@ -117,8 +145,8 @@ const PerformancePage = () => {
                 avgEfficiency: empAvgEfficiency,
                 netValueAdded: empTotalJobValue - totalLaborCost,
                 reworkRate: empJobsCompleted > 0 ? (empIssueJobs.length / empJobsCompleted) * 100 : 0,
-                reworkCount: empIssueJobs.length, // ** NEW: Pass the count **
-                kudosCount: empKudosJobs.length, // ** NEW: Pass the count **
+                reworkCount: empIssueJobs.length,
+                kudosCount: empKudosJobs.length,
             };
         });
 
@@ -138,11 +166,12 @@ const PerformancePage = () => {
                 jobsCompleted: validCompletedJobs.length,
                 totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1),
                 avgEfficiency: `${Math.round(overallAvgEfficiency)}%`,
-                totalJobValue: `R ${overallTotalJobValue.toFixed(2)}`,
+                totalJobValue: `R ${overallTotalJobValue.toLocaleString('en-ZA', {minimumFractionDigits: 2})}`,
             },
-            employeePerformanceMetrics
+            employeePerformanceMetrics,
+            departmentData, // <-- EXPORT NEW DATA
         };
-    }, [jobs, employees, allOverheadExpenses]);
+    }, [jobs, employees, allOverheadExpenses, departments]);
 
     if (loading) return <p className="text-center text-gray-400">Loading Performance Data...</p>;
 
@@ -156,6 +185,9 @@ const PerformancePage = () => {
                 <KpiCard icon={<Zap size={24} />} title="Average Efficiency" value={performanceData.overallKpis.avgEfficiency} color="bg-purple-500/20 text-purple-400" />
                 <KpiCard icon={<DollarSign size={24} />} title="Total Job Value" value={performanceData.overallKpis.totalJobValue} color="bg-yellow-500/20 text-yellow-400" />
             </div>
+
+            {/* --- RENDER THE NEW CHART --- */}
+            <DepartmentPerformanceChart data={performanceData.departmentData} />
             
              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-4">

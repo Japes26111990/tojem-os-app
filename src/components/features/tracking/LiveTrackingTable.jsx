@@ -1,4 +1,4 @@
-// src/components/features/tracking/LiveTrackingTable.jsx (Upgraded for Burdened Cost)
+// src/components/features/tracking/LiveTrackingTable.jsx (UPDATED for Pagination)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
@@ -6,6 +6,7 @@ import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import Button from '../../ui/Button'; // MODIFIED: Import Button component
 
 const StatusBadge = ({ status }) => {
     const statusColors = {
@@ -73,21 +74,28 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
     );
 };
 
-const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
-    const [jobs, setJobs] = useState([]);
+const LiveTrackingTable = ({ overheadCostPerHour }) => {
+    const [allJobs, setAllJobs] = useState([]); // Will now hold all loaded jobs across pages
     const [employees, setEmployees] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
     const [allTools, setAllTools] = useState([]);
     const [allToolAccessories, setAllToolAccessories] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false); // For the load more button
     const [selectedJob, setSelectedJob] = useState(null);
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
+    
+    // --- NEW STATE FOR PAGINATION ---
+    const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
+    const [hasMoreJobs, setHasMoreJobs] = useState(true);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    const fetchAllRequiredData = async () => {
+    const JOBS_PER_PAGE = 25; // Define how many jobs to load per page
+
+    const fetchInitialData = async () => {
         setLoading(true);
         try {
             const [fetchedEmployees, fetchedInventory, fetchedTools, fetchedToolAccessories] = await Promise.all([
@@ -100,43 +108,56 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
             setAllInventoryItems(fetchedInventory);
             setAllTools(fetchedTools);
             setAllToolAccessories(fetchedToolAccessories);
-            
-            const unsubscribe = listenToJobCards((fetchedJobs) => {
-                setJobs(fetchedJobs);
-                setLoading(false);
-            });
-            return unsubscribe;
         } catch (error) {
             console.error("Failed to fetch initial data for tracking table:", error);
-            setLoading(false);
         }
     };
-
+    
+    // Effect for fetching the first page of jobs
     useEffect(() => {
-        let unsubscribeJobs;
-        (async () => {
-            unsubscribeJobs = await fetchAllRequiredData();
-        })();
+        fetchInitialData();
         
-        const intervalId = setInterval(() => {
-            setCurrentTime(Date.now());
-        }, 1000);
+        const unsubscribe = listenToJobCards(({ jobs, lastVisible }) => {
+            setAllJobs(jobs);
+            setLastVisibleDoc(lastVisible);
+            setHasMoreJobs(jobs.length === JOBS_PER_PAGE);
+            setLoading(false);
+        }, { limit: JOBS_PER_PAGE });
+
+        // Real-time clock for duration calculation
+        const intervalId = setInterval(() => setCurrentTime(Date.now()), 1000);
 
         return () => {
-            if (unsubscribeJobs) unsubscribeJobs();
+            unsubscribe();
             clearInterval(intervalId);
         };
     }, []);
-
+    
+    // Effect to handle deep-linking from URL params
     useEffect(() => {
         const jobIdFromUrl = searchParams.get('jobId');
-        if (jobIdFromUrl && !loading && jobs.length > 0) {
-            const jobToOpen = jobs.find(job => job.jobId === jobIdFromUrl);
+        if (jobIdFromUrl && !loading && allJobs.length > 0) {
+            const jobToOpen = allJobs.find(job => job.jobId === jobIdFromUrl);
             if (jobToOpen) {
                 setSelectedJob(jobToOpen);
             }
         }
-    }, [searchParams, loading, jobs]);
+    }, [searchParams, loading, allJobs]);
+
+    const handleLoadMore = () => {
+        if (!hasMoreJobs || loadingMore) return;
+        setLoadingMore(true);
+
+        // Fetch the next page of jobs.
+        // We call listenToJobCards again, but this time we provide the `startAfter` option.
+        const unsubscribe = listenToJobCards(({ jobs, lastVisible }) => {
+            unsubscribe(); // We only need to fetch this page once, so we immediately unsubscribe.
+            setAllJobs(prevJobs => [...prevJobs, ...jobs]); // Append the new jobs to the existing list
+            setLastVisibleDoc(lastVisible); // Update the last visible document for the next "Load More" click
+            setHasMoreJobs(jobs.length === JOBS_PER_PAGE); // Check if there are more jobs to load
+            setLoadingMore(false);
+        }, { limit: JOBS_PER_PAGE, startAfter: lastVisibleDoc });
+    };
 
     const employeeHourlyRates = useMemo(() => {
         return employees.reduce((acc, emp) => {
@@ -148,7 +169,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
     const { activeJobs, completedAndArchivedJobs } = useMemo(() => {
         const statusOrder = { 'In Progress': 1, 'Paused': 2, 'Awaiting QC': 3, 'Pending': 4 };
         
-        const active = jobs
+        const active = allJobs
             .filter(job => ['In Progress', 'Paused', 'Awaiting QC', 'Pending'].includes(job.status))
             .sort((a, b) => {
                 const statusCompare = statusOrder[a.status] - statusOrder[b.status];
@@ -161,9 +182,9 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
                 }
                 return 0;
             });
-        const completed = jobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
+        const completed = allJobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
         return { activeJobs: active, completedAndArchivedJobs: completed };
-    }, [jobs]);
+    }, [allJobs]);
 
     const handleUpdateJob = async (jobId, updatedData) => {
         try {
@@ -219,6 +240,8 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
                             ))}
                         </tbody>
                     </table>
+                    
+                    {/* MODIFIED: "Load More" button and "Completed" section are now outside the main table for active jobs */}
                     <div className="border-t border-gray-700">
                         <button
                             onClick={() => setShowCompleted(!showCompleted)}
@@ -252,6 +275,14 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
                             </table>
                         )}
                     </div>
+                     {/* MODIFIED: "Load More" button is now at the very bottom */}
+                    {hasMoreJobs && (
+                        <div className="p-4 text-center border-t border-gray-700">
+                            <Button onClick={handleLoadMore} disabled={loadingMore}>
+                                {loadingMore ? 'Loading...' : 'Load More Jobs'}
+                            </Button>
+                        </div>
+                    )}
                 </div>
                 {selectedJob && (
                     <JobDetailsModal
@@ -259,7 +290,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => { // Receive prop
                         onClose={handleCloseModal}
                         currentTime={currentTime}
                         employeeHourlyRates={employeeHourlyRates}
-                        overheadCostPerHour={overheadCostPerHour} // Pass it down to the modal
+                        overheadCostPerHour={overheadCostPerHour}
                         allEmployees={employees}
                         onUpdateJob={handleUpdateJob}
                         onDeleteJob={handleDeleteJob}

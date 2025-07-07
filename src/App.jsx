@@ -39,6 +39,7 @@ import ReworkQueuePage from './pages/ReworkQueuePage.jsx';
 import MultiStageWizard from './pages/MultiStageWizard.jsx';
 import StockAdjustmentPage from './pages/StockAdjustmentPage.jsx';
 import JobReprintPage from './pages/JobReprintPage.jsx';
+import KanbanPage from './pages/KanbanPage.jsx'; // <-- IMPORT THE NEW PAGE
 
 function App() {
     const { user } = useAuth();
@@ -81,6 +82,7 @@ function App() {
                                 <Route path="/payroll" element={ <RoleBasedRoute permission="payroll"><PayrollPage /></RoleBasedRoute> } />
                                 <Route path="/valuation" element={ <RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute> } />
                                 <Route path="/calendar" element={ <RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute> } />
+                                <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} /> {/* <-- ADD THE NEW ROUTE */}
                                 <Route path="/settings" element={ <RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute> } />
                                 <Route path="/marketing" element={ <RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute> } />
                                 <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />

@@ -18,6 +18,7 @@ const ALL_PERMISSIONS = [
     { id: 'tracking', label: 'Live Tracking' },
     { id: 'scanner', label: 'Scanner' },
     { id: 'calendar', label: 'Calendar' },
+    { id: 'kanban', label: 'Kanban Board' },
     { id: 'jobCreator', label: 'Job Creator' },
     { id: 'qc', label: 'Quality Control' },
     { id: 'issues', label: 'Issues & Halts' },
@@ -30,7 +31,6 @@ const ALL_PERMISSIONS = [
     { id: 'settings', label: 'Settings' },
     { id: 'hideSidebar', label: 'Hide Sidebar (Tablet UI)' },
     { id: 'access_portal', label: 'Access Customer Portal' },
-    // --- NEW PERMISSIONS ADDED ---
     { id: 'multiStage', label: 'Multi-Stage Wizard' },
     { id: 'jobHistory', label: 'Job History' },
     { id: 'reworkQueue', label: 'Rework Queue' },
@@ -105,15 +105,13 @@ const RoleManager = () => {
         }
     };
 
-    // --- THIS IS THE CORRECTED FUNCTION ---
     const handleAddNewRole = async () => {
         if (!newRoleName.trim()) return toast.error("Role name cannot be empty.");
         
-        const roleId = newRoleName.trim(); // Use the role's name as its document ID
-        const roleRef = doc(db, 'roles', roleId); // Create a reference with the correct ID
+        const roleId = newRoleName.trim();
+        const roleRef = doc(db, 'roles', roleId);
 
         try {
-            // Use setDoc to create a document with a specific ID
             await setDoc(roleRef, {
                 name: roleId,
                 permissions: {}
@@ -131,25 +129,40 @@ const RoleManager = () => {
         if (roleName === 'Manager') {
             return toast.error("The 'Manager' role cannot be deleted.");
         }
-        toast((t) => (
-            <span>
-                Delete role "{roleName}"? This cannot be undone.
-                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteDoc(doc(db, 'roles', roleId))
-                        .then(() => {
-                            toast.success("Role deleted.");
-                            fetchRoles();
-                            setSelectedRole(null);
-                        })
-                        .catch(err => toast.error("Failed to delete role."));
-                    toast.dismiss(t.id);
-                }}>
-                    Delete
-                </Button>
-                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
-                    Cancel
-                </Button>
-            </span>
+        // MODIFIED: Rewrote the toast content using React.createElement to fix JSX transform warning.
+        toast((t) => React.createElement(
+            'span',
+            null,
+            `Delete role "${roleName}"? This cannot be undone.`,
+            React.createElement(
+                Button,
+                {
+                    variant: "danger",
+                    size: "sm",
+                    className: "ml-2",
+                    onClick: () => {
+                        deleteDoc(doc(db, 'roles', roleId))
+                            .then(() => {
+                                toast.success("Role deleted.");
+                                fetchRoles();
+                                setSelectedRole(null);
+                            })
+                            .catch(err => toast.error("Failed to delete role."));
+                        toast.dismiss(t.id);
+                    }
+                },
+                'Delete'
+            ),
+            React.createElement(
+                Button,
+                {
+                    variant: "secondary",
+                    size: "sm",
+                    className: "ml-2",
+                    onClick: () => toast.dismiss(t.id)
+                },
+                'Cancel'
+            )
         ), { icon: '⚠️' });
     };
 

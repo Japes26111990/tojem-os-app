@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/04/2025 15:08:00
+Generated on: 07/07/2025 15:51:44
 
 
 ==================================================
@@ -1052,9 +1052,38 @@ export const submitCustomerOrder = (payload) => {
     return submitOrderFn(payload);
 };
 
+// --- REWORK QUEUE API ---
+export const listenToReworkQueue = (callback) => {
+    const jobsRef = collection(db, 'createdJobCards');
+    const q = query(jobsRef, where('status', 'in', ['Issue', 'Halted - Issue']));
+    return onSnapshot(q, (snapshot) => {
+        const reworkJobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(reworkJobs);
+    });
+};
+export const resolveReworkJob = (jobDocId) => {
+    const jobRef = doc(db, 'createdJobCards', jobDocId);
+    return updateDoc(jobRef, {
+        status: 'Pending',
+        issueReason: 'Rework Resolved - Re-queued'
+    });
+};
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };
+// Add this new function to src/api/firestore.js
+
+export const listenToCustomerSalesOrders = (customerEmail, callback) => {
+    const q = query(
+        salesOrdersCollection,
+        where('customerEmail', '==', customerEmail),
+        orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(orders);
+    });
+};
 
 
 ==================================================
@@ -2835,6 +2864,114 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 };
 
 export default StandardJobCreatorModal;
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\LivePayrollSummary.jsx
+==================================================
+// src/components/features/payroll/LivePayrollSummary.jsx (FIXED)
+
+import React, { useState, useEffect } from 'react';
+// --- CORRECTED IMPORTS ---
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { getEmployees } from '../../../api/firestore';
+import { db } from '../../../api/firebase';
+// -------------------------
+import { DollarSign, Clock } from 'lucide-react';
+
+const KpiCard = ({ icon, title, value }) => (
+    <div className="bg-gray-900/50 p-6 rounded-lg border border-gray-700">
+        <div className="flex items-start space-x-4">
+            <div className="p-3 rounded-full bg-blue-500/20 text-blue-400">
+                {icon}
+            </div>
+            <div>
+                <p className="text-gray-400 text-sm">{title}</p>
+                <p className="text-3xl font-bold text-white">{value}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const calculateWorkdayHours = (startTime, endTime) => {
+    if (!startTime || !endTime) return 0;
+    const breakMinutes = 45;
+    const durationMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
+    const workMinutes = Math.max(0, durationMinutes - breakMinutes);
+    return workMinutes / 60;
+};
+
+const LivePayrollSummary = () => {
+    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState({ totalHours: 0, accruedWages: 0 });
+
+    useEffect(() => {
+        const calculateSummary = async () => {
+            setLoading(true);
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+            const [employees, scanEventsSnapshot] = await Promise.all([
+                getEmployees(),
+                getDocs(query(collection(db, 'scanEvents'), where('timestamp', '>=', startOfMonth)))
+            ]);
+
+            const permanentStaff = employees.filter(e => e.employeeType === 'permanent');
+            const staffRates = new Map(permanentStaff.map(s => [s.id, s.hourlyRate || 0]));
+            const scanEvents = scanEventsSnapshot.docs.map(d => ({ ...d.data(), timestamp: d.data().timestamp.toDate() }));
+
+            const dailyScans = {};
+            for (const event of scanEvents) {
+                if (!event.employeeId || !staffRates.has(event.employeeId)) continue;
+                const dateStr = event.timestamp.toISOString().split('T')[0];
+                const key = `${event.employeeId}_${dateStr}`;
+                if (!dailyScans[key]) {
+                    dailyScans[key] = { employeeId: event.employeeId, scans: [] };
+                }
+                dailyScans[key].scans.push(event.timestamp);
+            }
+
+            let totalHours = 0;
+            let accruedWages = 0;
+
+            Object.values(dailyScans).forEach(dayData => {
+                const firstScan = dayData.scans[0];
+                const lastScan = dayData.scans[dayData.scans.length - 1];
+                const hours = calculateWorkdayHours(firstScan, lastScan);
+                const rate = staffRates.get(dayData.employeeId);
+                
+                totalHours += hours;
+                accruedWages += hours * rate;
+            });
+
+            setStats({ totalHours, accruedWages });
+            setLoading(false);
+        };
+
+        calculateSummary();
+    }, []);
+
+    if (loading) {
+        return <p className="text-sm text-center text-gray-400">Calculating live payroll summary...</p>;
+    }
+
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <KpiCard 
+                icon={<Clock size={24} />} 
+                title="Total Hours Logged (This Month)" 
+                value={stats.totalHours.toFixed(1)} 
+            />
+            <KpiCard 
+                icon={<DollarSign size={24} />} 
+                title="Accrued Staff Wages (This Month)" 
+                value={`R ${stats.accruedWages.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`} 
+            />
+        </div>
+    );
+};
+
+export default LivePayrollSummary;
 
 
 ==================================================
@@ -6998,15 +7135,15 @@ export default ReworkReasonsManager;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RoleManager.jsx
 ==================================================
-// src/components/features/settings/RoleManager.jsx (Updated with Portal Permission)
-
-import React, { useState, useEffect, useMemo } from 'react';
-import { collection, getDocs, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Shield, Lock, Unlock, PlusCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// src/components/features/settings/RoleManager.jsx
 
 const ALL_PERMISSIONS = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -7029,11 +7166,16 @@ const ALL_PERMISSIONS = [
     { id: 'payroll', label: 'Payroll' },
     { id: 'settings', label: 'Settings' },
     { id: 'hideSidebar', label: 'Hide Sidebar (Tablet UI)' },
-    { id: 'access_portal', label: 'Access Customer Portal' }, // --- NEW PERMISSION ---
+    { id: 'access_portal', label: 'Access Customer Portal' },
+    // --- NEW PERMISSIONS ADDED ---
+    { id: 'multiStage', label: 'Multi-Stage Wizard' },
+    { id: 'jobHistory', label: 'Job History' },
+    { id: 'reworkQueue', label: 'Rework Queue' },
+    { id: 'stockAdjust', label: 'Stock Adjustment' },
+    { id: 'jobReprint', label: 'Reprint Jobs' },
 ];
 
 const RoleManager = () => {
-    // ... rest of the file remains exactly the same
     const [roles, setRoles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedRole, setSelectedRole] = useState(null);
@@ -7100,14 +7242,20 @@ const RoleManager = () => {
         }
     };
 
+    // --- THIS IS THE CORRECTED FUNCTION ---
     const handleAddNewRole = async () => {
         if (!newRoleName.trim()) return toast.error("Role name cannot be empty.");
+        
+        const roleId = newRoleName.trim(); // Use the role's name as its document ID
+        const roleRef = doc(db, 'roles', roleId); // Create a reference with the correct ID
+
         try {
-            await addDoc(collection(db, 'roles'), {
-                name: newRoleName.trim(),
+            // Use setDoc to create a document with a specific ID
+            await setDoc(roleRef, {
+                name: roleId,
                 permissions: {}
             });
-            toast.success(`Role "${newRoleName.trim()}" created.`);
+            toast.success(`Role "${roleId}" created.`);
             setNewRoleName('');
             fetchRoles();
         } catch (error) {
@@ -7180,7 +7328,7 @@ const RoleManager = () => {
                 <div className="lg:col-span-2">
                     {!selectedRole ? (
                         <div className="flex items-center justify-center h-full bg-gray-900/50 p-6 rounded-xl border-2 border-dashed border-gray-700 text-gray-500">
-                           <p>Select a role from the list to manage its permissions.</p>
+                            <p>Select a role from the list to manage its permissions.</p>
                        </div>
                     ) : (
                         <div className="bg-gray-900/50 p-6 rounded-xl">
@@ -7202,7 +7350,7 @@ const RoleManager = () => {
                              <div className="text-right border-t border-gray-700 pt-4 mt-4">
                                 <Button onClick={handleSaveRole} variant="primary">Save Changes for "{selectedRole.name}"</Button>
                             </div>
-                        </div>
+                       </div>
                     )}
                 </div>
             </div>
@@ -10862,6 +11010,54 @@ const CapacityGauge = ({ utilization }) => {
 
 export default CapacityGauge;
 
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\DepartmentPerformanceChart.jsx
+==================================================
+// src/components/intelligence/DepartmentPerformanceChart.jsx (NEW FILE)
+
+import React from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart3 } from 'lucide-react';
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-gray-900/80 p-3 border border-gray-700 rounded-lg shadow-lg">
+        <p className="label text-sm text-white font-bold">{label}</p>
+        <p className="intro text-purple-400">{`Avg. Efficiency: ${payload[0].value.toFixed(0)}%`}</p>
+        <p className="intro text-green-400">{`Total Value: R ${payload[1].value.toLocaleString('en-ZA')}`}</p>
+      </div>
+    );
+  }
+  return null;
+};
+
+const DepartmentPerformanceChart = ({ data }) => {
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full">
+            <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                <BarChart3 size={20} className="text-purple-400"/>
+                Department Performance Overview
+            </h3>
+            <ResponsiveContainer width="100%" height={350}>
+                <BarChart data={data} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#4b556330" />
+                    <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis yAxisId="left" stroke="#8b5cf6" fontSize={12} tickLine={false} axisLine={false} unit="%" />
+                    <YAxis yAxisId="right" orientation="right" stroke="#22c55e" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `R${value/1000}k`} />
+                    <Tooltip content={<CustomTooltip />} cursor={{fill: 'rgba(107, 114, 128, 0.1)'}}/>
+                    <Legend wrapperStyle={{fontSize: "14px"}} />
+                    <Bar yAxisId="left" dataKey="avgEfficiency" fill="#8b5cf6" name="Avg. Efficiency" />
+                    <Bar yAxisId="right" dataKey="totalValue" fill="#22c55e" name="Total Value Generated" />
+                </BarChart>
+            </ResponsiveContainer>
+        </div>
+    );
+};
+
+export default DepartmentPerformanceChart;
 
 
 ==================================================
@@ -14548,6 +14744,112 @@ export default CalendarPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerDashboardPage.jsx
+==================================================
+// src/pages/CustomerDashboardPage.jsx (NEW FILE)
+
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { listenToCustomerSalesOrders } from '../api/firestore';
+import { useNavigate } from 'react-router-dom';
+import Button from '../components/ui/Button';
+import { ChevronDown, ChevronRight, Package } from 'lucide-react';
+
+const OrderRow = ({ order }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Pending Production': return 'bg-yellow-500/20 text-yellow-300';
+            case 'In Production': return 'bg-blue-500/20 text-blue-300';
+            case 'Fulfilled': return 'bg-green-500/20 text-green-300';
+            default: return 'bg-gray-500/20 text-gray-300';
+        }
+    };
+
+    return (
+        <div className="bg-gray-800 rounded-lg border border-gray-700">
+            <div className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-700/50" onClick={() => setIsExpanded(!isExpanded)}>
+                <div className="flex items-center gap-4">
+                    {isExpanded ? <ChevronDown /> : <ChevronRight />}
+                    <div>
+                        <p className="font-bold text-white text-lg">{order.salesOrderId}</p>
+                        <p className="text-sm text-gray-400">
+                            Ordered: {order.createdAt?.toDate().toLocaleDateString('en-ZA') || 'N/A'}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-6">
+                    <p className="font-mono text-xl text-green-400">R {order.total.toFixed(2)}</p>
+                    <span className={`px-3 py-1 text-sm rounded-full font-semibold ${getStatusColor(order.status)}`}>
+                        {order.status}
+                    </span>
+                </div>
+            </div>
+            {isExpanded && (
+                <div className="p-4 border-t border-gray-700 space-y-2">
+                    <h4 className="font-semibold text-gray-300 text-sm">Line Items:</h4>
+                    <ul className="list-disc list-inside pl-2">
+                        {order.lineItems.map(item => (
+                            <li key={item.id} className="text-gray-400">{item.description} (Qty: {item.quantity})</li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
+const CustomerDashboardPage = () => {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!user || !user.email) return;
+
+        const unsubscribe = listenToCustomerSalesOrders(user.email, (fetchedOrders) => {
+            setOrders(fetchedOrders);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [user]);
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-3xl font-bold text-white">Your Orders</h2>
+                <Button onClick={() => navigate('/portal/products')} variant="primary">
+                    <Package size={18} className="mr-2"/>
+                    Browse Products & Create Quote
+                </Button>
+            </div>
+
+            {loading && <p className="text-center text-gray-400">Loading your orders...</p>}
+            
+            {!loading && orders.length === 0 && (
+                <div className="text-center py-16 bg-gray-800 rounded-lg">
+                    <p className="text-gray-500">You have not placed any orders yet.</p>
+                </div>
+            )}
+
+            {!loading && orders.length > 0 && (
+                <div className="space-y-4">
+                    {orders.map(order => (
+                        <OrderRow key={order.id} order={order} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default CustomerDashboardPage;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerPortalHomePage.jsx
 ==================================================
 // src/pages/CustomerPortalHomePage.jsx (NEW FILE)
@@ -15651,47 +15953,101 @@ export default JobCreatorPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobHistoryPage.jsx
 ==================================================
-// src/pages/JobHistoryPage.jsx
-
-import React, { useState, useEffect } from 'react';
-import { listenToJobCards } from '../api/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { listenToJobCards, getEmployees, getDepartments } from '../api/firestore';
 import JobDetailsPanel from '../components/features/job_cards/JobDetailsPanel';
 import Input from '../components/ui/Input';
+import Dropdown from '../components/ui/Dropdown';
+import Button from '../components/ui/Button';
 
 const JobHistoryPage = () => {
   const [allJobs, setAllJobs] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // State for filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDept, setSelectedDept] = useState('');
+  const [selectedEmp, setSelectedEmp] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   const [selectedJobId, setSelectedJobId] = useState(null);
 
   useEffect(() => {
-    const unsub = listenToJobCards(jobs => {
-      const completedJobs = jobs.filter(j =>
-        ['Complete', 'Issue', 'Awaiting QC', 'Halted - Issue'].includes(j.status)
-      );
-      setAllJobs(completedJobs);
-    });
-    return () => unsub();
+    const fetchData = async () => {
+        setLoading(true);
+        const [emps, depts] = await Promise.all([getEmployees(), getDepartments()]);
+        setEmployees(emps);
+        setDepartments(depts);
+
+        const unsub = listenToJobCards(jobs => {
+            const completedJobs = jobs.filter(j =>
+                ['Complete', 'Issue', 'Archived - Issue'].includes(j.status)
+            ).sort((a,b) => b.createdAt.seconds - a.createdAt.seconds); // Sort newest first
+            setAllJobs(completedJobs);
+            setLoading(false);
+        });
+
+        return () => unsub();
+    };
+    
+    fetchData();
   }, []);
 
-  const filteredJobs = allJobs.filter(job =>
-    job.partName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.jobId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.departmentName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredJobs = useMemo(() => {
+    return allJobs.filter(job => {
+        const searchMatch = searchTerm === '' || 
+            job.partName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            job.jobId?.toLowerCase().includes(searchTerm.toLowerCase());
+        
+        const deptMatch = !selectedDept || job.departmentId === selectedDept;
+        const empMatch = !selectedEmp || job.employeeId === selectedEmp;
+        
+        const jobDate = job.completedAt?.toDate();
+        const start = startDate ? new Date(startDate) : null;
+        const end = endDate ? new Date(endDate) : null;
+
+        if(start) start.setHours(0,0,0,0);
+        if(end) end.setHours(23,59,59,999);
+
+        const dateMatch = (!start || jobDate >= start) && (!end || jobDate <= end);
+
+        return searchMatch && deptMatch && empMatch && dateMatch;
+    });
+  }, [allJobs, searchTerm, selectedDept, selectedEmp, startDate, endDate]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedDept('');
+    setSelectedEmp('');
+    setStartDate('');
+    setEndDate('');
+  };
 
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold text-white mb-4">Job History</h1>
-      <Input
-        label="Search by Part, Job ID, or Department"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="mb-4"
-      />
+      
+      <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 mb-6 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Dropdown label="Filter by Department" options={departments} value={selectedDept} onChange={e => setSelectedDept(e.target.value)} placeholder="All Departments" />
+            <Dropdown label="Filter by Employee" options={employees} value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} placeholder="All Employees" />
+            <Input label="Search by Part Name or Job ID" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+            <Input label="Completed After (Start Date)" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+            <Input label="Completed Before (End Date)" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+            <Button onClick={clearFilters} variant="secondary">Clear All Filters</Button>
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          {filteredJobs.slice(0, 100).map(job => (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-2 bg-gray-900/50 p-4 rounded-lg max-h-[60vh] overflow-y-auto">
+          {loading && <p className="text-gray-400">Loading job history...</p>}
+          {!loading && filteredJobs.length === 0 && <p className="text-gray-400 text-center py-8">No jobs match the current filters.</p>}
+          {!loading && filteredJobs.map(job => (
             <div
               key={job.id}
               onClick={() => setSelectedJobId(job.jobId)}
@@ -15705,11 +16061,13 @@ const JobHistoryPage = () => {
           ))}
         </div>
 
-        <div>
+        <div className="bg-gray-900/50 p-4 rounded-lg">
           {selectedJobId ? (
             <JobDetailsPanel jobId={selectedJobId} />
           ) : (
-            <p className="text-gray-400 text-sm text-center">Select a job to view details</p>
+            <div className="flex items-center justify-center h-full text-gray-500">
+                <p>Select a job from the list to view its details.</p>
+            </div>
           )}
         </div>
       </div>
@@ -15718,7 +16076,6 @@ const JobHistoryPage = () => {
 };
 
 export default JobHistoryPage;
-
 
 
 ==================================================
@@ -16144,117 +16501,169 @@ export default MarketingPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MultiStageWizard.jsx
 ==================================================
-import React, { useState, useEffect } from 'react';
-import { getParts, getDepartments, createMultiJob } from '../api/firestore';
+// src/pages/MultiStageWizard.jsx
+
+import React, { useEffect, useState } from 'react';
+import { getProducts, getDepartments, addJobCard } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import Select from '../components/ui/Select';
+import Dropdown from '../components/ui/Dropdown';
 import toast from 'react-hot-toast';
+import { Trash2 } from 'lucide-react'; // <-- ADD THIS IMPORT
 
 const MultiStageWizard = () => {
-  const [parts, setParts] = useState([]);
-  const [departments, setDepartments] = useState([]);
-  const [selectedPart, setSelectedPart] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [workflow, setWorkflow] = useState([]);
+    const [products, setProducts] = useState([]);
+    const [departments, setDepartments] = useState([]);
+    const [selectedProductId, setSelectedProductId] = useState('');
+    const [quantity, setQuantity] = useState(1);
+    const [workflow, setWorkflow] = useState([]);
+    const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    getParts().then(setParts);
-    getDepartments().then(setDepartments);
-  }, []);
+    useEffect(() => {
+        getProducts().then(setProducts);
+        getDepartments().then(setDepartments);
+    }, []);
 
-  const addStage = () => {
-    setWorkflow([...workflow, { departmentId: '', employeeName: '' }]);
-  };
+    const addStage = () => {
+        // Add a department to the workflow
+        setWorkflow([...workflow, { departmentId: '' }]);
+    };
 
-  const updateStage = (index, key, value) => {
-    const updated = [...workflow];
-    updated[index][key] = value;
-    setWorkflow(updated);
-  };
+    const updateStage = (index, departmentId) => {
+        const updated = [...workflow];
+        updated[index] = { departmentId };
+        setWorkflow(updated);
+    };
 
-  const removeStage = (index) => {
-    const updated = workflow.filter((_, i) => i !== index);
-    setWorkflow(updated);
-  };
+    const removeStage = (index) => {
+        const updated = workflow.filter((_, i) => i !== index);
+        setWorkflow(updated);
+    };
 
-  const submitMultiJob = async () => {
-    if (!selectedPart || workflow.length === 0) {
-      toast.error('Please select a part and add at least one stage.');
-      return;
-    }
+    const submitMultiJob = async () => {
+        if (!selectedProductId || workflow.length === 0) {
+            return toast.error('Please select a product and add at least one stage.');
+        }
 
-    try {
-      await createMultiJob({
-        partId: selectedPart,
-        quantity,
-        workflow
-      });
-      toast.success('Multi-stage job created');
-      setWorkflow([]);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to create job');
-    }
-  };
+        const selectedProduct = products.find(p => p.id === selectedProductId);
+        if (!selectedProduct) {
+            return toast.error('Selected product could not be found.');
+        }
 
-  return (
-    <div className="p-6 text-white">
-      <h1 className="text-2xl font-bold mb-4">Multi-Stage Job Wizard</h1>
+        setCreating(true);
+        const parentJobId = `ROUTED-${Date.now()}`;
 
-      <Select
-        label="Part"
-        options={parts.map(p => ({ label: p.name, value: p.id }))}
-        value={selectedPart}
-        onChange={(e) => setSelectedPart(e.target.value)}
-      />
+        try {
+            for (let i = 0; i < workflow.length; i++) {
+                const stage = workflow[i];
+                if (!stage.departmentId) {
+                    toast.error(`Stage ${i + 1} is missing a department.`);
+                    continue; // Skip this stage if no department is selected
+                }
+                const department = departments.find(d => d.id === stage.departmentId);
 
-      <Input
-        label="Quantity"
-        type="number"
-        value={quantity}
-        onChange={(e) => setQuantity(parseInt(e.target.value))}
-      />
+                await addJobCard({
+                    jobId: `${parentJobId}-${i + 1}`,
+                    partId: selectedProduct.id,
+                    partName: selectedProduct.name,
+                    quantity: Number(quantity),
+                    departmentId: stage.departmentId,
+                    departmentName: department?.name || 'Unknown',
+                    employeeId: 'unassigned',
+                    employeeName: 'Unassigned',
+                    status: 'Pending',
+                    description: `Stage ${i + 1} of ${workflow.length} for ${selectedProduct.name}`,
+                    isCustomJob: false,
+                    parentJobId: parentJobId,
+                });
+            }
 
-      <div className="mt-6 space-y-4">
-        {workflow.map((stage, index) => (
-          <div key={index} className="bg-gray-800 p-4 rounded border border-gray-700">
-            <Select
-              label={`Stage ${index + 1} - Department`}
-              options={departments.map(d => ({ label: d.name, value: d.id }))}
-              value={stage.departmentId}
-              onChange={(e) => updateStage(index, 'departmentId', e.target.value)}
-            />
-            <Input
-              label="Employee Name"
-              value={stage.employeeName}
-              onChange={(e) => updateStage(index, 'employeeName', e.target.value)}
-            />
-            <Button onClick={() => removeStage(index)} className="mt-2 bg-red-600">Remove Stage</Button>
-          </div>
-        ))}
-      </div>
+            toast.success(`Successfully created ${workflow.length} staged jobs for ${selectedProduct.name}.`);
+            setWorkflow([]);
+            setSelectedProductId('');
+            setQuantity(1);
 
-      <div className="mt-6 flex space-x-4">
-        <Button onClick={addStage}>Add Stage</Button>
-        <Button onClick={submitMultiJob} className="bg-green-600">Create Multi-Job</Button>
-      </div>
-    </div>
-  );
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to create multi-stage job.');
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    return (
+        <div className="p-6 text-white max-w-4xl mx-auto">
+            <h1 className="text-2xl font-bold mb-4">Multi-Stage Job Wizard</h1>
+            <p className="text-gray-400 mb-6">Create a sequence of jobs for a single product that must pass through multiple departments.</p>
+
+            <div className="space-y-6 bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="md:col-span-2">
+                        <Dropdown
+                            label="Product"
+                            options={products}
+                            value={selectedProductId}
+                            onChange={(e) => setSelectedProductId(e.target.value)}
+                            placeholder="Select a product..."
+                        />
+                    </div>
+                    <Input
+                        label="Quantity"
+                        type="number"
+                        min="1"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                    />
+                </div>
+
+                <div className="border-t border-gray-700 pt-4">
+                    <h3 className="font-semibold text-lg text-white mb-2">Production Workflow (in order)</h3>
+                    <div className="space-y-4">
+                        {workflow.map((stage, index) => (
+                            <div key={index} className="flex items-end gap-3 bg-gray-900/50 p-3 rounded-lg">
+                                <span className="font-bold text-gray-500">{index + 1}.</span>
+                                <div className="flex-grow">
+                                    <Dropdown
+                                        label={`Stage ${index + 1} Department`}
+                                        options={departments}
+                                        value={stage.departmentId}
+                                        onChange={(e) => updateStage(index, e.target.value)}
+                                        placeholder="Select department..."
+                                    />
+                                </div>
+                                <Button onClick={() => removeStage(index)} variant="danger" className="p-2 h-12 w-12">
+                                    <Trash2 size={18}/>
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                    <Button onClick={addStage} variant="secondary" className="mt-4">
+                        Add Stage
+                    </Button>
+                </div>
+
+                <div className="text-right border-t border-gray-700 pt-4">
+                    <Button onClick={submitMultiJob} disabled={creating || workflow.length === 0} variant="primary">
+                        {creating ? 'Creating Jobs...' : `Create ${workflow.length}-Stage Job`}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default MultiStageWizard;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PayrollPage.jsx
 ==================================================
-// src/pages/PayrollPage.jsx (Final Correct Version)
+// src/pages/PayrollPage.jsx (UPDATED)
 
 import React, { useState } from 'react';
 import PermanentPayroll from '../components/features/payroll/PermanentPayroll';
 import SubcontractorLedger from '../components/features/payroll/SubcontractorLedger';
+import LivePayrollSummary from '../components/features/payroll/LivePayrollSummary'; // <-- ADD THIS IMPORT
 
 const TabButton = ({ id, label, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
@@ -16275,8 +16684,11 @@ const PayrollPage = () => {
     const [activeTab, setActiveTab] = useState('permanent');
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-8">
             <h2 className="text-3xl font-bold text-white">Payroll & Payments</h2>
+
+            {/* --- ADD THE NEW COMPONENT HERE --- */}
+            <LivePayrollSummary />
 
             <div className="border-b border-gray-700">
                 <nav className="-mb-px flex space-x-6">
@@ -16299,13 +16711,14 @@ export default PayrollPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PerformancePage.jsx
 ==================================================
-// src/pages/PerformancePage.jsx
+// src/pages/PerformancePage.jsx (UPDATED)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpenses, getDepartments } from '../api/firestore';
 import Dropdown from '../components/ui/Dropdown';
 import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
+import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart'; // <-- IMPORT NEW CHART
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
@@ -16361,6 +16774,7 @@ const PerformancePage = () => {
         return () => { if (unsubscribeJobs) unsubscribeJobs(); };
     }, []);
     
+    // --- UPDATED useMemo to calculate department data ---
     const performanceData = useMemo(() => {
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
         const employeeCount = employees.length > 0 ? employees.length : 1;
@@ -16371,6 +16785,32 @@ const PerformancePage = () => {
             job.startedAt && 
             job.completedAt
         );
+
+        // --- Department level calculations ---
+        const departmentData = departments.map(dept => {
+            const deptJobs = validCompletedJobs.filter(j => j.departmentId === dept.id);
+            if (deptJobs.length === 0) {
+                return { name: dept.name, avgEfficiency: 0, totalValue: 0 };
+            }
+
+            const totalValue = deptJobs.reduce((sum, j) => sum + (j.totalCost || 0), 0);
+            
+            let totalEfficiencyRatio = 0;
+            let jobsWithTime = 0;
+            deptJobs.forEach(job => {
+                if (job.estimatedTime > 0) {
+                    const durationSeconds = (job.completedAt.seconds - job.startedAt.seconds) - (job.totalPausedMilliseconds / 1000 || 0);
+                    if (durationSeconds > 0) {
+                        totalEfficiencyRatio += ((job.estimatedTime * 60) / durationSeconds);
+                        jobsWithTime++;
+                    }
+                }
+            });
+            const avgEfficiency = jobsWithTime > 0 ? (totalEfficiencyRatio / jobsWithTime) * 100 : 0;
+            
+            return { name: dept.name, avgEfficiency, totalValue };
+        });
+        // --- End of department calculations ---
 
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -16391,7 +16831,7 @@ const PerformancePage = () => {
             const empJobs = jobs.filter(job => job.employeeId === emp.id && (job.status === 'Complete' || job.status === 'Issue' || job.status === 'Archived - Issue'));
             const empJobsCompleted = empJobs.length;
             const empIssueJobs = empJobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue');
-            const empKudosJobs = empJobs.filter(j => j.kudos === true); // ** NEW: Count kudos jobs **
+            const empKudosJobs = empJobs.filter(j => j.kudos === true);
 
             let empTotalWorkMinutes = 0, empTotalEfficiencyRatioSum = 0, empTotalJobValue = 0, jobsWithTime = 0;
             empJobs.forEach(job => {
@@ -16418,8 +16858,8 @@ const PerformancePage = () => {
                 avgEfficiency: empAvgEfficiency,
                 netValueAdded: empTotalJobValue - totalLaborCost,
                 reworkRate: empJobsCompleted > 0 ? (empIssueJobs.length / empJobsCompleted) * 100 : 0,
-                reworkCount: empIssueJobs.length, // ** NEW: Pass the count **
-                kudosCount: empKudosJobs.length, // ** NEW: Pass the count **
+                reworkCount: empIssueJobs.length,
+                kudosCount: empKudosJobs.length,
             };
         });
 
@@ -16439,11 +16879,12 @@ const PerformancePage = () => {
                 jobsCompleted: validCompletedJobs.length,
                 totalWorkHours: (overallTotalWorkMinutes / 60).toFixed(1),
                 avgEfficiency: `${Math.round(overallAvgEfficiency)}%`,
-                totalJobValue: `R ${overallTotalJobValue.toFixed(2)}`,
+                totalJobValue: `R ${overallTotalJobValue.toLocaleString('en-ZA', {minimumFractionDigits: 2})}`,
             },
-            employeePerformanceMetrics
+            employeePerformanceMetrics,
+            departmentData, // <-- EXPORT NEW DATA
         };
-    }, [jobs, employees, allOverheadExpenses]);
+    }, [jobs, employees, allOverheadExpenses, departments]);
 
     if (loading) return <p className="text-center text-gray-400">Loading Performance Data...</p>;
 
@@ -16457,6 +16898,9 @@ const PerformancePage = () => {
                 <KpiCard icon={<Zap size={24} />} title="Average Efficiency" value={performanceData.overallKpis.avgEfficiency} color="bg-purple-500/20 text-purple-400" />
                 <KpiCard icon={<DollarSign size={24} />} title="Total Job Value" value={performanceData.overallKpis.totalJobValue} color="bg-yellow-500/20 text-yellow-400" />
             </div>
+
+            {/* --- RENDER THE NEW CHART --- */}
+            <DepartmentPerformanceChart data={performanceData.departmentData} />
             
              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
@@ -16511,18 +16955,16 @@ const StockStatus = ({ product }) => {
     if (stock > 0 && stock <= reorder) {
         return <span className="flex items-center gap-1 text-xs font-semibold text-yellow-400"><AlertTriangle size={14} /> Low Stock</span>;
     }
-    // You could add a 'leadTime' field to your products for a more accurate estimate
     return <span className="flex items-center gap-1 text-xs font-semibold text-gray-400"><Clock size={14} /> Made to Order</span>;
 };
 
 
 const ProductBrowserPage = () => {
-    const { user } = useAuth(); // Get the logged-in user to access their discount
+    const { user } = useAuth();
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [cartItems, setCartItems] = useState([]); // State for the quote/cart
+    const [cartItems, setCartItems] = useState([]);
 
-    // State for search and filters
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({
         manufacturer: '',
@@ -16549,7 +16991,6 @@ const ProductBrowserPage = () => {
         const { name, value } = e.target;
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
-            // Reset dependent filters when a parent filter changes
             if (name === 'manufacturer') {
                 newFilters.make = '';
                 newFilters.model = '';
@@ -16561,7 +17002,6 @@ const ProductBrowserPage = () => {
         });
     };
     
-    // --- Handlers for Cart Logic ---
     const handleAddToCart = (product) => {
         if (cartItems.find(item => item.id === product.id)) {
             return toast('Item is already in your quote.', { icon: 'â„¹ï¸' });
@@ -16577,11 +17017,10 @@ const ProductBrowserPage = () => {
     const handleOrderSubmission = () => {
         setCartItems([]);
     };
-    // --------------------------------
 
     const manufacturers = useMemo(() => [...new Set(products.map(p => p.manufacturer).filter(Boolean))].map(m => ({id: m, name: m})), [products]);
     
-    const makes = useMemo(() => {
+     const makes = useMemo(() => {
         if (!filters.manufacturer) return [];
         return [...new Set(products.filter(p => p.manufacturer === filters.manufacturer).map(p => p.make).filter(Boolean))].map(m => ({id: m, name: m}));
     }, [products, filters.manufacturer]);
@@ -16591,8 +17030,6 @@ const ProductBrowserPage = () => {
         return [...new Set(products.filter(p => p.make === filters.make).map(p => p.model).filter(Boolean))].map(m => ({id: m, name: m}));
     }, [products, filters.make]);
 
-
-    // Memoized list of products to display based on search and filters
     const displayedProducts = useMemo(() => {
         return products.filter(product => {
             const searchLower = searchTerm.toLowerCase();
@@ -16623,11 +17060,11 @@ const ProductBrowserPage = () => {
                              <Input 
                                 placeholder="Search by name or part number..." 
                                 value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
+                                 onChange={e => setSearchTerm(e.target.value)}
                                 className="pl-10"
                             />
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        </div>
+                         </div>
                         <Dropdown label="Manufacturer" name="manufacturer" value={filters.manufacturer} onChange={handleFilterChange} options={manufacturers} placeholder="All Manufacturers" />
                         <Dropdown label="Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" disabled={!filters.manufacturer} />
                         <Dropdown label="Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
@@ -16638,24 +17075,25 @@ const ProductBrowserPage = () => {
                     {displayedProducts.map(product => (
                         <div key={product.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
                             <img 
-                                src={product.photoUrl || 'https://via.placeholder.com/400x300.png?text=No+Image'} 
+                                // --- THIS IS THE CORRECTED LINE ---
+                                src={product.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`} 
                                 alt={product.name}
                                 className="w-full h-48 object-cover"
                             />
-                            <div className="p-4 flex flex-col flex-grow">
+                             <div className="p-4 flex flex-col flex-grow">
                                 <h4 className="font-bold text-white flex-grow">{product.name}</h4>
                                 <p className="text-xs text-gray-500 font-mono mb-2">P/N: {product.partNumber}</p>
                                 <div className="flex justify-between items-center mb-4">
-                                    <p className="text-lg font-semibold text-green-400">R {product.sellingPrice?.toFixed(2) || 'N/A'}</p>
+                                     <p className="text-lg font-semibold text-green-400">R {product.sellingPrice?.toFixed(2) || 'N/A'}</p>
                                     <StockStatus product={product} />
                                 </div>
-                                <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full mt-auto">Add to Quote</Button>
+                                 <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full mt-auto">Add to Quote</Button>
                             </div>
                         </div>
                     ))}
                 </div>
                 {displayedProducts.length === 0 && !loading && (
-                    <div className="text-center py-16 bg-gray-800 rounded-lg">
+                     <div className="text-center py-16 bg-gray-800 rounded-lg">
                         <p className="text-gray-500">No products match your search criteria.</p>
                     </div>
                 )}
@@ -16663,7 +17101,7 @@ const ProductBrowserPage = () => {
 
             {/* Sidebar: Live Quote */}
             <div className="lg:col-span-1">
-                <LiveQuoteSidebar 
+                 <LiveQuoteSidebar 
                     cartItems={cartItems}
                     onRemoveItem={handleRemoveFromCart}
                     discountPercentage={user?.discountPercentage || 0}
@@ -19134,7 +19572,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
 ==================================================
-// src/App.jsx (UPDATED with Customer Portal Route)
+// src/App.jsx
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
@@ -19163,12 +19601,18 @@ import ValuationPage from './pages/ValuationPage.jsx';
 import CalendarPage from './pages/CalendarPage.jsx';
 import MarketingPage from './pages/MarketingPage.jsx';
 import QuotingPage from './pages/QuotingPage.jsx';
-import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage.jsx'; 
+import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage.jsx';
 import SalesOrderPage from './pages/SalesOrderPage.jsx';
 import PurchasingPage from './pages/PurchasingPage.jsx';
 import StockTakePage from './pages/StockTakePage.jsx';
 import AssetIntelligencePage from './pages/AssetIntelligencePage.jsx';
-import ProductBrowserPage from './pages/ProductBrowserPage.jsx'; // --- IMPORT NEW BROWSER PAGE ---
+import ProductBrowserPage from './pages/ProductBrowserPage.jsx';
+import CustomerDashboardPage from './pages/CustomerDashboardPage.jsx';
+import JobHistoryPage from './pages/JobHistoryPage.jsx';
+import ReworkQueuePage from './pages/ReworkQueuePage.jsx';
+import MultiStageWizard from './pages/MultiStageWizard.jsx';
+import StockAdjustmentPage from './pages/StockAdjustmentPage.jsx';
+import JobReprintPage from './pages/JobReprintPage.jsx';
 
 function App() {
     const { user } = useAuth();
@@ -19178,12 +19622,14 @@ function App() {
             <Routes>
                 <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
 
-                {/* --- UPDATED ROUTE FOR CUSTOMER PORTAL --- */}
-                <Route path="/portal" element={
+                <Route path="/portal/*" element={
                     <ProtectedRoute>
                         <RoleBasedRoute permission="access_portal">
                             <CustomerLayout>
-                                <ProductBrowserPage />
+                                <Routes>
+                                    <Route index element={<CustomerDashboardPage />} />
+                                    <Route path="products" element={<ProductBrowserPage />} />
+                                </Routes>
                             </CustomerLayout>
                         </RoleBasedRoute>
                     </ProtectedRoute>
@@ -19214,6 +19660,11 @@ function App() {
                                 <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />
                                 <Route path="/adjustment" element={<RoleBasedRoute permission="adjustment"><JobCardAdjustmentPage /></RoleBasedRoute>} />
                                 <Route path="/assets" element={<RoleBasedRoute permission="assets"><AssetIntelligencePage /></RoleBasedRoute>} />
+                                <Route path="/job-history" element={<RoleBasedRoute permission="jobHistory"><JobHistoryPage /></RoleBasedRoute>} />
+                                <Route path="/rework-queue" element={<RoleBasedRoute permission="reworkQueue"><ReworkQueuePage /></RoleBasedRoute>} />
+                                <Route path="/multi-stage-wizard" element={<RoleBasedRoute permission="multiStage"><MultiStageWizard /></RoleBasedRoute>} />
+                                <Route path="/stock-adjust" element={<RoleBasedRoute permission="stockAdjust"><StockAdjustmentPage /></RoleBasedRoute>} />
+                                <Route path="/job-reprint" element={<RoleBasedRoute permission="jobReprint"><JobReprintPage /></RoleBasedRoute>} />
                                 
                                 <Route path="*" element={<Navigate to="/" />} />
                             </Routes>

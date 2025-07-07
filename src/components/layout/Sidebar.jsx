@@ -1,3 +1,5 @@
+// src/components/layout/Sidebar.jsx
+
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext.jsx';
@@ -7,7 +9,8 @@ import {
   Calendar as CalendarIcon, SlidersHorizontal, ChevronDown, ChevronRight,
   Briefcase, Banknote, BrainCircuit, DollarSign,
   Aperture, Calculator, NotebookText, Sun,
-  Megaphone, ShoppingCart, ClipboardList, Cpu
+  Megaphone, ShoppingCart, ClipboardList, Cpu,
+  LayoutGrid // <-- ADDED: Import the new icon
 } from 'lucide-react';
 import NotesApplet from '../features/sidebar/NotesApplet.jsx';
 import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
@@ -93,9 +96,12 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
           </NavGroup>
         )}
 
-        {(canSee('tracking') || canSee('scanner') || canSee('calendar')) && (
+        {/* MODIFIED: Added 'kanban' to the permission check */}
+        {(canSee('tracking') || canSee('scanner') || canSee('calendar') || canSee('kanban')) && (
           <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
             {canSee('tracking') && <SidebarLink to="/tracking" icon={<BarChart3 size={18} />} text="Live Tracking" isOpen={isOpen} />}
+            {/* ADDED: The new link to the Kanban Board */}
+            {canSee('kanban') && <SidebarLink to="/kanban" icon={<LayoutGrid size={18} />} text="Kanban Board" isOpen={isOpen} />}
             {canSee('scanner') && <SidebarLink to="/scan" icon={<ScanLine size={18} />} text="Scanner" isOpen={isOpen} />}
             {canSee('calendar') && <SidebarLink to="/calendar" icon={<CalendarIcon size={18} />} text="Calendar" isOpen={isOpen} />}
           </NavGroup>
