@@ -21,18 +21,16 @@ const StockStatus = ({ product }) => {
     if (stock > 0 && stock <= reorder) {
         return <span className="flex items-center gap-1 text-xs font-semibold text-yellow-400"><AlertTriangle size={14} /> Low Stock</span>;
     }
-    // You could add a 'leadTime' field to your products for a more accurate estimate
     return <span className="flex items-center gap-1 text-xs font-semibold text-gray-400"><Clock size={14} /> Made to Order</span>;
 };
 
 
 const ProductBrowserPage = () => {
-    const { user } = useAuth(); // Get the logged-in user to access their discount
+    const { user } = useAuth();
     const [products, setProducts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [cartItems, setCartItems] = useState([]); // State for the quote/cart
+    const [cartItems, setCartItems] = useState([]);
 
-    // State for search and filters
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({
         manufacturer: '',
@@ -59,7 +57,6 @@ const ProductBrowserPage = () => {
         const { name, value } = e.target;
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
-            // Reset dependent filters when a parent filter changes
             if (name === 'manufacturer') {
                 newFilters.make = '';
                 newFilters.model = '';
@@ -71,7 +68,6 @@ const ProductBrowserPage = () => {
         });
     };
     
-    // --- Handlers for Cart Logic ---
     const handleAddToCart = (product) => {
         if (cartItems.find(item => item.id === product.id)) {
             return toast('Item is already in your quote.', { icon: 'ℹ️' });
@@ -87,11 +83,10 @@ const ProductBrowserPage = () => {
     const handleOrderSubmission = () => {
         setCartItems([]);
     };
-    // --------------------------------
 
     const manufacturers = useMemo(() => [...new Set(products.map(p => p.manufacturer).filter(Boolean))].map(m => ({id: m, name: m})), [products]);
     
-    const makes = useMemo(() => {
+     const makes = useMemo(() => {
         if (!filters.manufacturer) return [];
         return [...new Set(products.filter(p => p.manufacturer === filters.manufacturer).map(p => p.make).filter(Boolean))].map(m => ({id: m, name: m}));
     }, [products, filters.manufacturer]);
@@ -101,8 +96,6 @@ const ProductBrowserPage = () => {
         return [...new Set(products.filter(p => p.make === filters.make).map(p => p.model).filter(Boolean))].map(m => ({id: m, name: m}));
     }, [products, filters.make]);
 
-
-    // Memoized list of products to display based on search and filters
     const displayedProducts = useMemo(() => {
         return products.filter(product => {
             const searchLower = searchTerm.toLowerCase();
@@ -133,11 +126,11 @@ const ProductBrowserPage = () => {
                              <Input 
                                 placeholder="Search by name or part number..." 
                                 value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
+                                 onChange={e => setSearchTerm(e.target.value)}
                                 className="pl-10"
                             />
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        </div>
+                         </div>
                         <Dropdown label="Manufacturer" name="manufacturer" value={filters.manufacturer} onChange={handleFilterChange} options={manufacturers} placeholder="All Manufacturers" />
                         <Dropdown label="Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" disabled={!filters.manufacturer} />
                         <Dropdown label="Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
@@ -148,24 +141,25 @@ const ProductBrowserPage = () => {
                     {displayedProducts.map(product => (
                         <div key={product.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
                             <img 
-                                src={product.photoUrl || 'https://via.placeholder.com/400x300.png?text=No+Image'} 
+                                // --- THIS IS THE CORRECTED LINE ---
+                                src={product.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`} 
                                 alt={product.name}
                                 className="w-full h-48 object-cover"
                             />
-                            <div className="p-4 flex flex-col flex-grow">
+                             <div className="p-4 flex flex-col flex-grow">
                                 <h4 className="font-bold text-white flex-grow">{product.name}</h4>
                                 <p className="text-xs text-gray-500 font-mono mb-2">P/N: {product.partNumber}</p>
                                 <div className="flex justify-between items-center mb-4">
-                                    <p className="text-lg font-semibold text-green-400">R {product.sellingPrice?.toFixed(2) || 'N/A'}</p>
+                                     <p className="text-lg font-semibold text-green-400">R {product.sellingPrice?.toFixed(2) || 'N/A'}</p>
                                     <StockStatus product={product} />
                                 </div>
-                                <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full mt-auto">Add to Quote</Button>
+                                 <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full mt-auto">Add to Quote</Button>
                             </div>
                         </div>
                     ))}
                 </div>
                 {displayedProducts.length === 0 && !loading && (
-                    <div className="text-center py-16 bg-gray-800 rounded-lg">
+                     <div className="text-center py-16 bg-gray-800 rounded-lg">
                         <p className="text-gray-500">No products match your search criteria.</p>
                     </div>
                 )}
@@ -173,7 +167,7 @@ const ProductBrowserPage = () => {
 
             {/* Sidebar: Live Quote */}
             <div className="lg:col-span-1">
-                <LiveQuoteSidebar 
+                 <LiveQuoteSidebar 
                     cartItems={cartItems}
                     onRemoveItem={handleRemoveFromCart}
                     discountPercentage={user?.discountPercentage || 0}
