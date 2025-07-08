@@ -1,4 +1,4 @@
-// src/api/firestore.js (MERGED & UPDATED with Kaizen Function)
+// src/api/firestore.js (MERGED & UPDATED with Praise Functions)
 
 import {
     collection,
@@ -23,15 +23,37 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
-// --- NEW KAIZEN SUGGESTION API ---
+
+// --- NEW KAIZEN & PRAISE APIs ---
 const kaizenSuggestionsCollection = collection(db, 'kaizenSuggestions');
 export const addKaizenSuggestion = (suggestionData) => {
     return addDoc(kaizenSuggestionsCollection, {
         ...suggestionData,
         createdAt: serverTimestamp(),
-        status: 'new', // e.g., new, reviewed, implemented
+        status: 'new',
     });
 };
+
+const praiseCollection = collection(db, 'praise');
+export const addPraise = (praiseData) => {
+    return addDoc(praiseCollection, {
+        ...praiseData,
+        createdAt: serverTimestamp(),
+    });
+};
+
+export const listenToPraiseForEmployee = (employeeId, callback) => {
+    const q = query(
+        praiseCollection,
+        where('recipientId', '==', employeeId),
+        orderBy('createdAt', 'desc')
+    );
+    return onSnapshot(q, (snapshot) => {
+        const praiseItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(praiseItems);
+    });
+};
+
 
 // --- Update a standard recipe from a completed job's data ---
 export const updateStandardRecipe = async (jobData) => {

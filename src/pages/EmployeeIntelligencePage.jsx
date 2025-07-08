@@ -4,8 +4,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../api/firebase';
-import { getCompletedJobsForEmployee, getOverheadCategories, getOverheadExpenses, getEmployees, listenToJobCards, getSkills, getTrainingResources } from '../api/firestore';
-import { ChevronsLeft, Zap, DollarSign, AlertCircle, CheckCircle2, Users, BarChartHorizontal, Lightbulb, GraduationCap, Link as LinkIcon, Award, Gem, ShieldCheck, Star, TrendingDown, Clock, ShieldAlert } from 'lucide-react';
+import { 
+    getCompletedJobsForEmployee, 
+    getOverheadCategories, 
+    getOverheadExpenses, 
+    getEmployees, 
+    listenToJobCards, 
+    getSkills, 
+    getTrainingResources,
+    addPraise, // <-- Import addPraise
+    listenToPraiseForEmployee // <-- Import listenToPraiseForEmployee
+} from '../api/firestore';
+import { useAuth } from '../contexts/AuthContext'; // <-- Import useAuth
+import { ChevronsLeft, Zap, DollarSign, AlertCircle, CheckCircle2, Users, BarChartHorizontal, Lightbulb, GraduationCap, Link as LinkIcon, Award, Gem, ShieldCheck, Star, TrendingDown, Clock, ShieldAlert, Send } from 'lucide-react';
+import Button from '../components/ui/Button'; // <-- Import Button
 
 // Child Components (Widgets)
 import EfficiencyChart from '../components/intelligence/EfficiencyChart';
@@ -17,6 +29,8 @@ import SkillProgressionWidget from '../components/intelligence/SkillProgressionW
 import EfficiencyAnalysisModal from '../components/intelligence/EfficiencyAnalysisModal';
 import TrophyCase from '../components/intelligence/TrophyCase';
 import ReliabilityReport from '../components/intelligence/ReliabilityReport';
+import PraiseWidget from '../components/intelligence/PraiseWidget'; // <-- Import PraiseWidget
+import PraiseModal from '../components/intelligence/PraiseModal'; // <-- Import PraiseModal
 
 const KpiCard = ({ icon, title, value, teamAverage, color, onClick, buttonText }) => (
     <div className={`bg-gray-800 p-5 rounded-lg border border-gray-700 flex flex-col justify-between`}>
@@ -176,6 +190,7 @@ const ProactiveInterventionWidget = ({ jobs, employee, allSkills }) => {
 
 const EmployeeIntelligencePage = () => {
     const { employeeId } = useParams();
+    const { user } = useAuth(); // <-- Get current user
     const [employee, setEmployee] = useState(null);
     const [allEmployees, setAllEmployees] = useState([]);
     const [jobs, setJobs] = useState([]);
@@ -186,9 +201,14 @@ const EmployeeIntelligencePage = () => {
     const [loading, setLoading] = useState(true);
     const [isReworkModalOpen, setReworkModalOpen] = useState(false);
     const [isEfficiencyModalOpen, setEfficiencyModalOpen] = useState(false);
+    const [isPraiseModalOpen, setIsPraiseModalOpen] = useState(false); // <-- State for praise modal
+    const [praiseItems, setPraiseItems] = useState([]); // <-- State for praise data
+    const [loadingPraise, setLoadingPraise] = useState(true); // <-- Loading state for praise
 
     useEffect(() => {
-        let unsubscribe = () => {};
+        let unsubscribeJobs = () => {};
+        let unsubscribePraise = () => {};
+
         const fetchAllData = async () => {
             if (!employeeId) return;
             setLoading(true);
@@ -199,7 +219,16 @@ const EmployeeIntelligencePage = () => {
                 ]);
                 if (employeeDoc.exists()) setEmployee({ id: employeeDoc.id, ...employeeDoc.data() });
                 setJobs(completedJobs); setAllEmployees(allEmps); setAllSkills(fetchedSkills); setTrainingResources(fetchedResources);
-                unsubscribe = listenToJobCards(j => setAllJobs(j));
+                
+                unsubscribeJobs = listenToJobCards(j => setAllJobs(j));
+                
+                // Set up listener for praise items
+                setLoadingPraise(true);
+                unsubscribePraise = listenToPraiseForEmployee(employeeId, (fetchedPraise) => {
+                    setPraiseItems(fetchedPraise);
+                    setLoadingPraise(false);
+                });
+
                 let totalOverheads = 0;
                 const expensePromises = overheadCategories.map(cat => getOverheadExpenses(cat.id));
                 const expenseResults = await Promise.all(expensePromises);
@@ -209,7 +238,10 @@ const EmployeeIntelligencePage = () => {
             setLoading(false);
         };
         fetchAllData();
-        return () => unsubscribe();
+        return () => {
+            unsubscribeJobs();
+            unsubscribePraise();
+        };
     }, [employeeId]);
 
     const { performanceMetrics, overheadCostPerHour, earnedBadges } = useMemo(() => {
@@ -304,7 +336,15 @@ const EmployeeIntelligencePage = () => {
         <>
             <div className="space-y-8">
                 <div>
-                    <Link to="/performance" className="flex items-center text-blue-400 hover:text-blue-300 mb-4"><ChevronsLeft size={20} className="mr-1" />Back to Business Performance Dashboard</Link>
+                    <div className="flex justify-between items-center mb-4">
+                        <Link to="/performance" className="flex items-center text-blue-400 hover:text-blue-300">
+                            <ChevronsLeft size={20} className="mr-1" />Back to Business Performance Dashboard
+                        </Link>
+                        {/* NEW: Give Praise Button */}
+                        <Button onClick={() => setIsPraiseModalOpen(true)} variant="secondary">
+                            <Send size={16} className="mr-2" /> Give Praise
+                        </Button>
+                    </div>
                     <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
                         <h2 className="text-3xl font-bold text-white">{employee.name}</h2>
                         <p className="text-gray-400">Performance & Value Engine</p>
@@ -331,6 +371,10 @@ const EmployeeIntelligencePage = () => {
                     </div>
                     <ValueWasteAnalysis jobs={jobs} />
                 </div>
+                
+                {/* NEW: Praise Widget added to the layout */}
+                <PraiseWidget praiseItems={praiseItems} loading={loadingPraise} />
+
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <ReliabilityReport employeeId={employeeId} />
                     <SkillProgressionWidget employeeId={employeeId} />
@@ -339,6 +383,15 @@ const EmployeeIntelligencePage = () => {
             </div>
             {isEfficiencyModalOpen && (<EfficiencyAnalysisModal jobs={jobs} employeeName={employee.name} onClose={() => setEfficiencyModalOpen(false)} />)}
             {isReworkModalOpen && (<ReworkAnalysisModal jobs={jobs} employeeName={employee.name} onClose={() => setReworkModalOpen(false)} />)}
+            {/* NEW: Render Praise Modal */}
+            {isPraiseModalOpen && (
+                <PraiseModal 
+                    allEmployees={allEmployees}
+                    currentUser={user}
+                    onSubmit={addPraise}
+                    onClose={() => setIsPraiseModalOpen(false)}
+                />
+            )}
         </>
     );
 };
