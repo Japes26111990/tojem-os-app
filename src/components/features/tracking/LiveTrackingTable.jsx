@@ -36,7 +36,8 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
     const liveDuration = calculateJobDuration(job, currentTime);
 
     const calculateLiveCost = (j, cTime, rates, overheadRate) => {
-        if (typeof j.totalCost === 'number' && j.totalCost !== null) {
+        if (j.status === 'Complete' && typeof j.totalCost === 'number')
+ {
             return `R ${j.totalCost.toFixed(2)}`;
         }
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
