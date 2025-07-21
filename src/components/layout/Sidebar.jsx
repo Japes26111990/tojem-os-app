@@ -10,7 +10,7 @@ import {
   Briefcase, Banknote, BrainCircuit, DollarSign,
   Aperture, Calculator, NotebookText, Sun,
   Megaphone, ShoppingCart, ClipboardList, Cpu,
-  LayoutGrid, PackageSearch, UserCheck
+  LayoutGrid, PackageSearch, UserCheck, Map // --- IMPORT Map ICON ---
 } from 'lucide-react';
 import NotesApplet from '../features/sidebar/NotesApplet.jsx';
 import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
@@ -67,7 +67,7 @@ const Applet = ({ icon, text, children, isOpen }) => {
   );
 };
 
-const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
+const Sidebar = ({ isOpen, isPinned, onMouseEnter, onMouseLeave }) => {
   const { user } = useAuth();
   const canSee = (permission) => !!user?.permissions?.[permission];
 
@@ -96,10 +96,13 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
           </NavGroup>
         )}
 
-        {(canSee('tracking') || canSee('scanner') || canSee('calendar') || canSee('kanban') || canSee('picking')) && (
+        {/* --- UPDATED WORKSHOP FLOOR GROUP --- */}
+        {(canSee('tracking') || canSee('scanner') || canSee('calendar') || canSee('kanban') || canSee('picking') || canSee('floorplan')) && (
           <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
             {canSee('tracking') && <SidebarLink to="/tracking" icon={<BarChart3 size={18} />} text="Live Tracking" isOpen={isOpen} />}
             {canSee('kanban') && <SidebarLink to="/kanban" icon={<LayoutGrid size={18} />} text="Kanban Board" isOpen={isOpen} />}
+            {/* --- ADD NEW LINK HERE --- */}
+            {canSee('floorplan') && <SidebarLink to="/floorplan" icon={<Map size={18} />} text="Floor Plan" isOpen={isOpen} />}
             {canSee('picking') && <SidebarLink to="/picking-queue" icon={<PackageSearch size={18} />} text="Picking Queue" isOpen={isOpen} />}
             {canSee('scanner') && <SidebarLink to="/scan" icon={<ScanLine size={18} />} text="Scanner" isOpen={isOpen} />}
             {canSee('calendar') && <SidebarLink to="/calendar" icon={<CalendarIcon size={18} />} text="Calendar" isOpen={isOpen} />}
@@ -129,8 +132,6 @@ const Sidebar = ({ isOpen, onMouseEnter, onMouseLeave }) => {
           </NavGroup>
         )}
         
-        {/* REMOVED: Administration NavGroup which contained Payroll */}
-
       </div>
 
       <div className="flex-shrink-0 border-t border-gray-700 pt-2">

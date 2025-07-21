@@ -3,50 +3,117 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- User and Role Management ---
-    match /users/{userId} {
-      // A user can GET their own document.
-      allow get: if request.auth.uid == userId;
-      
-      // A user can UPDATE their own document.
-      allow update: if request.auth.uid == userId;
-
-      // Any authenticated user can LIST all users (for the User Management page).
-      // This could be restricted to a 'Manager' role in the future for tighter security.
-      allow list: if request.auth != null;
+    // --- Helper Functions for Roles ---
+    function isAuth() {
+      return request.auth != null;
     }
     
-    // Allow any authenticated user to read roles to determine permissions.
+    function isManager() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Manager';
+    }
+
+    function isClient() {
+      return isAuth() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Client';
+    }
+
+    // --- Core System Collections ---
+
+    // USERS & ROLES: Defines who can do what.
+    match /users/{userId} {
+      allow read: if isAuth() && (request.auth.uid == userId || isManager());
+      allow write: if isManager();
+    }
     match /roles/{roleId} {
-      allow read: if request.auth != null;
+      allow read: if isAuth();
+      allow write: if isManager();
     }
 
-    // --- General Read Access for Authenticated Users ---
-    // Grant read access to data collections needed across the app for UI rendering.
-    match /{collectionName}/{docId} {
-      allow read: if request.auth != null &&
-        collectionName in [
-          'createdJobCards', 'jobStepDetails', 'departments', 'employees',
-          'skills', 'skillHistory', 'tools', 'toolAccessories', 'suppliers',
-          'supplierItemPricing', 'products', 'productCategories', 'productRecipeLinks',
-          'components', 'rawMaterials', 'workshopSupplies', 'reworkReasons',
-          'overheadsCategories', 'purchaseQueue', 'oneOffPurchases',
-          'quotes', 'salesOrders', 'notifications',
-          'marketingCampaigns', 'trainingResources', 'systemStatus',
-          'historicalSales', 'subcontractorAdHocLogs', 'subcontractorTeamLogs'
-        ];
+    // SCAN EVENTS: The secure entry point for status changes.
+    match /scanEvents/{eventId} {
+      allow read, update, delete: if false;
+      allow create: if isAuth();
     }
 
-    // Allow read access to the 'expenses' sub-collection within overheads.
-    match /overheadsCategories/{categoryId}/expenses/{expenseId} {
-      allow read: if request.auth != null;
+    // NOTIFICATIONS: System-generated alerts.
+    match /notifications/{notificationId} {
+      allow read: if isAuth() && resource.data.targetRole == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+      allow update: if isAuth();
+      allow create, delete: if false;
+    }
+    
+    // --- Production & Workshop Collections ---
+
+    // JOB CARDS: The core of the workshop.
+    match /createdJobCards/{jobId} {
+      // --- FIX: Allow any authenticated user to read job cards ---
+      allow read: if isAuth();
+      // Writes are still restricted to managers (for manual edits) or backend functions.
+      allow create, update, delete: if isManager();
     }
 
-    // --- General Write Rules (To be expanded later) ---
-    // This placeholder allows authenticated users to write to collections
-    // to keep the app's "add" and "update" features working.
-    match /{path=**} {
-        allow write: if request.auth != null;
+    // RECIPES & PRODUCTS: The manufacturing DNA.
+    match /products/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /productCategories/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /jobStepDetails/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /productRecipeLinks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+
+    // --- Supply Chain Collections ---
+
+    // INVENTORY: Components, materials, supplies.
+    match /components/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /rawMaterials/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /workshopSupplies/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    
+    // PURCHASING & SUPPLIERS
+    match /purchaseQueue/{docId} { allow read, write: if isAuth(); }
+    match /suppliers/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /supplierItemPricing/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /oneOffPurchases/{docId} { allow read, write: if isAuth(); }
+    
+    // PICKING LISTS
+    match /pickingLists/{docId} { allow read, write: if isAuth(); }
+
+    // --- Company & Staff Collections ---
+
+    // EMPLOYEES, DEPARTMENTS, SKILLS
+    match /employees/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /departments/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /skills/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /skillHistory/{docId} { allow read, write: if isAuth(); }
+    
+    // TOOLS & ASSETS
+    match /tools/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /toolAccessories/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+
+    // --- Sales & Customer Collections ---
+
+    // SALES ORDERS: Clients can only see their own orders.
+    match /salesOrders/{orderId} {
+      allow read: if isManager() || (isClient() && resource.data.customerEmail == request.auth.token.email);
+      allow write: if isManager();
     }
+    
+    // QUOTES & CAMPAIGNS
+    match /quotes/{docId} { allow read, write: if isManager(); }
+    match /marketingCampaigns/{docId} { allow read, write: if isManager(); }
+
+    // --- Administration & BI Collections ---
+
+    // FINANCIALS & LOGS
+    match /overheadsCategories/{docId=**} { allow read, write: if isManager(); }
+    match /historicalSales/{docId} { allow read, write: if isManager(); }
+    match /dailyWorkLogs/{docId} { allow read: if isManager(); allow write: if false; }
+    
+    // KAIZEN, PRAISE, TRAINING
+    match /kaizenSuggestions/{docId} { allow create: if isAuth(); allow read, update, delete: if isManager(); }
+    match /praise/{docId} { allow create: if isAuth(); allow read: if isAuth(); allow update, delete: if isManager(); }
+    match /trainingResources/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    
+    // OTHER
+    match /reworkReasons/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /routineTasks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    match /systemStatus/{docId} { allow read: if isAuth(); allow write: if false; }
+    match /subcontractorAdHocLogs/{docId} { allow read, write: if isManager(); }
+    match /subcontractorTeamLogs/{docId} { allow read, write: if isManager(); }
   }
 }

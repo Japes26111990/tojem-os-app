@@ -2,11 +2,21 @@
 
 import React, { useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { logScanEvent } from '../../../api/firestore'; // UPDATED: Import logScanEvent
+import { logScanEvent } from '../../../api/firestore';
 import toast from 'react-hot-toast';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, GraduationCap } from 'lucide-react'; // Import GraduationCap
 
 const JobCard = ({ job, index, employeeName }) => {
+    // --- NEW: Logic to determine if training is recommended ---
+    const isTrainingRecommended = useMemo(() => {
+        if (!job.requiredSkills || !job.employeeSkills) return false;
+        return job.requiredSkills.some(reqSkill => {
+            const employeeProficiency = job.employeeSkills[reqSkill.skillId] || 0;
+            // Recommend training if proficiency is below the minimum and the minimum is above beginner level
+            return reqSkill.minProficiency > 1 && employeeProficiency < reqSkill.minProficiency;
+        });
+    }, [job.requiredSkills, job.employeeSkills]);
+
     return (
         <Draggable draggableId={job.id} index={index}>
             {(provided, snapshot) => (
@@ -21,7 +31,15 @@ const JobCard = ({ job, index, employeeName }) => {
                         <div>
                             <p className="font-semibold text-white text-sm">{job.partName}</p>
                             <p className="text-xs text-gray-400 font-mono">{job.jobId}</p>
-                            <p className="text-xs text-blue-400 mt-1">{employeeName}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                                <p className="text-xs text-blue-400">{employeeName}</p>
+                                {/* --- NEW: Display training icon if recommended --- */}
+                                {isTrainingRecommended && (
+                                    <span title="Training recommended for this job">
+                                        <GraduationCap size={16} className="text-yellow-400" />
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -67,14 +85,24 @@ const KanbanColumn = ({ status, jobs, employeesMap }) => {
 const KanbanBoard = ({ jobs, employees }) => {
     const employeesMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
 
-    const columns = useMemo(() => {
-        const pending = jobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
-        const inProgress = jobs.filter(j => j.status === 'In Progress');
-        const awaitingQc = jobs.filter(j => j.status === 'Awaiting QC');
-        return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
-    }, [jobs]);
+    // --- NEW: Enrich jobs with employee skill data for the check ---
+    const enrichedJobs = useMemo(() => {
+        return jobs.map(job => {
+            const employee = employeesMap.get(job.employeeId);
+            return {
+                ...job,
+                employeeSkills: employee ? employee.skills : {}
+            };
+        });
+    }, [jobs, employeesMap]);
 
-    // --- UPDATED: This now calls logScanEvent instead of updateJobStatus ---
+    const columns = useMemo(() => {
+        const pending = enrichedJobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+        const inProgress = enrichedJobs.filter(j => j.status === 'In Progress');
+        const awaitingQc = enrichedJobs.filter(j => j.status === 'Awaiting QC');
+        return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
+    }, [enrichedJobs]);
+
     const onDragEnd = async (result) => {
         const { source, destination, draggableId } = result;
         if (!destination) return;
@@ -93,8 +121,6 @@ const KanbanBoard = ({ jobs, employees }) => {
             }
             
             try {
-                // Instead of updating the status directly, we log an event.
-                // The backend Cloud Function will handle the actual update.
                 await logScanEvent(job, destination.droppableId);
                 toast.success(`Event logged for job ${job.jobId} to "${destination.droppableId}"`);
             } catch (error) {

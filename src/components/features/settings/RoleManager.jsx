@@ -1,3 +1,5 @@
+// src/components/features/settings/RoleManager.jsx
+
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
@@ -5,8 +7,6 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Shield, Lock, Unlock, PlusCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-// src/components/features/settings/RoleManager.jsx
 
 const ALL_PERMISSIONS = [
     { id: 'dashboard', label: 'Dashboard' },
@@ -19,6 +19,8 @@ const ALL_PERMISSIONS = [
     { id: 'scanner', label: 'Scanner' },
     { id: 'calendar', label: 'Calendar' },
     { id: 'kanban', label: 'Kanban Board' },
+    { id: 'floorplan', label: 'Floor Plan' }, // --- NEW PERMISSION ---
+    { id: 'picking', label: 'Picking Queue' },
     { id: 'jobCreator', label: 'Job Creator' },
     { id: 'qc', label: 'Quality Control' },
     { id: 'issues', label: 'Issues & Halts' },
@@ -27,7 +29,6 @@ const ALL_PERMISSIONS = [
     { id: 'profitability', label: 'Profitability BI' },
     { id: 'valuation', label: 'Valuation BI' },
     { id: 'assets', label: 'Asset Intelligence' },
-    { id: 'payroll', label: 'Payroll' },
     { id: 'settings', label: 'Settings' },
     { id: 'hideSidebar', label: 'Hide Sidebar (Tablet UI)' },
     { id: 'access_portal', label: 'Access Customer Portal' },
@@ -129,18 +130,14 @@ const RoleManager = () => {
         if (roleName === 'Manager') {
             return toast.error("The 'Manager' role cannot be deleted.");
         }
-        // MODIFIED: Rewrote the toast content using React.createElement to fix JSX transform warning.
-        toast((t) => React.createElement(
-            'span',
-            null,
-            `Delete role "${roleName}"? This cannot be undone.`,
-            React.createElement(
-                Button,
-                {
-                    variant: "danger",
-                    size: "sm",
-                    className: "ml-2",
-                    onClick: () => {
+        toast((t) => (
+            <span>
+                Delete role "{roleName}"? This cannot be undone.
+                <Button
+                    variant="danger"
+                    size="sm"
+                    className="ml-2"
+                    onClick={() => {
                         deleteDoc(doc(db, 'roles', roleId))
                             .then(() => {
                                 toast.success("Role deleted.");
@@ -149,20 +146,19 @@ const RoleManager = () => {
                             })
                             .catch(err => toast.error("Failed to delete role."));
                         toast.dismiss(t.id);
-                    }
-                },
-                'Delete'
-            ),
-            React.createElement(
-                Button,
-                {
-                    variant: "secondary",
-                    size: "sm",
-                    className: "ml-2",
-                    onClick: () => toast.dismiss(t.id)
-                },
-                'Cancel'
-            )
+                    }}
+                >
+                    Delete
+                </Button>
+                <Button
+                    variant="secondary"
+                    size="sm"
+                    className="ml-2"
+                    onClick={() => toast.dismiss(t.id)}
+                >
+                    Cancel
+                </Button>
+            </span>
         ), { icon: '⚠️' });
     };
 

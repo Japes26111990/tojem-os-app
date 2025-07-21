@@ -1,4 +1,4 @@
-// src/pages/DashboardPage.jsx (FIXED: Resolved infinite re-render loop)
+// src/pages/DashboardPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -14,13 +14,12 @@ import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
 import moment from 'moment';
 
 // Import all the intelligence widgets
-import YearToDateComparison from '/src/components/intelligence/YearToDateComparison.jsx';
-import MonthlySalesTrend from '/src/components/intelligence/MonthlySalesTrend.jsx';
-import MultiYearSalesGraph from '/src/components/intelligence/MultiYearSalesGraph.jsx';
-import TopReworkCausesWidget from '/src/components/intelligence/TopReworkCausesWidget.jsx';
-import CapacityGauge from '/src/components/intelligence/CapacityGauge.jsx';
-import BottleneckWidget from '/src/components/intelligence/BottleneckWidget.jsx';
-import WorkshopThroughputGraph from '/src/components/intelligence/WorkshopThroughputGraph.jsx';
+import YoYSalesComparison from '../components/intelligence/YoYSalesComparison.jsx';
+import YoYProfitWidget from '../components/intelligence/YoYProfitWidget.jsx';
+import MultiYearSalesGraph from '../components/intelligence/MultiYearSalesGraph.jsx';
+import TopReworkCausesWidget from '../components/intelligence/TopReworkCausesWidget.jsx';
+import BottleneckWidget from '../components/intelligence/BottleneckWidget.jsx';
+import WorkshopThroughputGraph from '../components/intelligence/WorkshopThroughputGraph.jsx';
 import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget';
 
 const KpiCard = ({ icon, title, value, color }) => (
@@ -45,7 +44,6 @@ const DashboardPage = () => {
     const [visibleTasks, setVisibleTasks] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // --- FIX: Separated initial data fetching into its own useEffect to run only once ---
     useEffect(() => {
         setLoading(true);
         const fetchData = async () => {
@@ -76,9 +74,8 @@ const DashboardPage = () => {
         
         const unsubscribePromise = fetchData();
         return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
-    }, []); // Empty dependency array ensures this runs only once on mount
+    }, []);
 
-    // --- FIX: Moved the interval logic to its own useEffect that depends on routineTasks ---
     useEffect(() => {
         const taskCheckInterval = setInterval(() => {
             const now = new Date();
@@ -96,16 +93,15 @@ const DashboardPage = () => {
             });
 
             setVisibleTasks(todayTasks);
-        }, 60000); // Check every minute
+        }, 60000);
 
         return () => clearInterval(taskCheckInterval);
-    }, [routineTasks]); // This effect will re-run only if the list of routine tasks changes
+    }, [routineTasks]);
 
 
     const dashboardData = useMemo(() => {
         if (loading) return null;
 
-        // --- Sales Trend Calculations ---
         const now = new Date();
         const currentMonthIndex = now.getMonth();
         const currentYear = now.getFullYear();
@@ -113,29 +109,12 @@ const DashboardPage = () => {
 
         const currentMonthData = historicalSales.find(d => d.year === currentYear && d.month === (currentMonthIndex + 1));
         const currentMonthSales = currentMonthData?.totalSales || 0;
+        const currentMonthProfit = currentMonthData ? (currentMonthData.totalSales - currentMonthData.totalCOGS) : 0;
+        
         const lastYearData = historicalSales.find(d => d.year === lastYear && d.month === (currentMonthIndex + 1));
         const lastYearSales = lastYearData?.totalSales || 0;
+        const lastYearProfit = lastYearData ? (lastYearData.totalSales - lastYearData.totalCOGS) : 0;
         
-        const monthlyPercentageChange = (() => {
-            if (lastYearSales === 0 && currentMonthSales > 0) return 100;
-            if (lastYearSales === 0) return 0;
-            return ((currentMonthSales - lastYearSales) / lastYearSales) * 100;
-        })();
-
-        const ytdCurrentYearSales = historicalSales
-            .filter(d => d.year === currentYear && d.month <= (currentMonthIndex + 1))
-            .reduce((sum, d) => sum + d.totalSales, 0);
-
-        const ytdLastYearSales = historicalSales
-            .filter(d => d.year === lastYear && d.month <= (currentMonthIndex + 1))
-            .reduce((sum, d) => sum + d.totalSales, 0);
-
-        const ytdPercentageChange = (() => {
-            if (ytdLastYearSales === 0 && ytdCurrentYearSales > 0) return 100;
-            if (ytdLastYearSales === 0) return 0;
-            return ((ytdCurrentYearSales - ytdLastYearSales) / ytdLastYearSales) * 100;
-        })();
-
         const uniqueYears = [...new Set(historicalSales.map(d => d.year))].sort();
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         
@@ -148,14 +127,9 @@ const DashboardPage = () => {
             return monthData;
         });
         
-        // --- Rework & KPI Calculations ---
         const issueJobs = jobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue');
         const reworkRate = jobs.length > 0 ? (issueJobs.length / jobs.length) * 100 : 0;
 
-        const totalDemandMinutes = jobs.filter(j => ['Pending', 'In Progress', 'Halted - Issue'].includes(j.status)).reduce((sum, j) => sum + (j.estimatedTime || 0), 0);
-        const totalAvailableMinutes = (employees.length || 1) * 40 * 60 * 4.33;
-        const capacityUtilization = totalAvailableMinutes > 0 ? (totalDemandMinutes / totalAvailableMinutes) * 100 : 0;
-        
         const reworkCauses = issueJobs
             .filter(j => j.issueReason)
             .reduce((acc, job) => {
@@ -168,7 +142,6 @@ const DashboardPage = () => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5);
 
-        // --- Workshop Throughput Calculation ---
         const completedJobs = jobs.filter(j => j.status === 'Complete' && j.completedAt);
         const weeklyBuckets = {};
         for (let i = 0; i < 8; i++) {
@@ -184,8 +157,9 @@ const DashboardPage = () => {
         const jobCompletionData = Object.values(weeklyBuckets).reverse();
 
         return {
-            monthlyPercentageChange, ytdPercentageChange, multiYearSalesData, uniqueYears,
-            capacityUtilization, topReworkCauses, reworkRate: reworkRate.toFixed(1),
+            currentMonthSales, lastYearSales, currentMonthProfit, lastYearProfit,
+            multiYearSalesData, uniqueYears, topReworkCauses,
+            reworkRate: reworkRate.toFixed(1),
             activeJobs: jobs.filter(j => ['In Progress', 'Halted - Issue'].includes(j.status)).length,
             jobsInQc: jobs.filter(j => j.status === 'Awaiting QC').length,
             jobCompletionData,
@@ -212,21 +186,28 @@ const DashboardPage = () => {
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                     <MultiYearSalesGraph 
-                        salesData={dashboardData.multiYearSalesData} 
-                        years={dashboardData.uniqueYears}
+                <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <YoYSalesComparison 
+                        currentMonthSales={dashboardData.currentMonthSales}
+                        lastYearSales={dashboardData.lastYearSales}
+                    />
+                    <YoYProfitWidget 
+                        currentMonthProfit={dashboardData.currentMonthProfit}
+                        lastYearProfit={dashboardData.lastYearProfit}
                     />
                 </div>
-                <div className="lg:col-span-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6">
-                    <MonthlySalesTrend percentageChange={dashboardData.monthlyPercentageChange} />
-                    <YearToDateComparison percentageChange={dashboardData.ytdPercentageChange} />
+                <div className="lg:col-span-1">
+                     <BottleneckWidget bottleneck={systemStatus} />
                 </div>
             </div>
+
+            <MultiYearSalesGraph 
+                salesData={dashboardData.multiYearSalesData} 
+                years={dashboardData.uniqueYears}
+            />
             
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <WorkshopThroughputGraph jobCompletionData={dashboardData.jobCompletionData} />
-                <BottleneckWidget bottleneck={systemStatus} />
                 <TopReworkCausesWidget data={dashboardData.topReworkCauses} />
             </div>
         </div>

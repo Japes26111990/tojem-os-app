@@ -1,9 +1,9 @@
-// src/components/features/tracking/LiveTrackingTable.jsx (UPDATED for Pagination and Edit/Delete handlers)
+// src/components/features/tracking/LiveTrackingTable.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, GraduationCap } from 'lucide-react'; // Import GraduationCap
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Button from '../../ui/Button';
@@ -36,9 +36,17 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPerHour }) => {
     const liveDuration = calculateJobDuration(job, currentTime);
 
+    // --- NEW: Logic to determine if training is recommended ---
+    const isTrainingRecommended = useMemo(() => {
+        if (!job.requiredSkills || !job.employeeSkills) return false;
+        return job.requiredSkills.some(reqSkill => {
+            const employeeProficiency = job.employeeSkills[reqSkill.skillId] || 0;
+            return reqSkill.minProficiency > 1 && employeeProficiency < reqSkill.minProficiency;
+        });
+    }, [job.requiredSkills, job.employeeSkills]);
+
     const calculateLiveCost = (j, cTime, rates, overheadRate) => {
-        if (j.status === 'Complete' && typeof j.totalCost === 'number')
- {
+        if (j.status === 'Complete' && typeof j.totalCost === 'number') {
             return `R ${j.totalCost.toFixed(2)}`;
         }
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
@@ -66,7 +74,17 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
     return (
         <tr onClick={() => onClick(job)} className="border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer">
             <td className="p-3 text-gray-300 text-sm">{formatDate(job.createdAt)}</td>
-            <td className="p-3 text-gray-300">{job.partName}</td>
+            <td className="p-3 text-gray-300">
+                <div className="flex items-center gap-2">
+                    {job.partName}
+                    {/* --- NEW: Display training icon if recommended --- */}
+                    {isTrainingRecommended && (
+                        <span title="Training recommended for this job">
+                            <GraduationCap size={16} className="text-yellow-400" />
+                        </span>
+                    )}
+                </div>
+            </td>
             <td className="p-3 text-gray-300">{job.employeeName}</td>
             <td className="p-3"><StatusBadge status={job.status} /></td>
             <td className="p-3 text-gray-300 text-sm font-semibold">{liveDuration ? liveDuration.text : 'N/A'}</td>
@@ -162,10 +180,22 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }, {});
     }, [employees]);
 
+    // --- NEW: Enrich jobs with employee skill data for the check ---
+    const enrichedJobs = useMemo(() => {
+        const employeesMap = new Map(employees.map(e => [e.id, e]));
+        return allJobs.map(job => {
+            const employee = employeesMap.get(job.employeeId);
+            return {
+                ...job,
+                employeeSkills: employee ? employee.skills : {}
+            };
+        });
+    }, [allJobs, employees]);
+
     const { activeJobs, completedAndArchivedJobs } = useMemo(() => {
         const statusOrder = { 'In Progress': 1, 'Paused': 2, 'Awaiting QC': 3, 'Pending': 4 };
         
-        const active = allJobs
+        const active = enrichedJobs
             .filter(job => ['In Progress', 'Paused', 'Awaiting QC', 'Pending'].includes(job.status))
             .sort((a, b) => {
                 const statusCompare = statusOrder[a.status] - statusOrder[b.status];
@@ -177,16 +207,16 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                 }
                 return 0;
             });
-        const completed = allJobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
+        const completed = enrichedJobs.filter(job => ['Complete', 'Issue', 'Archived - Issue'].includes(job.status));
         return { activeJobs: active, completedAndArchivedJobs: completed };
-    }, [allJobs]);
+    }, [enrichedJobs]);
 
     const handleUpdateJob = async (jobId, updatedData) => {
         try {
             await updateDocument('createdJobCards', jobId, updatedData);
         } catch (error) {
             console.error("Error updating job from modal:", error);
-            throw error; // Re-throw to be caught by the modal
+            throw error;
         }
     };
 
@@ -195,7 +225,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             await deleteDocument('createdJobCards', jobId);
         } catch (error) {
             console.error("Error deleting job from modal:", error);
-            throw error; // Re-throw to be caught by the modal
+            throw error;
         }
     };
 

@@ -1,4 +1,4 @@
-// src/components/ui/ConfirmationModal.jsx (NEW FILE)
+// src/components/ui/ConfirmationModal.jsx
 
 import React from 'react';
 import Button from './Button';

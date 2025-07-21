@@ -1,4 +1,5 @@
-// src/components/intelligence/YoYProfitWidget.jsx (UPDATED for new layout)
+// src/components/intelligence/YoYProfitWidget.jsx
+
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Percent } from 'lucide-react';
 
@@ -21,7 +22,7 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,
@@ -60,4 +61,3 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
 };
 
 export default YoYProfitWidget;
-

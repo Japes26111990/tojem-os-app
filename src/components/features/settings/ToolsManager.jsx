@@ -1,23 +1,25 @@
-// src/components/features/settings/ToolsManager.jsx (Upgraded with Toasts)
+// src/components/features/settings/ToolsManager.jsx
 
 import React, { useState, useEffect } from 'react';
 import { getTools, addTool, deleteTool, updateDocument, getSkills } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { Wrench, PlusCircle, Save, DollarSign, Clock } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { Wrench, PlusCircle, Save, DollarSign, Clock } from 'lucide-react'; // --- CORRECTED: Removed 'Tool' icon ---
+import toast from 'react-hot-toast';
 
 const ToolsManager = () => {
     const [tools, setTools] = useState([]);
     const [allSkills, setAllSkills] = useState([]);
     const [loading, setLoading] = useState(true);
     
-    const [formData, setFormData] = useState({
+    const initialFormState = {
         name: '',
         hourlyRate: '', 
         capacityMinutesPerDay: '',
+        maintenanceIntervalHours: '',
         associatedSkills: [],
-    });
+    };
+    const [formData, setFormData] = useState(initialFormState);
     const [editingToolId, setEditingToolId] = useState(null);
 
     const getProficiencyLabel = (level) => {
@@ -40,7 +42,7 @@ const ToolsManager = () => {
             setAllSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching data for Tools Manager:", error);
-            toast.error("Failed to load tools or skills."); // --- REPLACE ALERT ---
+            toast.error("Failed to load tools or skills.");
         } finally {
             setLoading(false);
         }
@@ -76,14 +78,14 @@ const ToolsManager = () => {
     };
 
     const resetForm = () => {
-        setFormData({ name: '', hourlyRate: '', capacityMinutesPerDay: '', associatedSkills: [] });
+        setFormData(initialFormState);
         setEditingToolId(null);
     };
 
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!formData.name.trim()) {
-            toast.error("Tool name is required."); // --- REPLACE ALERT ---
+            toast.error("Tool name is required.");
             return;
         }
         try {
@@ -94,21 +96,22 @@ const ToolsManager = () => {
                 name: formData.name.trim(),
                 hourlyRate: Number(formData.hourlyRate) || 0,
                 capacityMinutesPerDay: Number(formData.capacityMinutesPerDay) || 0,
+                maintenanceIntervalHours: Number(formData.maintenanceIntervalHours) || 0,
                 associatedSkills: filteredAssociatedSkills,
             };
             
             if (editingToolId) {
                 await updateDocument('tools', editingToolId, toolDataToSave);
-                toast.success("Tool updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Tool updated successfully!");
             } else {
                 await addTool(toolDataToSave);
-                toast.success("Tool added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Tool added successfully!");
             }
             resetForm();
             fetchData();
         } catch (error) {
             console.error("Error saving tool:", error);
-            toast.error(`Failed to ${editingToolId ? 'update' : 'add'} tool.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingToolId ? 'update' : 'add'} tool.`);
         }
     };
 
@@ -118,6 +121,7 @@ const ToolsManager = () => {
             name: tool.name,
             hourlyRate: tool.hourlyRate || '',
             capacityMinutesPerDay: tool.capacityMinutesPerDay || '',
+            maintenanceIntervalHours: tool.maintenanceIntervalHours || '',
             associatedSkills: tool.associatedSkills || [],
         });
     };
@@ -182,6 +186,19 @@ const ToolsManager = () => {
                         />
                     </div>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:col-span-2">
+                        <Input
+                            label="Maintenance Interval (hours)"
+                            name="maintenanceIntervalHours"
+                            type="number"
+                            value={formData.maintenanceIntervalHours}
+                            onChange={handleInputChange}
+                            placeholder="e.g., 200"
+                        />
+                    </div>
+                </div>
+
 
                 {formData.name.trim() && (
                     <div className="border-t border-gray-700 pt-4 mt-4">
@@ -257,15 +274,22 @@ const ToolsManager = () => {
                         </p>
                         <div className="flex items-center gap-4">
                              {tool.capacityMinutesPerDay > 0 && (
-                                <span className="text-xs flex items-center gap-1 bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full">
+                                <span className="text-xs flex items-center gap-1 bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-full" title="Daily Capacity">
                                     <Clock size={12}/>
                                     {`${tool.capacityMinutesPerDay} min/day`}
                                 </span>
                             )}
                             {tool.hourlyRate > 0 && (
-                                <span className="text-xs flex items-center gap-1 bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">
+                                <span className="text-xs flex items-center gap-1 bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full" title="Operating Cost">
                                     <DollarSign size={12}/>
                                     {`R${tool.hourlyRate.toFixed(2)}/hr`}
+                                </span>
+                            )}
+                            {tool.maintenanceIntervalHours > 0 && (
+                                <span className="text-xs flex items-center gap-1 bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full" title="Maintenance Interval">
+                                    {/* --- CORRECTED: Use Wrench icon --- */}
+                                    <Wrench size={12}/>
+                                    {`${tool.maintenanceIntervalHours} hrs`}
                                 </span>
                             )}
                             <div className="flex space-x-2">

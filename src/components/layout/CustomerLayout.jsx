@@ -1,4 +1,4 @@
-// src/components/layout/CustomerLayout.jsx (NEW FILE)
+// src/components/layout/CustomerLayout.jsx
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';

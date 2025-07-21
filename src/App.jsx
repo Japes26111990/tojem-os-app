@@ -22,7 +22,6 @@ import PerformancePage from './pages/PerformancePage.jsx';
 import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage.jsx';
 import ProductViabilityPage from './pages/ProductViabilityPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-// REMOVED: import PayrollPage from './pages/PayrollPage.jsx';
 import ValuationPage from './pages/ValuationPage.jsx';
 import CalendarPage from './pages/CalendarPage.jsx';
 import MarketingPage from './pages/MarketingPage.jsx';
@@ -34,6 +33,7 @@ import StockTakePage from './pages/StockTakePage.jsx';
 import AssetIntelligencePage from './pages/AssetIntelligencePage.jsx';
 import ProductBrowserPage from './pages/ProductBrowserPage.jsx';
 import CustomerDashboardPage from './pages/CustomerDashboardPage.jsx';
+import CustomerOrderDetailPage from './pages/CustomerOrderDetailPage.jsx';
 import JobHistoryPage from './pages/JobHistoryPage.jsx';
 import ReworkQueuePage from './pages/ReworkQueuePage.jsx';
 import MultiStageWizard from './pages/MultiStageWizard.jsx';
@@ -41,7 +41,7 @@ import StockAdjustmentPage from './pages/StockAdjustmentPage.jsx';
 import JobReprintPage from './pages/JobReprintPage.jsx';
 import KanbanPage from './pages/KanbanPage.jsx';
 import PickingQueuePage from './pages/PickingQueuePage.jsx';
-// REMOVED: import TimeAttendanceReportPage from './pages/TimeAttendanceReport.jsx';
+import FloorPlanPage from './pages/FloorPlanPage.jsx'; // --- IMPORT NEW PAGE ---
 
 function App() {
     const { user } = useAuth();
@@ -58,6 +58,7 @@ function App() {
                                 <Routes>
                                     <Route index element={<CustomerDashboardPage />} />
                                     <Route path="products" element={<ProductBrowserPage />} />
+                                    <Route path="order/:orderId" element={<CustomerOrderDetailPage />} />
                                 </Routes>
                             </CustomerLayout>
                         </RoleBasedRoute>
@@ -81,12 +82,12 @@ function App() {
                                 <Route path="/performance" element={ <RoleBasedRoute permission="performance"><PerformancePage /></RoleBasedRoute> } />
                                 <Route path="/employee/:employeeId" element={ <RoleBasedRoute permission="performance"><EmployeeIntelligencePage /></RoleBasedRoute> } />
                                 <Route path="/profitability" element={ <RoleBasedRoute permission="profitability"><ProductViabilityPage /></RoleBasedRoute> } />
-                                {/* REMOVED: Payroll Route */}
                                 <Route path="/valuation" element={ <RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute> } />
                                 <Route path="/calendar" element={ <RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute> } />
                                 <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} />
                                 <Route path="/picking-queue" element={<RoleBasedRoute permission="picking"><PickingQueuePage /></RoleBasedRoute>} />
-                                {/* REMOVED: Time & Attendance Route */}
+                                {/* --- ADD NEW ROUTE HERE --- */}
+                                <Route path="/floorplan" element={<RoleBasedRoute permission="floorplan"><FloorPlanPage /></RoleBasedRoute>} />
                                 <Route path="/settings" element={ <RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute> } />
                                 <Route path="/marketing" element={ <RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute> } />
                                 <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />

@@ -24,7 +24,6 @@ import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
 // --- NEW: Centralized function to log a scan/status change event ---
-// This is now the PRIMARY way the frontend interacts with job status.
 export const logScanEvent = (jobData, newStatus, options = {}) => {
     const scanEventsCollection = collection(db, 'scanEvents');
     const { haltReason = null } = options;
@@ -32,7 +31,7 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
     const eventData = {
         employeeId: jobData.employeeId,
         employeeName: jobData.employeeName,
-        jobId: jobData.jobId, // Use the human-readable jobId
+        jobId: jobData.jobId,
         statusUpdatedTo: newStatus,
         timestamp: serverTimestamp(),
         notes: haltReason ? `Halted: ${haltReason}` : `Status changed to ${newStatus}`,
@@ -1099,10 +1098,13 @@ export const deleteRoutineTask = (taskId) => {
 // --- NEW: Picking List API ---
 const pickingListsCollection = collection(db, 'pickingLists');
 
+// --- FIX: Removed orderBy to prevent needing a composite index ---
 export const listenToPickingLists = (callback) => {
-    const q = query(pickingListsCollection, where('status', '==', 'pending'), orderBy('createdAt', 'desc'));
+    const q = query(pickingListsCollection, where('status', '==', 'pending'));
     return onSnapshot(q, (snapshot) => {
         const lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Perform sorting on the client-side
+        lists.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
         callback(lists);
     });
 };
@@ -1125,5 +1127,12 @@ export const listenToCustomerSalesOrders = (customerEmail, callback) => {
     return onSnapshot(q, (snapshot) => {
         const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         callback(orders);
+    });
+};
+const customerFeedbackCollection = collection(db, 'customerFeedback');
+export const addCustomerFeedback = (feedbackData) => {
+    return addDoc(customerFeedbackCollection, {
+        ...feedbackData,
+        submittedAt: serverTimestamp(),
     });
 };

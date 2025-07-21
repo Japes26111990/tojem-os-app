@@ -1,17 +1,17 @@
 // src/pages/ProductBrowserPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getProducts } from '../api/firestore';
+import { getProducts, addQuote, getJobStepDetails, listenToJobCards } from '../api/firestore';
 import { useAuth } from '../contexts/AuthContext';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
-import { Search, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { Search, CheckCircle, AlertTriangle, Clock, FileText } from 'lucide-react';
 import Button from '../components/ui/Button';
 import LiveQuoteSidebar from '../components/features/portal/LiveQuoteSidebar';
 import toast from 'react-hot-toast';
 
 // Helper component to display stock status with appropriate colors and icons
-const StockStatus = ({ product }) => {
+const StockStatus = ({ product, leadTimeDays }) => {
     const stock = product.currentStock || 0;
     const reorder = product.reorderLevel || 0;
     
@@ -21,13 +21,21 @@ const StockStatus = ({ product }) => {
     if (stock > 0 && stock <= reorder) {
         return <span className="flex items-center gap-1 text-xs font-semibold text-yellow-400"><AlertTriangle size={14} /> Low Stock</span>;
     }
-    return <span className="flex items-center gap-1 text-xs font-semibold text-gray-400"><Clock size={14} /> Made to Order</span>;
+    // --- UPDATED LOGIC TO SHOW DYNAMIC LEAD TIME ---
+    return (
+        <span className="flex items-center gap-1 text-xs font-semibold text-gray-400" title="Estimated time until dispatch based on current workshop load.">
+            <Clock size={14} /> 
+            {leadTimeDays !== null ? `~${leadTimeDays} Day Lead Time` : 'Made to Order'}
+        </span>
+    );
 };
 
 
 const ProductBrowserPage = () => {
     const { user } = useAuth();
     const [products, setProducts] = useState([]);
+    const [allRecipes, setAllRecipes] = useState([]); // --- NEW STATE for recipes ---
+    const [allJobs, setAllJobs] = useState([]); // --- NEW STATE for jobs ---
     const [loading, setLoading] = useState(true);
     const [cartItems, setCartItems] = useState([]);
 
@@ -42,16 +50,73 @@ const ProductBrowserPage = () => {
         const fetchData = async () => {
             setLoading(true);
             try {
-                const fetchedProducts = await getProducts();
+                // --- FETCH ALL NECESSARY DATA ---
+                const [fetchedProducts, fetchedRecipes] = await Promise.all([
+                    getProducts(),
+                    getJobStepDetails()
+                ]);
                 setProducts(fetchedProducts);
+                setAllRecipes(fetchedRecipes);
+
+                // Listen for real-time job updates to keep lead times fresh
+                const unsubscribeJobs = listenToJobCards(setAllJobs);
+                
+                return unsubscribeJobs;
             } catch (error) {
                 console.error("Error fetching products:", error);
                 toast.error("Could not load product catalog.");
             }
             setLoading(false);
         };
-        fetchData();
+        const unsubscribePromise = fetchData();
+        return () => { unsubscribePromise.then(unsub => unsub && unsub()); };
     }, []);
+
+    // --- NEW: Calculation for lead times ---
+    const productLeadTimes = useMemo(() => {
+        const leadTimes = new Map();
+        if (products.length === 0 || allRecipes.length === 0 || allJobs.length === 0) {
+            return leadTimes;
+        }
+
+        const pendingJobs = allJobs.filter(j => j.status === 'Pending');
+        const backlogByDept = pendingJobs.reduce((acc, job) => {
+            const deptId = job.departmentId;
+            acc[deptId] = (acc[deptId] || 0) + (job.estimatedTime || 0);
+            return acc;
+        }, {});
+
+        products.forEach(product => {
+            const recipesForProduct = allRecipes.filter(r => r.productId === product.id);
+            if (recipesForProduct.length === 0) {
+                leadTimes.set(product.id, null);
+                return;
+            }
+
+            let totalManufacturingMinutes = 0;
+            let totalBacklogMinutes = 0;
+            const departmentsInvolved = new Set();
+
+            recipesForProduct.forEach(recipe => {
+                totalManufacturingMinutes += recipe.estimatedTime || 0;
+                if (recipe.departmentId) {
+                    departmentsInvolved.add(recipe.departmentId);
+                }
+            });
+
+            departmentsInvolved.forEach(deptId => {
+                totalBacklogMinutes += backlogByDept[deptId] || 0;
+            });
+
+            const totalMinutes = totalManufacturingMinutes + totalBacklogMinutes;
+            const totalDays = Math.ceil(totalMinutes / (8 * 60)); // Assuming 8-hour work day
+
+            leadTimes.set(product.id, totalDays);
+        });
+
+        return leadTimes;
+
+    }, [products, allRecipes, allJobs]);
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
@@ -82,6 +147,31 @@ const ProductBrowserPage = () => {
     
     const handleOrderSubmission = () => {
         setCartItems([]);
+    };
+
+    const handleInstantQuote = async (product) => {
+        const quoteData = {
+            customerName: user.companyName || user.email,
+            customerEmail: user.email,
+            lineItems: [{
+                description: product.name,
+                cost: product.sellingPrice,
+                productId: product.id,
+                quantity: 1,
+            }],
+            subtotal: product.sellingPrice,
+            margin: 0,
+            total: product.sellingPrice,
+            quoteId: `Q-INST-${Date.now()}`,
+            status: 'Customer Generated'
+        };
+
+        const promise = addQuote(quoteData);
+        toast.promise(promise, {
+            loading: 'Generating instant quote...',
+            success: `Instant quote ${quoteData.quoteId} created!`,
+            error: "Failed to create instant quote."
+        });
     };
 
     const manufacturers = useMemo(() => [...new Set(products.map(p => p.manufacturer).filter(Boolean))].map(m => ({id: m, name: m})), [products]);
@@ -117,7 +207,6 @@ const ProductBrowserPage = () => {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-            {/* Main Content: Filters and Product Grid */}
             <div className="lg:col-span-2 space-y-6">
                  <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                     <h3 className="text-xl font-bold text-white mb-4">Find Your Parts</h3>
@@ -141,7 +230,6 @@ const ProductBrowserPage = () => {
                     {displayedProducts.map(product => (
                         <div key={product.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
                             <img 
-                                // --- THIS IS THE CORRECTED LINE ---
                                 src={product.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`} 
                                 alt={product.name}
                                 className="w-full h-48 object-cover"
@@ -151,9 +239,21 @@ const ProductBrowserPage = () => {
                                 <p className="text-xs text-gray-500 font-mono mb-2">P/N: {product.partNumber}</p>
                                 <div className="flex justify-between items-center mb-4">
                                      <p className="text-lg font-semibold text-green-400">R {product.sellingPrice?.toFixed(2) || 'N/A'}</p>
-                                    <StockStatus product={product} />
+                                    <StockStatus product={product} leadTimeDays={productLeadTimes.get(product.id)} />
                                 </div>
-                                 <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full mt-auto">Add to Quote</Button>
+                                 <div className="flex gap-2 mt-auto">
+                                    <Button onClick={() => handleAddToCart(product)} variant="primary" className="w-full">Add to Quote</Button>
+                                    {product.sellingPrice > 0 && (
+                                        <Button 
+                                            onClick={() => handleInstantQuote(product)} 
+                                            variant="secondary" 
+                                            className="p-2"
+                                            title="Get Instant Quote for this item"
+                                        >
+                                            <FileText size={20} />
+                                        </Button>
+                                    )}
+                                 </div>
                             </div>
                         </div>
                     ))}
@@ -165,7 +265,6 @@ const ProductBrowserPage = () => {
                 )}
             </div>
 
-            {/* Sidebar: Live Quote */}
             <div className="lg:col-span-1">
                  <LiveQuoteSidebar 
                     cartItems={cartItems}

@@ -1,4 +1,4 @@
-// src/components/features/portal/OrderConfirmationModal.jsx (NEW FILE)
+// src/components/features/portal/OrderConfirmationModal.jsx
 
 import React, { useState } from 'react';
 import Button from '../../ui/Button';
@@ -17,10 +17,10 @@ const OrderConfirmationModal = ({ cartItems, totals, onClose, onConfirm }) => {
         setIsSubmitting(true);
         try {
             await onConfirm(poNumber);
-            toast.success("Order submitted successfully! You will be contacted shortly.");
+            // The success toast is now handled by the parent component (LiveQuoteSidebar)
             onClose();
         } catch (error) {
-            toast.error("There was an error submitting your order. Please try again.");
+            // The error toast is also handled by the parent
             console.error("Order submission error:", error);
         } finally {
             setIsSubmitting(false);

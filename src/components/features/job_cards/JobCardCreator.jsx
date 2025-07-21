@@ -1,4 +1,4 @@
-// src/components/features/job_cards/JobCardCreator.jsx (Upgraded with Print Confirmation, Quantity, VIN, and Category)
+// src/components/features/job_cards/JobCardCreator.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -121,11 +121,12 @@ const JobCardCreator = ({ campaignId }) => {
                 const toolsForDisplay = (finalRecipeDetails.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
                 const accessoriesForDisplay = (finalRecipeDetails.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
 
+                // --- FIX: Changed productName to partName and productId to partId ---
                 setJobDetails({
                     jobId: `JOB-${Date.now()}`,
-                    productName: product.name,
+                    partName: product.name, // Corrected field name
                     photoUrl: product.photoUrl,
-                    productId: product.id,
+                    partId: product.id, // Corrected field name
                     departmentId: department.id,
                      departmentName: department.name,
                     employeeId: employee ? employee.id : 'unassigned',
@@ -186,7 +187,6 @@ const JobCardCreator = ({ campaignId }) => {
     
     const handleGenerateNewJobCard = () => {
         if (!jobDetails) return toast.error("Please select a product and department.");
-        // --- ADDED: Time validation ---
         if (!jobDetails.estimatedTime || jobDetails.estimatedTime <= 0) {
             return toast.error("A valid estimated time is required to create this job card.");
         }
@@ -233,15 +233,14 @@ const JobCardCreator = ({ campaignId }) => {
             toast.success(`Job Card ${jobToConfirm.jobId} created successfully!`);
             
             const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
-
-            // --- UPDATED: Using base64 logo ---
+            
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
                         <div>
                             <img src="${tojemLogoBase64}" alt="Company Logo" style="height: 50px; margin-bottom: 10px;"/>
                             <h1 style="font-size: 28px; font-weight: bold; margin: 0;">Job Card</h1>
-                            <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${jobToConfirm.productName} (x${jobToConfirm.quantity})</span></p>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${jobToConfirm.partName} (x${jobToConfirm.quantity})</span></p>
                             <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${jobToConfirm.departmentName}</span></p>
                             ${jobToConfirm.vinNumber ? `<p style="font-size: 14px; color: #666; margin: 0;">VIN: <span style="font-weight: 600;">${jobToConfirm.vinNumber}</span></p>` : ''}
                         </div>
@@ -252,7 +251,7 @@ const JobCardCreator = ({ campaignId }) => {
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
                         <div>
-                            ${jobToConfirm.photoUrl ? `<img src="${jobToConfirm.photoUrl}" alt="${jobToConfirm.productName}" style="width: 100%; height: 150px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />` : `<div style="border-radius: 8px; width: 100%; height: 150px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image</span></div>`}
+                            ${jobToConfirm.photoUrl ? `<img src="${jobToConfirm.photoUrl}" alt="${jobToConfirm.partName}" style="width: 100%; height: 150px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />` : `<div style="border-radius: 8px; width: 100%; height: 150px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image</span></div>`}
                             <div style="font-size: 13px; line-height: 1.6;">
                                 <p style="margin: 0;"><b>Employee:</b> ${jobToConfirm.employeeName}</p>
                                 <p style="margin: 0;"><b>Est. Time:</b> ${jobToConfirm.estimatedTime || 'N/A'} mins</p>

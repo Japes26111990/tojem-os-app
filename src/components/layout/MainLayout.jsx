@@ -1,6 +1,6 @@
-// src/components/layout/MainLayout.jsx (Updated to Conditionally Render Sidebar)
+// src/components/layout/MainLayout.jsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../ui/Button';
@@ -13,38 +13,28 @@ const MainLayout = ({ children }) => {
   const { user, signOut } = useAuth();
   const location = useLocation();
 
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
-  const timerRef = useRef(null);
+  // State to manage if the sidebar is pinned open by a click
+  const [isSidebarPinned, setSidebarPinned] = useState(false);
+  // State to manage if the sidebar is temporarily open due to hover
+  const [isSidebarHovered, setSidebarHovered] = useState(false);
 
-  const startCloseTimer = () => {
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      setSidebarOpen(false);
-    }, 2000);
-  };
+  // The sidebar is considered "open" if it's either pinned or being hovered over.
+  const isSidebarOpen = isSidebarPinned || isSidebarHovered;
 
-  const handleSidebarOpen = () => {
-    setSidebarOpen(true);
-    startCloseTimer();
-  };
-
-  const handleMouseEnter = () => {
-    clearTimeout(timerRef.current);
-  };
-
-  const handleMouseLeave = () => {
-    startCloseTimer();
-  };
-
+  // Close sidebar on navigation for smaller screens
   useEffect(() => {
     if (window.innerWidth <= 1024) {
-      setSidebarOpen(false);
+      setSidebarPinned(false);
     }
   }, [location.pathname]);
 
-  // --- NEW: Conditionally render layout based on permission ---
-  if (user?.hideSidebar) { // Check the new hideSidebar property from user context
-    // Render a simplified layout without the sidebar for tablet/floor roles
+  // Handler for the toggle button - this now controls the "pinned" state
+  const handlePinToggle = () => {
+    setSidebarPinned(prev => !prev);
+  };
+
+  // Layout for users without a sidebar (e.g., tablet-only roles)
+  if (user?.hideSidebar) {
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">
             <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50 flex-shrink-0">
@@ -66,20 +56,21 @@ const MainLayout = ({ children }) => {
     );
   }
 
-  // --- Original layout for users WITH a sidebar ---
+  // Main layout for users with a sidebar
   return (
     <div className="flex h-screen bg-gray-900 text-white">
       <Sidebar 
         isOpen={isSidebarOpen} 
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        isPinned={isSidebarPinned}
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50 flex-shrink-0">
           <div className="flex items-center gap-4">
-            <Button onClick={() => isSidebarOpen ? setSidebarOpen(false) : handleSidebarOpen()} variant="secondary" className="p-2">
-               {isSidebarOpen ? <PanelLeftClose size={20}/> : <PanelRightClose size={20}/>}
+            <Button onClick={handlePinToggle} variant="secondary" className="p-2">
+               {isSidebarPinned ? <PanelLeftClose size={20}/> : <PanelRightClose size={20}/>}
             </Button>
             <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
           </div>

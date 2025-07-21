@@ -11,7 +11,7 @@ const MonthlySalesTrend = ({ percentageChange }) => {
         if (isPositive) return {
             icon: <TrendingUp size={32} />,
             textColor: 'text-green-400',
-            text: `${percentageChange.toFixed(1)}%`
+            text: `+${percentageChange.toFixed(1)}%`
         };
         if (isNegative) return {
             icon: <TrendingDown size={32} />,

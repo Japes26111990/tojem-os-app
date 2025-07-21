@@ -1,4 +1,5 @@
-// src/components/intelligence/YoYSalesComparison.jsx (NEW FILE)
+// src/components/intelligence/YoYSalesComparison.jsx
+
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, DollarSign } from 'lucide-react';
 
@@ -17,7 +18,7 @@ const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,

@@ -22,6 +22,7 @@ const KanbanPage = () => {
                 
                 // We need all jobs for the Kanban board, not paginated
                 const unsubscribe = listenToJobCards((allJobs) => {
+                    // Note: listenToJobCards without pagination returns the array directly
                     setJobs(allJobs);
                     setLoading(false);
                 });
@@ -57,7 +58,10 @@ const KanbanPage = () => {
     }
 
     return (
-        <div className="space-y-6 h-full flex flex-col">
+        // --- UPDATED STRUCTURE ---
+        // The parent div now controls the overall layout and scrolling,
+        // preventing the nested scroll container issue.
+        <div className="flex flex-col h-full space-y-6">
             <div className="flex-shrink-0">
                 <h2 className="text-3xl font-bold text-white flex items-center gap-2">
                     <LayoutGrid />
@@ -84,7 +88,8 @@ const KanbanPage = () => {
                 </div>
             </div>
 
-            <div className="flex-grow min-h-0">
+            {/* The KanbanBoard itself is now wrapped in a div that handles overflow */}
+            <div className="flex-grow overflow-x-auto pb-4">
                 <KanbanBoard jobs={filteredJobs} employees={employees} />
             </div>
         </div>
