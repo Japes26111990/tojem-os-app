@@ -17,7 +17,6 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
     const catalystItem = allInventoryItems.find(c => c.name.toLowerCase().includes('catalyst') || c.name.toLowerCase().includes('hardener'));
 
     for (const consumable of consumablesFromRecipe) {
-        // Find the full details from the master inventory list using either itemId (from recipe) or id (from inventory)
         const masterItem = allInventoryItems.find(c => c.id === (consumable.itemId || consumable.id));
         const itemDetails = masterItem || consumable;
         if (!itemDetails) continue;
@@ -40,7 +39,6 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
         } else if (consumable.type === 'dimensional') {
             processedList.push({ ...itemDetails, cuts: consumable.cuts, notes: `See ${consumable.cuts.length} cutting instruction(s)` });
         } else if (!consumable.type && consumable.quantity) {
-            // This handles cases where old data might not have a 'type' but has a quantity
             processedList.push({ ...itemDetails, notes: '' });
         }
     }
@@ -48,7 +46,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
 };
 
 /**
- * Calculates the duration of a job.
+ * Calculates the duration of a job, accounting for pauses.
  * @param {Object} job - The job object from Firestore.
  * @param {number} currentTime - The current time (Date.now()) for live calculation.
  * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
@@ -60,27 +58,26 @@ export const calculateJobDuration = (job, currentTime) => {
     const startTime = job.startedAt.seconds * 1000;
     const pausedMilliseconds = job.totalPausedMilliseconds || 0;
 
-    // Determine the end time based on job status
     if (['Complete', 'Awaiting QC', 'Issue', 'Archived - Issue'].includes(job.status)) {
-        // For completed/finalized jobs, use the completedAt timestamp
         if (!job.completedAt) return null;
         durationSeconds = (job.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else if (job.status === 'In Progress') {
-        // For active jobs, use the current time
         durationSeconds = (currentTime - startTime - pausedMilliseconds) / 1000;
     } else if (job.status === 'Paused' && job.pausedAt) {
-        // For paused jobs, use the pausedAt timestamp
         durationSeconds = (job.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else {
-        // For other statuses (e.g., Pending or unexpected), duration is not calculable yet
         return null;
     }
     
-    // Ensure duration is not negative in case of data inconsistencies
     if (durationSeconds < 0) return null;
 
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = Math.floor(durationSeconds % 60);
+    const totalMinutes = durationSeconds / 60;
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = Math.floor(totalMinutes % 60);
+    
+    let text = '';
+    if (hours > 0) text += `${hours}h `;
+    text += `${minutes}m`;
 
-    return { text: `${minutes}m ${seconds}s`, totalMinutes: durationSeconds / 60 };
+    return { text, totalMinutes };
 };

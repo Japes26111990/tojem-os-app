@@ -1,4 +1,4 @@
-// src/components/features/settings/UnifiedProductManager.jsx (Upgraded with Metadata Fields)
+// src/components/features/settings/UnifiedProductManager.jsx (FIXED: Location fields and Count Method dropdown)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -19,7 +19,7 @@ const UnifiedProductManager = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState({});
     
-    const [newProduct, setNewProduct] = useState({ 
+    const initialNewProductState = { 
         name: '', 
         partNumber: '', 
         sellingPrice: '', 
@@ -32,14 +32,24 @@ const UnifiedProductManager = () => {
         unitWeight: '',
         tareWeight: '',
         unit: 'Each',
-        manufacturer: '', // New Metadata
-        make: '',         // New Metadata
-        model: '',        // New Metadata
-    });
+        manufacturer: '',
+        make: '',
+        model: '',
+        location: '',
+        shelf_number: '',
+        shelf_level: '', // --- UPDATED FIELD ---
+    };
 
+    const [newProduct, setNewProduct] = useState(initialNewProductState);
     const [editProductData, setEditProductData] = useState(null);
     const [newCategoryName, setNewCategoryName] = useState('');
     
+    // --- NEW: Options for the Count Method dropdown ---
+    const countMethodOptions = [
+        { id: 'Quantity', name: 'Quantity' },
+        { id: 'Weight', name: 'Weight' },
+    ];
+
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -72,6 +82,9 @@ const UnifiedProductManager = () => {
                 manufacturer: product.manufacturer || '',
                 make: product.make || '',
                 model: product.model || '',
+                location: product.location || '',
+                shelf_number: product.shelf_number || '',
+                shelf_level: product.shelf_level || '', // --- UPDATED FIELD ---
             });
         } else {
             setEditProductData(null);
@@ -106,12 +119,7 @@ const UnifiedProductManager = () => {
         try {
             await addProduct(newProduct);
             toast.success("Product added successfully.");
-            setNewProduct({ 
-                name: '', partNumber: '', sellingPrice: '', categoryId: '', weight: '',
-                currentStock: '', reorderLevel: '', standardStockLevel: '',
-                countMethod: 'Quantity', unitWeight: '', tareWeight: '', unit: 'Each',
-                manufacturer: '', make: '', model: '',
-            });
+            setNewProduct(initialNewProductState);
             fetchData();
         } catch (error) { 
             toast.error(error.message); 
@@ -245,6 +253,13 @@ const UnifiedProductManager = () => {
                                 <Input label="Make" name="make" value={editProductData?.make || ''} onChange={e => setEditProductData({...editProductData, make: e.target.value})} />
                                 <Input label="Model" name="model" value={editProductData?.model || ''} onChange={e => setEditProductData({...editProductData, model: e.target.value})} />
 
+                                <h5 className="font-semibold text-white pt-4 border-t border-gray-700">Inventory Location</h5>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <Input label="Location" name="location" value={editProductData?.location || ''} onChange={e => setEditProductData({...editProductData, location: e.target.value})} placeholder="e.g., Warehouse A"/>
+                                    <Input label="Shelf Number" name="shelf_number" value={editProductData?.shelf_number || ''} onChange={e => setEditProductData({...editProductData, shelf_number: e.target.value})} placeholder="e.g., 14"/>
+                                    <Input label="Shelf Level" name="shelf_level" value={editProductData?.shelf_level || ''} onChange={e => setEditProductData({...editProductData, shelf_level: e.target.value})} placeholder="e.g., Top, 3"/>
+                                </div>
+
                                 <h5 className="font-semibold text-white pt-4 border-t border-gray-700">Financial & Stock Details</h5>
                                 <Input label="Selling Price (R)" name="sellingPrice" type="number" value={editProductData?.sellingPrice || ''} onChange={e => setEditProductData({...editProductData, sellingPrice: e.target.value})} />
                                 <Input label="Weight (kg)" name="weight" type="number" step="0.01" value={editProductData?.weight || ''} onChange={e => setEditProductData({...editProductData, weight: e.target.value})} />
@@ -262,9 +277,8 @@ const UnifiedProductManager = () => {
                                     label="Count Method" 
                                     value={editProductData?.countMethod || 'Quantity'} 
                                     onChange={e => setEditProductData({...editProductData, countMethod: e.target.value})}
+                                    options={countMethodOptions} // --- FIX: Pass the options array ---
                                 >
-                                    <option value="Quantity">Quantity</option>
-                                    <option value="Weight">Weight</option>
                                 </Dropdown>
                                 {editProductData?.countMethod === 'Weight' && (
                                     <>

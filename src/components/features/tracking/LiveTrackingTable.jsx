@@ -1,4 +1,4 @@
-// src/components/features/tracking/LiveTrackingTable.jsx (UPDATED for Pagination)
+// src/components/features/tracking/LiveTrackingTable.jsx (UPDATED for Pagination and Edit/Delete handlers)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
@@ -6,7 +6,7 @@ import JobDetailsModal from './JobDetailsModal';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import Button from '../../ui/Button'; // MODIFIED: Import Button component
+import Button from '../../ui/Button';
 
 const StatusBadge = ({ status }) => {
     const statusColors = {
@@ -16,13 +16,14 @@ const StatusBadge = ({ status }) => {
         'Awaiting QC': 'bg-purple-500/20 text-purple-300',
         'Complete': 'bg-green-500/20 text-green-300',
         'Issue': 'bg-red-500/20 text-red-400',
+        'Halted - Issue': 'bg-red-700/30 text-red-300',
         'Archived - Issue': 'bg-gray-600/20 text-gray-400'
     };
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${statusColors[status] || 'bg-gray-500/20 text-gray-300'}`}>{status}</span>;
 };
 
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
-    if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0) {
+    if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0 || !estimatedMinutes) {
         return <span className="text-xs text-gray-500">N/A</span>;
     }
     const efficiency = (estimatedMinutes / actualMinutes) * 100;
@@ -43,7 +44,7 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
         
         const directRate = rates[j.employeeId];
-        const burdenedRate = directRate + overheadRate; // True cost of labor
+        const burdenedRate = directRate + overheadRate;
         
         const durationResult = calculateJobDuration(j, cTime);
         let liveLaborCost = 0;
@@ -59,7 +60,7 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
     const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates, overheadCostPerHour);
     const formatDate = (timestamp) => {
         if (!timestamp) return 'N/A';
-        return new Date(timestamp.seconds * 1000).toLocaleString();
+        return new Date(timestamp.seconds * 1000).toLocaleString('en-ZA');
     };
 
     return (
@@ -76,25 +77,24 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
 };
 
 const LiveTrackingTable = ({ overheadCostPerHour }) => {
-    const [allJobs, setAllJobs] = useState([]); // Will now hold all loaded jobs across pages
+    const [allJobs, setAllJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
     const [allTools, setAllTools] = useState([]);
     const [allToolAccessories, setAllToolAccessories] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false); // For the load more button
+    const [loadingMore, setLoadingMore] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
     
-    // --- NEW STATE FOR PAGINATION ---
     const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
     const [hasMoreJobs, setHasMoreJobs] = useState(true);
 
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
-    const JOBS_PER_PAGE = 25; // Define how many jobs to load per page
+    const JOBS_PER_PAGE = 25;
 
     const fetchInitialData = async () => {
         setLoading(true);
@@ -114,7 +114,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }
     };
     
-    // Effect for fetching the first page of jobs
     useEffect(() => {
         fetchInitialData();
         
@@ -125,7 +124,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             setLoading(false);
         }, { limit: JOBS_PER_PAGE });
 
-        // Real-time clock for duration calculation
         const intervalId = setInterval(() => setCurrentTime(Date.now()), 1000);
 
         return () => {
@@ -134,7 +132,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         };
     }, []);
     
-    // Effect to handle deep-linking from URL params
     useEffect(() => {
         const jobIdFromUrl = searchParams.get('jobId');
         if (jobIdFromUrl && !loading && allJobs.length > 0) {
@@ -149,13 +146,11 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         if (!hasMoreJobs || loadingMore) return;
         setLoadingMore(true);
 
-        // Fetch the next page of jobs.
-        // We call listenToJobCards again, but this time we provide the `startAfter` option.
         const unsubscribe = listenToJobCards(({ jobs, lastVisible }) => {
-            unsubscribe(); // We only need to fetch this page once, so we immediately unsubscribe.
-            setAllJobs(prevJobs => [...prevJobs, ...jobs]); // Append the new jobs to the existing list
-            setLastVisibleDoc(lastVisible); // Update the last visible document for the next "Load More" click
-            setHasMoreJobs(jobs.length === JOBS_PER_PAGE); // Check if there are more jobs to load
+            unsubscribe();
+            setAllJobs(prevJobs => [...prevJobs, ...jobs]);
+            setLastVisibleDoc(lastVisible);
+            setHasMoreJobs(jobs.length === JOBS_PER_PAGE);
             setLoadingMore(false);
         }, { limit: JOBS_PER_PAGE, startAfter: lastVisibleDoc });
     };
@@ -175,8 +170,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             .sort((a, b) => {
                 const statusCompare = statusOrder[a.status] - statusOrder[b.status];
                 if (statusCompare !== 0) return statusCompare;
-                const timeA = a.status === 'In Progress' 
-                || a.status === 'Paused' ? a.startedAt : a.createdAt;
+                const timeA = a.status === 'In Progress' || a.status === 'Paused' ? a.startedAt : a.createdAt;
                 const timeB = b.status === 'In Progress' || b.status === 'Paused' ? b.startedAt : b.createdAt;
                 if (timeA && timeB) {
                     return timeB.seconds - timeA.seconds;
@@ -192,7 +186,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             await updateDocument('createdJobCards', jobId, updatedData);
         } catch (error) {
             console.error("Error updating job from modal:", error);
-            throw error;
+            throw error; // Re-throw to be caught by the modal
         }
     };
 
@@ -201,7 +195,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             await deleteDocument('createdJobCards', jobId);
         } catch (error) {
             console.error("Error deleting job from modal:", error);
-            throw error;
+            throw error; // Re-throw to be caught by the modal
         }
     };
 
@@ -242,15 +236,13 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                         </tbody>
                     </table>
                     
-                    {/* MODIFIED: "Load More" button and "Completed" section are now outside the main table for active jobs */}
                     <div className="border-t border-gray-700">
                         <button
                             onClick={() => setShowCompleted(!showCompleted)}
                             className="w-full flex items-center justify-between p-3 text-left text-sm font-semibold text-gray-300 bg-gray-900/30 hover:bg-gray-700/50 transition-colors"
                         >
                             <span>Completed & Archived Jobs ({completedAndArchivedJobs.length})</span>
-                            {showCompleted ?
-                            <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                            {showCompleted ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </button>
                         {showCompleted && (
                             <table className="w-full text-left">
@@ -276,7 +268,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                             </table>
                         )}
                     </div>
-                     {/* MODIFIED: "Load More" button is now at the very bottom */}
                     {hasMoreJobs && (
                         <div className="p-4 text-center border-t border-gray-700">
                             <Button onClick={handleLoadMore} disabled={loadingMore}>

@@ -6,6 +6,7 @@ import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
+import ConfirmationModal from '../components/ui/ConfirmationModal'; // --- IMPORT NEW COMPONENT ---
 
 const RejectionModal = ({ job, reasons, onReject, onClose }) => {
     const [rejectionReasonId, setRejectionReasonId] = useState('');
@@ -96,7 +97,8 @@ const QcPage = () => {
   const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [rejectionReasons, setRejectionReasons] = useState([]);
-  const [jobToReject, setJobToReject] = useState(null); // State to control the modal
+  const [jobToReject, setJobToReject] = useState(null);
+  const [jobToApprove, setJobToApprove] = useState(null); // --- NEW STATE for approval confirmation ---
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -116,15 +118,16 @@ const QcPage = () => {
     return allJobs.filter(job => job.status === 'Awaiting QC');
   }, [allJobs]);
 
-  const handleApprove = async (job) => {
-    // We use toast.promise to give the user immediate feedback
-    const promise = processQcDecision(job, true);
-
+  const handleApprove = async () => {
+    if (!jobToApprove) return;
+    
+    const promise = processQcDecision(jobToApprove, true);
     toast.promise(promise, {
-        loading: `Approving job ${job.jobId}...`,
+        loading: `Approving job ${jobToApprove.jobId}...`,
         success: 'Job approved and stock updated!',
         error: 'Failed to process approval.'
     });
+    setJobToApprove(null); // Close modal after initiating
   };
 
   const handleReject = async (job, options) => {
@@ -140,7 +143,7 @@ const QcPage = () => {
         await promise;
         setJobToReject(null); // Close the modal on success
     } catch (err) {
-        console.error(err); // The error is already shown by the toast
+        console.error(err);
     }
   };
 
@@ -168,7 +171,7 @@ const QcPage = () => {
                                     <td className="p-3 text-gray-300">{job.partName}</td>
                                      <td className="p-3 text-gray-300">{job.employeeName}</td>
                                     <td className="p-3 flex space-x-2">
-                                        <Button onClick={() => handleApprove(job)} variant="primary" className="bg-green-600 hover:bg-green-700 py-1 px-3 text-sm">Approve</Button>
+                                        <Button onClick={() => setJobToApprove(job)} variant="primary" className="bg-green-600 hover:bg-green-700 py-1 px-3 text-sm">Approve</Button>
                                          <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
                                     </td>
                                 </tr>
@@ -188,6 +191,17 @@ const QcPage = () => {
                 onReject={handleReject}
             />
         )}
+
+        {/* --- NEW: Confirmation Modal for Approval --- */}
+        <ConfirmationModal
+            isOpen={!!jobToApprove}
+            onClose={() => setJobToApprove(null)}
+            onConfirm={handleApprove}
+            title="Confirm Job Approval"
+            message={`Are you sure you want to approve this job? This will mark it as complete and deduct used items from stock.`}
+            confirmText="Yes, Approve"
+            confirmVariant="primary"
+        />
     </>
   );
 };

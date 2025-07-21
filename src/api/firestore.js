@@ -1,4 +1,4 @@
-// src/api/firestore.js (MERGED & UPDATED with Praise Functions)
+// src/api/firestore.js
 
 import {
     collection,
@@ -464,22 +464,45 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
         transaction.update(purchaseQueueDocRef, { status: 'completed' });
     });
 };
+
+// --- FIX: Replaced fragile string manipulation with a robust switch statement ---
 export const requeueOrDeleteItem = async (queuedItem) => {
-    const itemCategory = queuedItem.category.replace(' ', '');
-    const inventoryCollectionName = `${itemCategory.charAt(0).toLowerCase() + itemCategory.slice(1)}s`;
+    let inventoryCollectionName;
+    switch (queuedItem.category) {
+        case 'Component':
+            inventoryCollectionName = 'components';
+            break;
+        case 'Raw Material':
+            inventoryCollectionName = 'rawMaterials';
+            break;
+        case 'Workshop Supply':
+            inventoryCollectionName = 'workshopSupplies';
+            break;
+        default:
+            console.error(`Unknown inventory category "${queuedItem.category}" for item ${queuedItem.itemName}. Deleting from queue.`);
+            // If the category is unknown or invalid, it's safer to just delete the queue item to prevent errors.
+            return deleteDoc(doc(db, 'purchaseQueue', queuedItem.id));
+    }
+
     const inventoryDocRef = doc(db, inventoryCollectionName, queuedItem.itemId);
     const purchaseQueueDocRef = doc(db, 'purchaseQueue', queuedItem.id);
     const inventoryDoc = await getDoc(inventoryDocRef);
+
     if (!inventoryDoc.exists()) {
+        // If the original inventory item doesn't exist anymore, delete the queue item.
         return deleteDoc(purchaseQueueDocRef);
     }
+
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
+        // If still below reorder level, set it back to 'pending'.
         return updateDoc(purchaseQueueDocRef, { status: 'pending' });
     } else {
+        // Otherwise, the stock level is fine, so we can delete the queue item.
         return deleteDoc(purchaseQueueDocRef);
     }
 };
+
 
 // --- JOB STEP DETAILS API (RECIPES) ---
 const jobStepDetailsCollection = collection(db, 'jobStepDetails');
@@ -765,6 +788,9 @@ export const addProduct = async (productData) => {
         manufacturer: productData.manufacturer || '',
         make: productData.make || '',
         model: productData.model || '',
+        location: productData.location || '',
+        shelf_number: productData.shelf_number || '',
+        shelf_level: productData.shelf_level || '',
         createdAt: serverTimestamp()
     };
 
@@ -819,25 +845,37 @@ export const updateUserRole = async (userId, newRole, discountPercentage, compan
     }
     return setDoc(doc(db, 'users', userId), dataToUpdate, { merge: true });
 };
+
+// --- FIX: Converted to httpsCallable and prepared for environment variables ---
 export const createUserWithRole = async (email, password, role, discountPercentage, companyName) => {
-    const functionUrl = 'https://us-central1-tojem-os-production.cloudfunctions.net/createUserAndSetRole';
-    const body = { email, password, role, discountPercentage: Number(discountPercentage) || 0, companyName };
-    const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to create user.');
-    return data;
+    const createUser = httpsCallable(functions, 'createUserAndSetRole');
+    try {
+        const result = await createUser({
+            email,
+            password,
+            role,
+            discountPercentage: Number(discountPercentage) || 0,
+            companyName
+        });
+        return result.data;
+    } catch (error) {
+        console.error("Error calling createUserAndSetRole function:", error);
+        throw new Error(error.message || 'Failed to create user via cloud function.');
+    }
 };
+
+// --- FIX: Converted to httpsCallable and prepared for environment variables ---
 export const deleteUserWithRole = async (userId) => {
-    const functionUrl = 'https://us-central1-tojem-os-production.cloudfunctions.net/deleteUserAndRole';
-    const response = await fetch(functionUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Failed to delete user.');
-    return data;
+    const deleteUser = httpsCallable(functions, 'deleteUserAndRole');
+    try {
+        const result = await deleteUser({ userId });
+        return result.data;
+    } catch (error) {
+        console.error("Error calling deleteUserAndRole function:", error);
+        throw new Error(error.message || 'Failed to delete user via cloud function.');
+    }
 };
+
 
 // --- ROLES API ---
 export const getRoles = async () => {
@@ -1084,6 +1122,42 @@ export const resolveReworkJob = (jobDocId) => {
         issueReason: 'Rework Resolved - Re-queued'
     });
 };
+
+// --- NEW: Routine Tasks API ---
+const routineTasksCollection = collection(db, 'routineTasks');
+
+export const getRoutineTasks = async () => {
+    const snapshot = await getDocs(query(routineTasksCollection, orderBy('timeOfDay')));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const addRoutineTask = (taskData) => {
+    return addDoc(routineTasksCollection, taskData);
+};
+
+export const updateRoutineTask = (taskId, updatedData) => {
+    return updateDoc(doc(db, 'routineTasks', taskId), updatedData);
+};
+
+export const deleteRoutineTask = (taskId) => {
+    return deleteDoc(doc(db, 'routineTasks', taskId));
+};
+
+// --- NEW: Picking List API ---
+const pickingListsCollection = collection(db, 'pickingLists');
+
+export const listenToPickingLists = (callback) => {
+    const q = query(pickingListsCollection, where('status', '==', 'pending'), orderBy('createdAt', 'desc'));
+    return onSnapshot(q, (snapshot) => {
+        const lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(lists);
+    });
+};
+
+export const markPickingListAsCompleted = (listId) => {
+    return updateDoc(doc(db, 'pickingLists', listId), { status: 'completed' });
+};
+
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs };

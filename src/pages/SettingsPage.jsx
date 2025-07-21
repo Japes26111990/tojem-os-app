@@ -1,4 +1,4 @@
-// src/pages/SettingsPage.jsx (UPDATED with Role Manager)
+// src/pages/SettingsPage.jsx (UPDATED with Role Manager and Routine Tasks)
 
 import React, { useState, useMemo } from 'react';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
@@ -15,7 +15,8 @@ import CampaignManager from '../components/features/settings/CampaignManager';
 import FinancialSettings from '../components/features/settings/FinancialSettings'; 
 import TrainingManager from '../components/features/settings/TrainingManager';
 import ReworkReasonsManager from '../components/features/settings/ReworkReasonsManager';
-import RoleManager from '../components/features/settings/RoleManager'; // --- IMPORT NEW COMPONENT ---
+import RoleManager from '../components/features/settings/RoleManager';
+import RoutineTasksManager from '../components/features/settings/RoutineTasksManager'; // --- IMPORT NEW COMPONENT ---
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -46,7 +47,13 @@ const SettingsPage = () => {
     },
     company: {
        label: 'Company & Staff',
-      components: [<DepartmentsManager key="departments" />, <EmployeesManager key="employees" />, <SkillsManager key="skills" />, <ReworkReasonsManager key="rework-reasons" />]
+      components: [
+          <DepartmentsManager key="departments" />, 
+          <EmployeesManager key="employees" />, 
+          <SkillsManager key="skills" />, 
+          <ReworkReasonsManager key="rework-reasons" />,
+          <RoutineTasksManager key="routine-tasks" /> // --- ADD NEW COMPONENT ---
+      ]
     },
     training: {
         label: 'Training',
@@ -60,7 +67,6 @@ const SettingsPage = () => {
       label: 'Marketing',
       components: [<CampaignManager key="campaigns" />]
     },
-    // --- ADD NEW TABS FOR USER & ROLE MANAGEMENT ---
     users: {
        label: 'User Logins',
       components: [<UserManagementPage key="user-management" />]

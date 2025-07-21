@@ -1,4 +1,4 @@
-// src/components/features/job_cards/CustomJobCreator.jsx (FIXED: Printing logic)
+// src/components/features/job_cards/CustomJobCreator.jsx (Upgraded with Category, VIN, and Standardized Printing)
 
 import React, { useState, useEffect, useRef } from 'react';
 import Input from '../../ui/Input';
@@ -12,13 +12,16 @@ import {
     getTools, 
     getToolAccessories, 
     getAllInventoryItems, 
-    getDepartmentSkills,
+    getDepartmentSkills, 
     listenToJobCards 
 } from '../../../api/firestore';
 import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PrintConfirmationModal from './PrintConfirmationModal';
-import QRCode from 'qrcode'; // Import QRCode library
+import QRCode from 'qrcode';
+
+// Base64 encoded logo to ensure it prints correctly
+const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
 
 const CustomJobCreator = ({ campaignId }) => {
     const [jobData, setJobData] = useState({
@@ -32,6 +35,9 @@ const CustomJobCreator = ({ campaignId }) => {
         selectedTools: new Set(),
         selectedAccessories: new Set(),
         consumables: [],
+        jobCategory: 'Production',
+        requiresVin: false,
+        vinNumber: '',
     });
 
     const [allPastJobs, setAllPastJobs] = useState([]);
@@ -50,6 +56,12 @@ const CustomJobCreator = ({ campaignId }) => {
     const [consumableQuantity, setConsumableQuantity] = useState('');
     const consumableSearchRef = useRef(null);
     const [jobToConfirm, setJobToConfirm] = useState(null);
+
+    const jobCategoryOptions = [
+        { id: 'Production', name: 'Production' },
+        { id: 'Development', name: 'Development' },
+        { id: 'Maintenance', name: 'Maintenance' },
+    ];
 
     useEffect(() => {
         const fetchData = async () => {
@@ -117,8 +129,9 @@ const CustomJobCreator = ({ campaignId }) => {
     }, []);
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setJobData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        const val = type === 'checkbox' ? checked : value;
+        setJobData(prev => ({ ...prev, [name]: val }));
     };
 
     const handleToolToggle = (toolId) => {
@@ -190,6 +203,14 @@ const CustomJobCreator = ({ campaignId }) => {
             toast.error("Please fill in Job Name, Department, Description, and Steps.");
             return;
         }
+        // --- ADDED: Time validation ---
+        if (!jobData.estimatedTime || parseFloat(jobData.estimatedTime) <= 0) {
+            toast.error("Please enter a valid estimated time for the job.");
+            return;
+        }
+        if (jobData.requiresVin && !jobData.vinNumber.trim()) {
+            return toast.error("A VIN number is required for this job.");
+        }
         
         let departmentRequiredSkills = await getDepartmentSkills(jobData.departmentId);
 
@@ -212,6 +233,8 @@ const CustomJobCreator = ({ campaignId }) => {
             isCustomJob: true,
             campaignId: campaignId || null,
             requiredSkills: departmentRequiredSkills,
+            jobCategory: jobData.jobCategory,
+            vinNumber: jobData.requiresVin ? jobData.vinNumber.trim() : null,
         };
         
         setJobToConfirm(finalJobData);
@@ -224,17 +247,18 @@ const CustomJobCreator = ({ campaignId }) => {
             await addJobCard(jobToConfirm);
             toast.success(`Custom Job Card ${jobToConfirm.jobId} created successfully!`);
             
-            // *** THIS IS THE FIX ***
-            // We now generate a full HTML document for printing.
             const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
-
+            
+            // --- UPDATED: Using base64 logo ---
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
                         <div>
+                            <img src="${tojemLogoBase64}" alt="Company Logo" style="height: 50px; margin-bottom: 10px;"/>
                             <h1 style="font-size: 28px; font-weight: bold; margin: 0;">Job Card (Custom)</h1>
                             <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${jobToConfirm.partName} (x${jobToConfirm.quantity})</span></p>
                             <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${jobToConfirm.departmentName}</span></p>
+                            ${jobToConfirm.vinNumber ? `<p style="font-size: 14px; color: #666; margin: 0;">VIN: <span style="font-weight: 600;">${jobToConfirm.vinNumber}</span></p>` : ''}
                         </div>
                         <div style="text-align: right;">
                             <img src="${qrCodeDataUrl}" alt="QR Code" style="margin-bottom: 5px;"/>
@@ -281,7 +305,7 @@ const CustomJobCreator = ({ campaignId }) => {
                 toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
             }
 
-            setJobData({ jobName: '', departmentId: '', employeeId: '', quantity: 1, description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [] });
+            setJobData({ jobName: '', departmentId: '', employeeId: '', quantity: 1, description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [], jobCategory: 'Production', requiresVin: false, vinNumber: '' });
             setSelectedConsumableItem(null);
             setConsumableQuantity('');
             setConsumableSearchTerm('');
@@ -327,17 +351,29 @@ const CustomJobCreator = ({ campaignId }) => {
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="md:col-span-1">
-                            <Input label="Quantity" name="quantity" type="number" min="1" value={jobData.quantity} onChange={handleInputChange} />
-                        </div>
-                        <div className="md:col-span-2">
-                            <Dropdown label="Department" name="departmentId" value={jobData.departmentId} onChange={handleInputChange} options={allDepartments} placeholder="Select Department..." />
+                        <Input label="Quantity" name="quantity" type="number" min="1" value={jobData.quantity} onChange={handleInputChange} />
+                        <Dropdown label="Department" name="departmentId" value={jobData.departmentId} onChange={handleInputChange} options={allDepartments} placeholder="Select Department..." />
+                        <Dropdown label="Job Category" name="jobCategory" value={jobData.jobCategory} onChange={handleInputChange} options={jobCategoryOptions} />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <Dropdown label="Employee (Optional)" name="employeeId" value={jobData.employeeId} onChange={handleInputChange} options={allEmployees.filter(e => e.departmentId === jobData.departmentId)} placeholder="Select Employee..." />
+                        <div className="flex items-center pt-6">
+                            <input type="checkbox" id="requiresVin" name="requiresVin" checked={jobData.requiresVin} onChange={handleInputChange} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"/>
+                            <label htmlFor="requiresVin" className="ml-2 text-sm font-medium text-gray-300">This job requires a VIN number</label>
                         </div>
                     </div>
 
-                    <Dropdown label="Employee (Optional)" name="employeeId" value={jobData.employeeId} onChange={handleInputChange} options={allEmployees.filter(e => e.departmentId === jobData.departmentId)} placeholder="Select Employee..." />
+                    {jobData.requiresVin && (
+                        <div className="animate-fade-in">
+                            <Input label="VIN Number" name="vinNumber" value={jobData.vinNumber} onChange={handleInputChange} placeholder="Enter Vehicle Identification Number..." />
+                        </div>
+                    )}
+
                     <Textarea label="Job Description" name="description" value={jobData.description} onChange={handleInputChange} placeholder="e.g., Weld crack in bracket and repaint" rows={3} />
-                    <Input label="Estimated Time (minutes)" name="estimatedTime" type="number" value={jobData.estimatedTime} onChange={handleInputChange} placeholder="e.g., 90" />
+                    
+                    <Input label="Estimated Time (Minutes)" name="estimatedTime" type="number" min="1" value={jobData.estimatedTime} onChange={handleInputChange} placeholder="e.g., 90" />
+
                     <Textarea label="Steps (one per line)" name="steps" value={jobData.steps} onChange={handleInputChange} placeholder="1. Clean area&#10;2. Weld crack&#10;3. Sand smooth&#10;4. Paint" rows={5} />
 
                     <div>

@@ -8,8 +8,9 @@ import { listenToJobCards, updateDocument, getEmployees, getAllInventoryItems, g
 import JobDetailsModal from '../components/features/tracking/JobDetailsModal';
 import Button from '../components/ui/Button';
 import SchedulingAssistantModal from '../components/features/calendar/SchedulingAssistantModal';
-import DispatchQueue from '../components/features/dispatch/DispatchQueue'; // --- IMPORT NEW COMPONENT ---
+import DispatchQueue from '../components/features/dispatch/DispatchQueue';
 import { Bot, Calendar as CalendarIcon, ListOrdered } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const localizer = momentLocalizer(moment);
 
@@ -33,7 +34,7 @@ const CalendarPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedJob, setSelectedJob] = useState(null);
-  const [activeTab, setActiveTab] = useState('calendar'); // --- NEW STATE for tabs ---
+  const [activeTab, setActiveTab] = useState('calendar');
   
   const [employeeHourlyRates, setEmployeeHourlyRates] = useState({});
   const [allEmployees, setAllEmployees] = useState([]);
@@ -98,17 +99,26 @@ const CalendarPage = () => {
   };
 
   const handleEventDrop = async ({ event, start, end }) => {
-    if (window.confirm(`Are you sure you want to reschedule "${event.title}" to ${moment(start).format('LLL')}?`)) {
-      try {
-        await updateDocument('createdJobCards', event.id, {
-          scheduledDate: start
-        });
-        toast.success('Job rescheduled successfully!');
-      } catch (err) {
-        console.error("Error rescheduling job:", err);
-        toast.error('Failed to reschedule job.');
-      }
-    }
+    toast((t) => (
+        <span>
+            Reschedule "{event.title}" to {moment(start).format('LLL')}?
+            <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                    await updateDocument('createdJobCards', event.id, { scheduledDate: start });
+                    toast.success('Job rescheduled successfully!');
+                } catch (err) {
+                    console.error("Error rescheduling job:", err);
+                    toast.error('Failed to reschedule job.');
+                }
+            }}>
+                Confirm
+            </Button>
+            <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                Cancel
+            </Button>
+        </span>
+    ));
   };
   
   const handleScheduleComplete = () => {
@@ -121,7 +131,6 @@ const CalendarPage = () => {
   return (
     <>
       <style jsx>{`
-        /* Calendar styles remain unchanged */
         .rbc-calendar { font-family: 'Inter', sans-serif; color: #e2e8f0; background-color: #1f2937; border-radius: 0.75rem; border: 1px solid #374151; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); padding: 1.5rem; height: 100%; }
         .rbc-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #374151; }
         .rbc-toolbar .rbc-toolbar-label { font-size: 1.5rem; font-weight: 700; color: #f9fafb; flex-grow: 1; text-align: center; }
@@ -190,6 +199,7 @@ const CalendarPage = () => {
           onClose={() => setSelectedJob(null)}
           currentTime={Date.now()}
           employeeHourlyRates={employeeHourlyRates}
+          overheadCostPerHour={0} // Overhead cost is calculated on the live tracking page, not needed here
           allEmployees={allEmployees}
           allInventoryItems={allInventoryItems}
           allTools={allTools}

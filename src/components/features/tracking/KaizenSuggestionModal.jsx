@@ -1,4 +1,4 @@
-// src/components/features/tracking/KaizenSuggestionModal.jsx
+// src/components/features/tracking/KaizenSuggestionModal.jsx (NEW FILE)
 
 import React, { useState } from 'react';
 import Button from '../../ui/Button';

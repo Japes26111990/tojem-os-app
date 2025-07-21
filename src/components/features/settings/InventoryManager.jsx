@@ -1,4 +1,4 @@
-// src/components/features/settings/InventoryManager.jsx (Updated for Dynamic Supplier Pricing)
+// src/components/features/settings/InventoryManager.jsx (Updated for Dynamic Supplier Pricing & Location)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getComponents, addComponent, deleteComponent, getRawMaterials, addRawMaterial, deleteRawMaterial, getWorkshopSupplies, addWorkshopSupply, deleteWorkshopSupply, getSuppliers, getSkills, updateDocument } from '../../../api/firestore';
@@ -19,7 +19,6 @@ const SupplierPricingManager = ({ manager, suppliers }) => {
         setNewSupplierId('');
     };
     
-    // Filter out suppliers that are already linked to this item
     const availableSuppliers = useMemo(() => {
         const linkedSupplierIds = new Set(manager.supplierPrices.map(p => p.supplierId));
         return suppliers.filter(s => !linkedSupplierIds.has(s.id));
@@ -29,7 +28,6 @@ const SupplierPricingManager = ({ manager, suppliers }) => {
         <div className="border-t border-gray-700 pt-4 mt-4">
             <h4 className="text-lg font-semibold text-white mb-3">Supplier Pricing for "{manager.newItem.name}"</h4>
             <div className="space-y-3 p-4 bg-gray-800 rounded-lg border border-gray-700">
-                {/* List of existing prices */}
                 <div className="space-y-2">
                     {manager.supplierPrices.map(priceLink => (
                         <div key={priceLink.id} className="flex items-center justify-between bg-gray-700 p-2 rounded-md">
@@ -42,7 +40,6 @@ const SupplierPricingManager = ({ manager, suppliers }) => {
                     ))}
                     {manager.supplierPrices.length === 0 && <p className="text-xs text-gray-500 text-center">No suppliers linked yet.</p>}
                 </div>
-                {/* Form to add a new price */}
                 <div className="flex items-end gap-2 border-t border-gray-600 pt-3">
                     <div className="flex-grow">
                         <Dropdown label="Add Supplier" options={availableSuppliers} value={newSupplierId} onChange={e => setNewSupplierId(e.target.value)} placeholder="Select supplier..." />
@@ -143,6 +140,13 @@ const InventoryManager = () => {
             </div>
         </div>
 
+        {/* --- NEW: Inventory Location Fields --- */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-end p-4 bg-gray-900/50 rounded-lg">
+            <Input label="Location" name="location" value={manager.newItem.location} onChange={manager.handleInputChange} placeholder="e.g., Parts Store" />
+            <Input label="Shelf #" name="shelf_number" value={manager.newItem.shelf_number} onChange={manager.handleInputChange} placeholder="e.g., 4" />
+            <Input label="Bin #" name="bin_number" value={manager.newItem.bin_number} onChange={manager.handleInputChange} placeholder="e.g., 1A" />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end p-4 bg-gray-900/50 rounded-lg">
             <div className="lg:col-span-1">
                 <label className="block text-sm font-medium text-gray-400 mb-1">Stock Take Method</label>
@@ -169,7 +173,6 @@ const InventoryManager = () => {
             )}
         </div>
 
-        {/* --- DYNAMIC SUPPLIER PRICING UI --- */}
         {manager.editingItemId && (
             <SupplierPricingManager manager={manager} suppliers={suppliers} />
         )}

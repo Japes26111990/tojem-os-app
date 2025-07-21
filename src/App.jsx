@@ -22,7 +22,7 @@ import PerformancePage from './pages/PerformancePage.jsx';
 import EmployeeIntelligencePage from './pages/EmployeeIntelligencePage.jsx';
 import ProductViabilityPage from './pages/ProductViabilityPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-import PayrollPage from './pages/PayrollPage.jsx';
+// REMOVED: import PayrollPage from './pages/PayrollPage.jsx';
 import ValuationPage from './pages/ValuationPage.jsx';
 import CalendarPage from './pages/CalendarPage.jsx';
 import MarketingPage from './pages/MarketingPage.jsx';
@@ -39,7 +39,9 @@ import ReworkQueuePage from './pages/ReworkQueuePage.jsx';
 import MultiStageWizard from './pages/MultiStageWizard.jsx';
 import StockAdjustmentPage from './pages/StockAdjustmentPage.jsx';
 import JobReprintPage from './pages/JobReprintPage.jsx';
-import KanbanPage from './pages/KanbanPage.jsx'; // <-- IMPORT THE NEW PAGE
+import KanbanPage from './pages/KanbanPage.jsx';
+import PickingQueuePage from './pages/PickingQueuePage.jsx';
+// REMOVED: import TimeAttendanceReportPage from './pages/TimeAttendanceReport.jsx';
 
 function App() {
     const { user } = useAuth();
@@ -79,10 +81,12 @@ function App() {
                                 <Route path="/performance" element={ <RoleBasedRoute permission="performance"><PerformancePage /></RoleBasedRoute> } />
                                 <Route path="/employee/:employeeId" element={ <RoleBasedRoute permission="performance"><EmployeeIntelligencePage /></RoleBasedRoute> } />
                                 <Route path="/profitability" element={ <RoleBasedRoute permission="profitability"><ProductViabilityPage /></RoleBasedRoute> } />
-                                <Route path="/payroll" element={ <RoleBasedRoute permission="payroll"><PayrollPage /></RoleBasedRoute> } />
+                                {/* REMOVED: Payroll Route */}
                                 <Route path="/valuation" element={ <RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute> } />
                                 <Route path="/calendar" element={ <RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute> } />
-                                <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} /> {/* <-- ADD THE NEW ROUTE */}
+                                <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} />
+                                <Route path="/picking-queue" element={<RoleBasedRoute permission="picking"><PickingQueuePage /></RoleBasedRoute>} />
+                                {/* REMOVED: Time & Attendance Route */}
                                 <Route path="/settings" element={ <RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute> } />
                                 <Route path="/marketing" element={ <RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute> } />
                                 <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />

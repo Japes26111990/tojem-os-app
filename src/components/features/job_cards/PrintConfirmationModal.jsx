@@ -1,4 +1,4 @@
-// src/components/features/job_cards/PrintConfirmationModal.jsx (New File)
+// src/components/features/job_cards/PrintConfirmationModal.jsx (NEW FILE)
 
 import React from 'react';
 import Button from '../../ui/Button';
@@ -17,7 +17,7 @@ const PrintConfirmationModal = ({ jobDetails, onClose, onConfirmPrint }) => {
     return (
         <div 
             onClick={onClose} 
-            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in"
         >
             <div 
                 onClick={(e) => e.stopPropagation()} 
@@ -36,6 +36,9 @@ const PrintConfirmationModal = ({ jobDetails, onClose, onConfirmPrint }) => {
                         <DetailItem label="Department" value={jobDetails.departmentName} />
                         <DetailItem label="Assigned Employee" value={jobDetails.employeeName} />
                         <DetailItem label="Estimated Time" value={`${jobDetails.estimatedTime} minutes`} />
+                        <DetailItem label="Quantity" value={jobDetails.quantity} />
+                        <DetailItem label="Category" value={jobDetails.jobCategory} />
+                        {jobDetails.vinNumber && <DetailItem label="VIN Number" value={jobDetails.vinNumber} />}
                     </div>
                     <div>
                         <p className="text-xs text-gray-400 mb-1">Steps Overview</p>

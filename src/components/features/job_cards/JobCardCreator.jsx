@@ -1,4 +1,4 @@
-// src/components/features/job_cards/JobCardCreator.jsx (Upgraded with Print Confirmation & Quantity)
+// src/components/features/job_cards/JobCardCreator.jsx (Upgraded with Print Confirmation, Quantity, VIN, and Category)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -16,81 +16,27 @@ import Input from '../../ui/Input';
 import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.jsx';
 import PrintConfirmationModal from './PrintConfirmationModal';
 import toast from 'react-hot-toast';
+import QRCode from 'qrcode';
 
-const JobCardPreview = ({ details }) => {
-    if (!details) return null;
-    return (
-        <div className="mt-8 p-6 bg-gray-800 rounded-xl border border-gray-700">
-            <h2 className="text-2xl font-bold text-white mb-6">Generated Job Card Preview</h2>
-            <div id="job-card-print-area" className="bg-white text-gray-800 p-8 rounded-lg shadow-lg">
-                <div className="flex justify-between items-start pb-4 border-b">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900">Job Card</h1>
-                        <p className="text-gray-600">Product: <span className="font-semibold">{details.productName} (x{details.quantity})</span></p> {/* Display Quantity */}
-                        <p className="text-gray-600">Department: <span className="font-semibold">{details.departmentName}</span></p>
-                    </div>
-                    <div className="text-right">
-                        <img src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(details.jobId)}&size=80x80`} alt="QR Code"/>
-                       <p className="text-xs text-gray-500 mt-1">{details.jobId}</p>
-                    </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
-                    <div>
-                         {details.photoUrl ? ( <img src={details.photoUrl} alt={details.productName} className="rounded-lg object-cover w-full h-64 mb-4 border" /> ) : ( <div className="rounded-lg w-full h-64 mb-4 border bg-gray-100 flex items-center justify-center text-gray-400"><span>No Image Available</span></div> )}
-                        <div className="space-y-2 text-sm">
-                            <p><b>Employee:</b> {details.employeeName}</p>
-                             <p><b>Est. Time:</b> {details.estimatedTime || 'N/A'} mins</p>
-                            <p><b>Description:</b> {details.description || 'No description.'}</p>
-                        </div>
-                    </div>
-                    <div className="space-y-4">
-                         <div>
-                            <h3 className="text-lg font-bold text-gray-800 mb-2">Required Tools & Accessories</h3>
-                            <ul className="list-disc list-inside text-gray-600 space-y-1 text-sm">
-                                {details.tools?.length > 0 ? details.tools.map((tool) => <li key={tool.id}>{tool.name}</li>) : <li>No tools required.</li>}
-                                     {details.accessories?.length > 0 ? details.accessories.map((acc) => <li key={acc.id} className="ml-4">{acc.name}</li>) : null}
-                            </ul>
-                        </div>
-                        <div>
-                             <h3 className="text-lg font-bold text-gray-800 mb-2">Required Consumables</h3>
-                            <ul className="list-disc list-inside text-gray-600 space-y-2 text-sm">
-                                {details.processedConsumables?.length > 0 ? details.processedConsumables.map((c, i) => (
-                                    <li key={i}>
-                                         <span className="font-semibold">{c.name}</span>
-                                        {c.quantity && <span>: {c.quantity.toFixed(3)} {c.unit}</span>}
-                                        {c.notes && <span className="text-xs italic text-gray-500 ml-1">{c.notes}</span>}
-                                        {c.cuts && (
-                                            <ul className="list-square list-inside ml-4 mt-1">
-                                                   {c.cuts.map((cut, j) => <li key={j}>{cut.dimensions} <span className="text-xs italic text-gray-500">{cut.notes}</span></li>)}
-                                            </ul>
-                                        )}
-                                     </li>
-                                )) : <li>No consumables required.</li>}
-                            </ul>
-                        </div>
-                     </div>
-                </div>
-                <div className="mt-6 border-t pt-4">
-                    <h3 className="text-lg font-bold text-gray-800 mb-2">Steps</h3>
-                    <ol className="list-decimal list-inside text-gray-600 space-y-1 text-sm">
-                        {(details.steps || []).length > 0 ? details.steps.map((step, i) => <li key={i}>{step.text || step}</li>) : <li>No steps defined.</li>}
-                    </ol>
-                </div>
-            </div>
-        </div>
-    )
-};
+// Base64 encoded logo to ensure it prints correctly
+const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
 
 const JobCardCreator = ({ campaignId }) => {
     const [allData, setAllData] = useState({ products: [], categories: [], departments: [], employees: [], allRecipes: [], tools: [], toolAccessories: [], allConsumables: [], allSkills: [] });
     const [loading, setLoading] = useState(true);
-    const [selection, setSelection] = useState({ categoryId: '', productId: '', departmentId: '', employeeId: '', quantity: 1 }); // Added quantity to state
+    const [selection, setSelection] = useState({ categoryId: '', productId: '', departmentId: '', employeeId: '', quantity: 1, vinNumber: '', jobCategory: 'Production' });
     const [jobDetails, setJobDetails] = useState(null);
     const [currentTemp, setCurrentTemp] = useState(20);
     const [showDefineRecipeForm, setShowDefineRecipeForm] = useState(false);
     const [tempRecipeDetails, setTempRecipeDetails] = useState({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
     const [isSavingNewRecipe, setIsSavingNewRecipe] = useState(false);
     const [jobToConfirm, setJobToConfirm] = useState(null);
+
+    const jobCategoryOptions = [
+        { id: 'Production', name: 'Production' },
+        { id: 'Development', name: 'Development' },
+        { id: 'Maintenance', name: 'Maintenance' },
+    ];
 
     useEffect(() => {
         const fetchAllData = async () => {
@@ -130,9 +76,19 @@ const JobCardCreator = ({ campaignId }) => {
     const filteredProducts = useMemo(() => allData.products.filter(p => p.categoryId === selection.categoryId), [allData.products, selection.categoryId]);
     const filteredEmployees = useMemo(() => allData.employees.filter(e => e.departmentId === selection.departmentId), [allData.employees, selection.departmentId]);
 
+    const recipeRequiresVin = useMemo(() => {
+        const { productId, departmentId } = selection;
+        if (productId && departmentId) {
+            const recipeId = `${productId}_${departmentId}`;
+            const standardRecipe = allData.allRecipes.find(recipe => recipe.id === recipeId);
+            return standardRecipe?.requiresVin || false;
+        }
+        return false;
+    }, [selection, allData.allRecipes]);
+
     useEffect(() => {
         const updateJobDetails = async () => {
-            const { productId, departmentId, employeeId, quantity } = selection; // Get quantity from selection
+            const { productId, departmentId, employeeId, quantity, vinNumber, jobCategory } = selection;
                  if (productId && departmentId) {
                 const product = allData.products.find(p => p.id === productId);
                 const department = allData.departments.find(d => d.id === departmentId);
@@ -163,7 +119,7 @@ const JobCardCreator = ({ campaignId }) => {
 
                 const processed = processConsumables(finalRecipeDetails.consumables, allData.allConsumables, currentTemp);
                 const toolsForDisplay = (finalRecipeDetails.tools || []).map(toolId => allData.tools.find(t => t.id === toolId)).filter(Boolean);
- const accessoriesForDisplay = (finalRecipeDetails.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
+                const accessoriesForDisplay = (finalRecipeDetails.accessories || []).map(accId => allData.toolAccessories.find(a => a.id === accId)).filter(Boolean);
 
                 setJobDetails({
                     jobId: `JOB-${Date.now()}`,
@@ -176,7 +132,9 @@ const JobCardCreator = ({ campaignId }) => {
                     employeeName: employee ? employee.name : 'Unassigned',
                     status: 'Pending',
                     description: finalRecipeDetails.description,
-                    quantity: Number(quantity) || 1, // Add quantity to jobDetails
+                    quantity: Number(quantity) || 1,
+                    vinNumber: recipeRequiresVin ? vinNumber : null,
+                    jobCategory: jobCategory,
                      estimatedTime: parseFloat(finalRecipeDetails.estimatedTime) || 0,
                     steps: finalRecipeDetails.steps.map ? (finalRecipeDetails.steps.map(s => s.text || s)) : [],
                     tools: toolsForDisplay,
@@ -191,7 +149,7 @@ const JobCardCreator = ({ campaignId }) => {
             }
         };
         updateJobDetails();
-    }, [selection, allData, currentTemp, tempRecipeDetails, campaignId]);
+    }, [selection, allData, currentTemp, tempRecipeDetails, campaignId, recipeRequiresVin]);
 
     const handleTempRecipeInputChange = (e) => {
         const { name, value } = e.target;
@@ -219,27 +177,22 @@ const JobCardCreator = ({ campaignId }) => {
     };
 
     const handleResetFormAndPreview = () => {
-        setSelection({ categoryId: '', productId: '', departmentId: '', employeeId: '', quantity: 1 });
+        setSelection({ categoryId: '', productId: '', departmentId: '', employeeId: '', quantity: 1, vinNumber: '', jobCategory: 'Production' });
         setJobDetails(null);
         setShowDefineRecipeForm(false);
         setTempRecipeDetails({ description: '', estimatedTime: '', steps: '', tools: new Set(), accessories: new Set(), consumables: [] });
         setJobToConfirm(null);
     };
-
-    const handlePrint = () => {
-        const printContents = document.getElementById('job-card-print-area')?.innerHTML;
-        if (printContents) {
-                   const printWindow = window.open('', '', 'height=800,width=1000');
-            if (printWindow) {
-                printWindow.document.write(`<html><head><title>Print Job Card ${jobDetails.jobId}</title></head><body>${printContents}</body></html>`);
-                printWindow.document.close();
-                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
-            }
-        }
-    };
     
     const handleGenerateNewJobCard = () => {
         if (!jobDetails) return toast.error("Please select a product and department.");
+        // --- ADDED: Time validation ---
+        if (!jobDetails.estimatedTime || jobDetails.estimatedTime <= 0) {
+            return toast.error("A valid estimated time is required to create this job card.");
+        }
+        if (recipeRequiresVin && !selection.vinNumber.trim()) {
+            return toast.error("This job requires a VIN number.");
+        }
         setJobToConfirm(jobDetails);
     };
     
@@ -278,10 +231,72 @@ const JobCardCreator = ({ campaignId }) => {
         try {
             await addJobCard(jobToConfirm);
             toast.success(`Job Card ${jobToConfirm.jobId} created successfully!`);
-            handlePrint();
+            
+            const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
+
+            // --- UPDATED: Using base64 logo ---
+            const printContents = `
+                <div style="font-family: sans-serif; padding: 20px; color: #333;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
+                        <div>
+                            <img src="${tojemLogoBase64}" alt="Company Logo" style="height: 50px; margin-bottom: 10px;"/>
+                            <h1 style="font-size: 28px; font-weight: bold; margin: 0;">Job Card</h1>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Part: <span style="font-weight: 600;">${jobToConfirm.productName} (x${jobToConfirm.quantity})</span></p>
+                            <p style="font-size: 14px; color: #666; margin: 0;">Department: <span style="font-weight: 600;">${jobToConfirm.departmentName}</span></p>
+                            ${jobToConfirm.vinNumber ? `<p style="font-size: 14px; color: #666; margin: 0;">VIN: <span style="font-weight: 600;">${jobToConfirm.vinNumber}</span></p>` : ''}
+                        </div>
+                        <div style="text-align: right;">
+                            <img src="${qrCodeDataUrl}" alt="QR Code" style="margin-bottom: 5px;"/>
+                            <p style="font-size: 10px; color: #999; margin: 0;">${jobToConfirm.jobId}</p>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                        <div>
+                            ${jobToConfirm.photoUrl ? `<img src="${jobToConfirm.photoUrl}" alt="${jobToConfirm.productName}" style="width: 100%; height: 150px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />` : `<div style="border-radius: 8px; width: 100%; height: 150px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image</span></div>`}
+                            <div style="font-size: 13px; line-height: 1.6;">
+                                <p style="margin: 0;"><b>Employee:</b> ${jobToConfirm.employeeName}</p>
+                                <p style="margin: 0;"><b>Est. Time:</b> ${jobToConfirm.estimatedTime || 'N/A'} mins</p>
+                                <p style="margin: 0;"><b>Description:</b> ${jobToConfirm.description || 'No description.'}</p>
+                            </div>
+                        </div>
+                        <div style="font-size: 13px; line-height: 1.6;">
+                            <div>
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Tools & Accessories</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${jobToConfirm.tools?.length > 0 ? jobToConfirm.tools.map(tool => `<li>${tool.name}</li>`).join('') : '<li>No tools specified.</li>'}
+                                    ${jobToConfirm.accessories?.length > 0 ? jobToConfirm.accessories.map(acc => `<li style="margin-left: 15px;">${acc.name}</li>`).join('') : ''}
+                                </ul>
+                            </div>
+                            <div style="margin-top: 20px;">
+                                <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
+                                <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity} ${c.unit}</li>`).join('') : '<li>No consumables specified.</li>'}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                     <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Steps</h3>
+                        <ol style="list-style: decimal; padding-left: 20px; margin: 0;">
+                            ${jobToConfirm.steps?.length > 0 ? jobToConfirm.steps.map(step => `<li>${step}</li>`).join('') : '<li>No steps defined.</li>'}
+                        </ol>
+                    </div>
+                </div>
+            `;
+            
+            const printWindow = window.open('', '_blank', 'height=800,width=1000');
+            if (printWindow) {
+                printWindow.document.write(`<html><head><title>Job Card ${jobToConfirm.jobId}</title></head><body>${printContents}</body></html>`);
+                printWindow.document.close();
+                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+            } else {
+                toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
+            }
+
             handleResetFormAndPreview();
+
         } catch (error) {
-            console.error("Error generating job card:", error);
+            console.error("Error creating job card:", error);
             toast.error("Failed to generate job card.");
         }
     };
@@ -314,13 +329,15 @@ const JobCardCreator = ({ campaignId }) => {
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <Dropdown label="1. Product Category" name="categoryId" value={selection.categoryId} onChange={handleSelection} options={allData.categories} placeholder="Select Category..." />
                     <Dropdown label="2. Product" name="productId" value={selection.productId} onChange={handleSelection} options={filteredProducts} placeholder="Select Product..." disabled={!selection.categoryId} />
-                    <div className="md:col-span-1 lg:col-span-1 grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                         <Input label="3. Quantity" name="quantity" type="number" min="1" value={selection.quantity} onChange={handleSelection} />
-                        <div className="col-span-1"> {/* This div is to align the dropdown correctly */}
-                           <Dropdown label="4. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Dept..." />
-                        </div>
+                        <Dropdown label="4. Department" name="departmentId" value={selection.departmentId} onChange={handleSelection} options={allData.departments} placeholder="Select Dept..." />
                     </div>
                     <Dropdown label="5. Employee (Optional)" name="employeeId" value={selection.employeeId} onChange={handleSelection} options={filteredEmployees} placeholder="Select Employee..." disabled={!selection.departmentId} />
+                    <Dropdown label="6. Job Category" name="jobCategory" value={selection.jobCategory} onChange={handleSelection} options={jobCategoryOptions} />
+                    {recipeRequiresVin && (
+                        <Input label="7. VIN Number" name="vinNumber" value={selection.vinNumber} onChange={handleSelection} placeholder="Enter Vehicle VIN..." />
+                    )}
                 </div>
                 
                 {showDefineRecipeForm && selection.productId && selection.departmentId && (
@@ -372,7 +389,6 @@ const JobCardCreator = ({ campaignId }) => {
                     </div>
                 )}
             </div>
-            {jobDetails && <JobCardPreview details={jobDetails} />}
 
             {jobToConfirm && (
                      <PrintConfirmationModal 

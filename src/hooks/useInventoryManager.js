@@ -1,4 +1,4 @@
-// src/hooks/useInventoryManager.js (Upgraded with Toasts & Syntax Fix)
+// src/hooks/useInventoryManager.js (Upgraded with Toasts & Location Fields)
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -7,16 +7,22 @@ import {
     deleteSupplierPrice
 } from '../api/firestore';
 import toast from 'react-hot-toast';
-import Button from '../components/ui/Button'; // Import Button for the toast
+import Button from '../components/ui/Button';
 
 export const useInventoryManager = (api, suppliers, allSkills) => {
-  const [items, setItems] = useState([]);
-  const [newItem, setNewItem] = useState({
+  const initialNewItemState = {
     name: '', itemCode: '', price: '', unit: '',
     currentStock: '', reorderLevel: '', standardStockLevel: '',
     requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
     associatedSkills: [],
-  });
+    // NEW: Location fields added to initial state
+    location: '',
+    shelf_number: '',
+    bin_number: '',
+  };
+
+  const [items, setItems] = useState([]);
+  const [newItem, setNewItem] = useState(initialNewItemState);
   const [editingItemId, setEditingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -120,6 +126,10 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       unitWeight: parseFloat(newItem.unitWeight) || 0,
       tareWeight: parseFloat(newItem.tareWeight) || 0,
       associatedSkills: filteredAssociatedSkills,
+      // NEW: Save location data
+      location: newItem.location || '',
+      shelf_number: newItem.shelf_number || '',
+      bin_number: newItem.bin_number || '',
     };
     try {
       if (editingItemId) {
@@ -139,17 +149,12 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
 
   const handleEdit = (item) => {
     setEditingItemId(item.id);
-    setNewItem({ ...item, associatedSkills: item.associatedSkills || [] });
+    setNewItem({ ...initialNewItemState, ...item, associatedSkills: item.associatedSkills || [] });
   };
 
   const cancelEdit = () => {
     setEditingItemId(null);
-    setNewItem({
-      name: '', itemCode: '', price: '', unit: '',
-      currentStock: '', reorderLevel: '', standardStockLevel: '',
-      requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
-      associatedSkills: [],
-    });
+    setNewItem(initialNewItemState);
     setSupplierPrices([]);
   };
 

@@ -1,10 +1,17 @@
-// src/pages/DashboardPage.jsx (Upgraded with Throughput Graph)
+// src/pages/DashboardPage.jsx (FIXED: Resolved infinite re-render loop)
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, getAllInventoryItems, getProducts, getEmployees, collection, getDocs, listenToSystemStatus } from '../api/firestore';
+import { 
+    listenToJobCards, 
+    getEmployees, 
+    collection, 
+    getDocs, 
+    listenToSystemStatus,
+    getRoutineTasks 
+} from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
-import moment from 'moment'; // Import moment for date handling
+import moment from 'moment';
 
 // Import all the intelligence widgets
 import YearToDateComparison from '/src/components/intelligence/YearToDateComparison.jsx';
@@ -13,7 +20,8 @@ import MultiYearSalesGraph from '/src/components/intelligence/MultiYearSalesGrap
 import TopReworkCausesWidget from '/src/components/intelligence/TopReworkCausesWidget.jsx';
 import CapacityGauge from '/src/components/intelligence/CapacityGauge.jsx';
 import BottleneckWidget from '/src/components/intelligence/BottleneckWidget.jsx';
-import WorkshopThroughputGraph from '/src/components/intelligence/WorkshopThroughputGraph.jsx'; // --- IMPORT NEW COMPONENT ---
+import WorkshopThroughputGraph from '/src/components/intelligence/WorkshopThroughputGraph.jsx';
+import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget';
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
@@ -33,23 +41,26 @@ const DashboardPage = () => {
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
     const [systemStatus, setSystemStatus] = useState(null);
+    const [routineTasks, setRoutineTasks] = useState([]);
+    const [visibleTasks, setVisibleTasks] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // --- FIX: Separated initial data fetching into its own useEffect to run only once ---
     useEffect(() => {
         setLoading(true);
         const fetchData = async () => {
             try {
-                const [employeeItems, historicalSalesSnapshot] = await Promise.all([
+                const [employeeItems, historicalSalesSnapshot, allRoutineTasks] = await Promise.all([
                     getEmployees(), 
-                    getDocs(collection(db, 'historicalSales'))
+                    getDocs(collection(db, 'historicalSales')),
+                    getRoutineTasks()
                 ]);
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
+                setRoutineTasks(allRoutineTasks);
 
                 const unsubscribeJobs = listenToJobCards(setJobs);
                 const unsubscribeStatus = listenToSystemStatus(setSystemStatus);
-                
-                setLoading(false); 
                 
                 return () => {
                     unsubscribeJobs();
@@ -58,13 +69,38 @@ const DashboardPage = () => {
 
             } catch (error) {
                 console.error("Failed to fetch dashboard data:", error);
-                setLoading(false);
+            } finally {
+                setLoading(false); 
             }
         }
         
         const unsubscribePromise = fetchData();
         return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
-    }, []);
+    }, []); // Empty dependency array ensures this runs only once on mount
+
+    // --- FIX: Moved the interval logic to its own useEffect that depends on routineTasks ---
+    useEffect(() => {
+        const taskCheckInterval = setInterval(() => {
+            const now = new Date();
+            const currentTime = now.getHours() * 60 + now.getMinutes();
+            const currentDay = now.toLocaleString('en-ZA', { weekday: 'long' }).toLowerCase();
+
+            const todayTasks = routineTasks.filter(task => {
+                const [hours, minutes] = task.timeOfDay.split(':').map(Number);
+                const taskTime = hours * 60 + minutes;
+
+                const isDaily = task.schedule === 'daily';
+                const isWeekly = task.schedule.startsWith('weekly_') && task.schedule.endsWith(currentDay);
+                
+                return (isDaily || isWeekly) && currentTime >= taskTime;
+            });
+
+            setVisibleTasks(todayTasks);
+        }, 60000); // Check every minute
+
+        return () => clearInterval(taskCheckInterval);
+    }, [routineTasks]); // This effect will re-run only if the list of routine tasks changes
+
 
     const dashboardData = useMemo(() => {
         if (loading) return null;
@@ -132,7 +168,7 @@ const DashboardPage = () => {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 5);
 
-        // --- NEW: Workshop Throughput Calculation ---
+        // --- Workshop Throughput Calculation ---
         const completedJobs = jobs.filter(j => j.status === 'Complete' && j.completedAt);
         const weeklyBuckets = {};
         for (let i = 0; i < 8; i++) {
@@ -146,14 +182,13 @@ const DashboardPage = () => {
             }
         });
         const jobCompletionData = Object.values(weeklyBuckets).reverse();
-        // --- END OF NEW LOGIC ---
 
         return {
             monthlyPercentageChange, ytdPercentageChange, multiYearSalesData, uniqueYears,
             capacityUtilization, topReworkCauses, reworkRate: reworkRate.toFixed(1),
             activeJobs: jobs.filter(j => ['In Progress', 'Halted - Issue'].includes(j.status)).length,
             jobsInQc: jobs.filter(j => j.status === 'Awaiting QC').length,
-            jobCompletionData, // Add new data to the returned object
+            jobCompletionData,
         };
     }, [jobs, employees, historicalSales, loading]);
 
@@ -172,6 +207,10 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
+            {visibleTasks.length > 0 && (
+                <RoutineTasksWidget tasks={visibleTasks} />
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
                      <MultiYearSalesGraph 
@@ -186,7 +225,6 @@ const DashboardPage = () => {
             </div>
             
              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* --- RENDER NEW COMPONENT HERE --- */}
                 <WorkshopThroughputGraph jobCompletionData={dashboardData.jobCompletionData} />
                 <BottleneckWidget bottleneck={systemStatus} />
                 <TopReworkCausesWidget data={dashboardData.topReworkCauses} />
