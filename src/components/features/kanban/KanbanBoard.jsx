@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { updateJobStatus } from '../../../api/firestore';
+import { logScanEvent } from '../../../api/firestore'; // UPDATED: Import logScanEvent
 import toast from 'react-hot-toast';
 import { GripVertical } from 'lucide-react';
 
@@ -74,6 +74,7 @@ const KanbanBoard = ({ jobs, employees }) => {
         return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
     }, [jobs]);
 
+    // --- UPDATED: This now calls logScanEvent instead of updateJobStatus ---
     const onDragEnd = async (result) => {
         const { source, destination, draggableId } = result;
         if (!destination) return;
@@ -92,11 +93,13 @@ const KanbanBoard = ({ jobs, employees }) => {
             }
             
             try {
-                await updateJobStatus(draggableId, destination.droppableId);
-                toast.success(`Job ${job.jobId} moved to "${destination.droppableId}"`);
+                // Instead of updating the status directly, we log an event.
+                // The backend Cloud Function will handle the actual update.
+                await logScanEvent(job, destination.droppableId);
+                toast.success(`Event logged for job ${job.jobId} to "${destination.droppableId}"`);
             } catch (error) {
-                console.error("Failed to update job status:", error);
-                toast.error("Failed to update job status.");
+                console.error("Failed to log scan event:", error);
+                toast.error("Failed to log the status change event.");
             }
         }
     };

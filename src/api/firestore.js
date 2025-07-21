@@ -23,6 +23,25 @@ import {
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
+// --- NEW: Centralized function to log a scan/status change event ---
+// This is now the PRIMARY way the frontend interacts with job status.
+export const logScanEvent = (jobData, newStatus, options = {}) => {
+    const scanEventsCollection = collection(db, 'scanEvents');
+    const { haltReason = null } = options;
+
+    const eventData = {
+        employeeId: jobData.employeeId,
+        employeeName: jobData.employeeName,
+        jobId: jobData.jobId, // Use the human-readable jobId
+        statusUpdatedTo: newStatus,
+        timestamp: serverTimestamp(),
+        notes: haltReason ? `Halted: ${haltReason}` : `Status changed to ${newStatus}`,
+        haltReason: haltReason,
+    };
+
+    return addDoc(scanEventsCollection, eventData);
+};
+
 
 // --- NEW KAIZEN & PRAISE APIs ---
 const kaizenSuggestionsCollection = collection(db, 'kaizenSuggestions');
@@ -464,8 +483,6 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
         transaction.update(purchaseQueueDocRef, { status: 'completed' });
     });
 };
-
-// --- FIX: Replaced fragile string manipulation with a robust switch statement ---
 export const requeueOrDeleteItem = async (queuedItem) => {
     let inventoryCollectionName;
     switch (queuedItem.category) {
@@ -480,7 +497,6 @@ export const requeueOrDeleteItem = async (queuedItem) => {
             break;
         default:
             console.error(`Unknown inventory category "${queuedItem.category}" for item ${queuedItem.itemName}. Deleting from queue.`);
-            // If the category is unknown or invalid, it's safer to just delete the queue item to prevent errors.
             return deleteDoc(doc(db, 'purchaseQueue', queuedItem.id));
     }
 
@@ -489,16 +505,13 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     const inventoryDoc = await getDoc(inventoryDocRef);
 
     if (!inventoryDoc.exists()) {
-        // If the original inventory item doesn't exist anymore, delete the queue item.
         return deleteDoc(purchaseQueueDocRef);
     }
 
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
-        // If still below reorder level, set it back to 'pending'.
         return updateDoc(purchaseQueueDocRef, { status: 'pending' });
     } else {
-        // Otherwise, the stock level is fine, so we can delete the queue item.
         return deleteDoc(purchaseQueueDocRef);
     }
 };
@@ -561,62 +574,6 @@ export const getJobByJobId = async (jobId) => {
     if (querySnapshot.empty) throw new Error(`No job found with ID: ${jobId}`);
     const jobDoc = querySnapshot.docs[0];
     return { id: jobDoc.id, ...jobDoc.data() };
-};
-
-export const updateJobStatus = async (docId, newStatus, options = {}) => {
-    const jobDocRef = doc(db, 'createdJobCards', docId);
-    const jobDoc = await getDoc(jobDocRef);
-    if (!jobDoc.exists()) throw new Error("Job not found!");
-
-    const currentData = jobDoc.data();
-    const dataToUpdate = { status: newStatus };
-    const { haltReason } = options;
-
-    if (newStatus === 'In Progress') {
-        if (!currentData.startedAt) dataToUpdate.startedAt = serverTimestamp();
-        else if (currentData.status === 'Paused' && currentData.pausedAt) {
-            dataToUpdate.totalPausedMilliseconds = increment(new Date().getTime() - currentData.pausedAt.toDate().getTime());
-            dataToUpdate.pausedAt = null;
-        }
-    } else if (newStatus === 'Paused') {
-        dataToUpdate.pausedAt = serverTimestamp();
-    } else if (newStatus === 'Awaiting QC') {
-        dataToUpdate.completedAt = serverTimestamp();
-    } else if (newStatus === 'Halted - Issue') {
-        dataToUpdate.haltedAt = serverTimestamp();
-        dataToUpdate.issueLog = [
-            ...(currentData.issueLog || []),
-            { reason: haltReason, timestamp: serverTimestamp(), user: 'SYSTEM' }
-        ];
-    }
-
-    const scanEventRef = doc(collection(db, 'scanEvents'));
-    const scanEventData = {
-        employeeId: currentData.employeeId,
-        employeeName: currentData.employeeName,
-        jobId: currentData.jobId,
-        statusUpdatedTo: newStatus,
-        timestamp: serverTimestamp(),
-        notes: haltReason ? `Halted: ${haltReason}` : ''
-    };
-    const batch = writeBatch(db);
-    batch.update(jobDocRef, dataToUpdate);
-    batch.set(scanEventRef, scanEventData);
-
-    if (newStatus === 'Halted - Issue') {
-        const notificationRef = doc(collection(db, 'notifications'));
-        const notificationData = {
-            message: `Job ${currentData.jobId} (${currentData.partName}) was halted. Reason: ${haltReason}`,
-            type: 'job_halted',
-            targetRole: 'Manager',
-            jobId: currentData.jobId,
-            createdAt: serverTimestamp(),
-            read: false,
-        };
-        batch.set(notificationRef, notificationData);
-    }
-
-    return batch.commit();
 };
 
 export const processQcDecision = async (job, isApproved, options = {}) => {
@@ -845,8 +802,6 @@ export const updateUserRole = async (userId, newRole, discountPercentage, compan
     }
     return setDoc(doc(db, 'users', userId), dataToUpdate, { merge: true });
 };
-
-// --- FIX: Converted to httpsCallable and prepared for environment variables ---
 export const createUserWithRole = async (email, password, role, discountPercentage, companyName) => {
     const createUser = httpsCallable(functions, 'createUserAndSetRole');
     try {
@@ -863,8 +818,6 @@ export const createUserWithRole = async (email, password, role, discountPercenta
         throw new Error(error.message || 'Failed to create user via cloud function.');
     }
 };
-
-// --- FIX: Converted to httpsCallable and prepared for environment variables ---
 export const deleteUserWithRole = async (userId) => {
     const deleteUser = httpsCallable(functions, 'deleteUserAndRole');
     try {

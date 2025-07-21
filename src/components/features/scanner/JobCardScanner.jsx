@@ -1,8 +1,7 @@
-// src/components/features/scanner/JobCardScanner.jsx (Prevents multiple "In Progress" jobs)
+// src/components/features/scanner/JobCardScanner.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getJobByJobId, updateJobStatus, getDepartments, getEmployees, updateDocument, getDocs, collection, query, where } from '../../../api/firestore';
-import { db } from '../../../api/firebase'; // Import db for the query
+import { getJobByJobId, logScanEvent, getDepartments, getEmployees, updateDocument } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
@@ -90,6 +89,7 @@ const JobCardScanner = () => {
         if (!employee) return toast.error("Selected employee not found.");
 
         try {
+            // Direct document update is acceptable for assignment as it's a manager-level task
             await updateDocument('createdJobCards', jobData.id, {
                 employeeId: employee.id,
                 employeeName: employee.name
@@ -102,40 +102,25 @@ const JobCardScanner = () => {
         }
     };
 
+    // --- UPDATED: This now calls logScanEvent instead of updateJobStatus ---
     const handleStatusUpdate = async (newStatus) => {
         if (!jobData.employeeId || jobData.employeeId === 'unassigned') {
             return toast.error("Please assign an employee before starting the job.");
         }
-
-        // --- NEW: WIP Limit Check ---
-        if (newStatus === 'In Progress') {
-            const jobsRef = collection(db, 'createdJobCards');
-            const q = query(jobsRef, 
-                where("employeeId", "==", jobData.employeeId), 
-                where("status", "==", "In Progress")
-            );
-            const querySnapshot = await getDocs(q);
-            
-            if (!querySnapshot.empty) {
-                const existingJob = querySnapshot.docs[0].data();
-                toast.error(`Cannot start new job. ${existingJob.employeeName} is already working on job: ${existingJob.jobId}.`, { duration: 5000 });
-                return; // Block the status update
-            }
-        }
-        // --- END: WIP Limit Check ---
         
-        const promise = updateJobStatus(jobData.id, newStatus);
+        const promise = logScanEvent(jobData, newStatus);
         
         toast.promise(promise, {
-            loading: 'Updating status...',
-            success: `Job status updated to "${newStatus}"!`,
-            error: 'Failed to update status.',
+            loading: 'Logging event...',
+            success: `Event logged for status "${newStatus}"!`,
+            error: 'Failed to log event.',
         });
 
         await promise;
         handleCloseModal();
     };
     
+    // --- UPDATED: This now calls logScanEvent for halting a job ---
     const handleFlagIssue = () => {
         if (!jobData) return;
         toast((t) => (
@@ -151,12 +136,12 @@ const JobCardScanner = () => {
                     <Button variant="danger" size="sm" onClick={() => {
                         const reason = document.getElementById('halt-reason-input').value;
                         if (reason && reason.trim()) {
-                            updateJobStatus(jobData.id, 'Halted - Issue', { haltReason: reason.trim() })
+                            logScanEvent(jobData, 'Halted - Issue', { haltReason: reason.trim() })
                                 .then(() => {
-                                    toast.success(`Job halted. Management notified.`);
+                                    toast.success(`Halt event logged. Management will be notified.`);
                                     handleCloseModal();
                                 })
-                                .catch(err => toast.error("Failed to halt job."));
+                                .catch(err => toast.error("Failed to log halt event."));
                             toast.dismiss(t.id);
                         } else {
                             toast.error("A reason is required to halt a job.");
