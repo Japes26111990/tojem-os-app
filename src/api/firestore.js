@@ -1120,7 +1120,7 @@ export { collection, query, where, getDocs };
 
 export const listenToCustomerSalesOrders = (customerEmail, callback) => {
     const q = query(
-        salesOrdersCollection,
+        collection(db, 'salesOrders'),
         where('customerEmail', '==', customerEmail),
         orderBy('createdAt', 'desc')
     );
@@ -1129,6 +1129,22 @@ export const listenToCustomerSalesOrders = (customerEmail, callback) => {
         callback(orders);
     });
 };
+
+export const listenToJobsForSalesOrder = (salesOrderId, callback) => {
+    if (!salesOrderId) {
+        callback([]);
+        return () => {}; // Return an empty unsubscribe function
+    }
+    const q = query(
+        collection(db, 'createdJobCards'),
+        where('salesOrderId', '==', salesOrderId)
+    );
+    return onSnapshot(q, (snapshot) => {
+        const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        callback(jobs);
+    });
+};
+
 const customerFeedbackCollection = collection(db, 'customerFeedback');
 export const addCustomerFeedback = (feedbackData) => {
     return addDoc(customerFeedbackCollection, {
