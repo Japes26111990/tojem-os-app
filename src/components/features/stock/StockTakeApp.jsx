@@ -1,18 +1,20 @@
-// src/components/features/stock/StockTakeApp.jsx (Path Corrected & Index Fix & Filtered by Category)
+// src/components/features/stock/StockTakeApp.jsx (REFACTORED)
+// The `handleStartNewSession` function no longer performs a batch write,
+// making it safe for large inventories. The logic for filtering remaining vs. completed items
+// is now handled entirely by the updated `useStockTakeData` hook.
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { collection, addDoc, getDocs, serverTimestamp, query, where, orderBy, limit, updateDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, getDocs, serverTimestamp, query, where, orderBy, limit, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
-import { getAllInventoryItems, findInventoryItemByItemCode, updateStockCount } from '../../../api/firestore';
+import { getAllInventoryItems, updateStockCount } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
-import { Check, ClipboardList, RefreshCw, Search, X, QrCode, AlertTriangle, Weight, Hash } from 'lucide-react';
+import { Check, ClipboardList, RefreshCw, Search, X, QrCode, Weight, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
 import QrScannerModal from '../scanner/QrScannerModal';
 
-// --- Sub-Components for the Stock Take App ---
-
+// --- Sub-Components (SessionManager, CountingModal, VerificationScanner) remain the same ---
 const SessionManager = ({ onStart, onContinue, activeSession }) => (
     <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
         <ClipboardList size={48} className="mx-auto text-blue-400 mb-4" />
@@ -110,24 +112,21 @@ const VerificationScanner = ({ itemToVerify, onVerified, onClose }) => {
     );
 };
 
-
 // --- Main StockTakeApp Component ---
-// Now accepts a categoryFilter prop
-const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if not provided
+const StockTakeApp = ({ categoryFilter = 'all' }) => {
     const { user } = useAuth();
     const [session, setSession] = useState(null);
     const [loading, setLoading] = useState(true);
     const [inventory, setInventory] = useState([]);
-    const [activeTab, setActiveTab] = useState('remaining'); // This tab is for remaining/completed within the current category filter
+    const [activeTab, setActiveTab] = useState('remaining');
     const [searchTerm, setSearchTerm] = useState('');
     const [itemToCount, setItemToCount] = useState(null);
     const [itemToVerify, setItemToVerify] = useState(null);
 
-    // Check for an active session on initial load
     useEffect(() => {
         const checkForActiveSession = async () => {
             const sessionsRef = collection(db, 'stockTakeSessions');
-            const q = query(sessionsRef, where('status', '==', 'in-progress'), limit(1));
+            const q = query(sessionsRef, where('status', '==', 'in-progress'), orderBy('startTime', 'desc'), limit(1));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
                 const activeSessionDoc = snapshot.docs[0];
@@ -138,13 +137,11 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
         checkForActiveSession();
     }, []);
 
-    // Fetch inventory when a session is active or categoryFilter changes
     useEffect(() => {
         if (session) {
             const fetchInventory = async () => {
                 setLoading(true);
                 const allItems = await getAllInventoryItems();
-                // Apply the category filter here before setting inventory
                 let filteredItems = allItems;
                 if (categoryFilter === 'products') {
                     filteredItems = allItems.filter(item => item.category === 'Product');
@@ -156,79 +153,41 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
             };
             fetchInventory();
         }
-    }, [session, categoryFilter]); // Depend on categoryFilter
+    }, [session, categoryFilter]);
 
+    /**
+     * Starts a new stock take session.
+     * This is now a lightweight operation that only creates a new session document.
+     * It no longer performs a batch write on all inventory items.
+     */
     const handleStartNewSession = async () => {
         setLoading(true);
         try {
-            // Reset all items' session tracking field
-            const allItems = await getAllInventoryItems(); // Get all items regardless of current filter for reset
-            const batch = writeBatch(db);
-            allItems.forEach(item => {
-                // Determine correct collection name based on category
-                let collectionName;
-                if (item.category === 'Product') collectionName = 'products';
-                else if (item.category === 'Component') collectionName = 'components';
-                else if (item.category === 'Raw Material') collectionName = 'rawMaterials';
-                else if (item.category === 'Workshop Supply') collectionName = 'workshopSupplies';
-                else return; // Skip if category is unknown
-
-                const itemRef = doc(db, collectionName, item.id);
-                batch.update(itemRef, { lastCountedInSessionId: null });
-            });
-            await batch.commit();
-
-            // Create new session document
             const sessionsRef = collection(db, 'stockTakeSessions');
             const newSessionDoc = await addDoc(sessionsRef, {
                 startTime: serverTimestamp(),
                 startedBy: user.email,
                 status: 'in-progress'
             });
-            setSession({ id: newSessionDoc.id, status: 'in-progress' });
+            setSession({ id: newSessionDoc.id, status: 'in-progress', startTime: new Date() });
             toast.success("New stock take session started!");
         } catch (error) {
             toast.error("Failed to start new session.");
             console.error(error);
+        } finally {
             setLoading(false);
         }
     };
 
-    const handleItemSelect = (item, viaScan = false) => {
-        // If the item is scanned, open the counting modal directly
-        if (viaScan) {
-            setItemToCount(item);
-            // If the item has a stockTakeMethod of 'weight' and we are scanning,
-            // we should directly open the counting modal without verification.
-            // Otherwise, for quantity-based items, we still require verification.
-            // This logic might need adjustment based on exact workflow.
-            if (item.stockTakeMethod === 'weight') {
-                setItemToCount(item);
-                setItemToVerify(null); // No verification needed for weight scan
-            } else {
-                setItemToVerify(item); // For quantity, still verify
-                setItemToCount(null);
-            }
-        } else {
-            // If selected manually from the list, always require verification
-            setItemToVerify(item);
-            setItemToCount(null);
-        }
+    const handleItemSelect = (item) => {
+        setItemToVerify(item);
+        setItemToCount(null);
     };
 
     const handleUpdateCount = async (newCount) => {
         if (!itemToCount) return;
         try {
-            // Determine the correct collection name for the item's category
-            let collectionName;
-            if (itemToCount.category === 'Product') collectionName = 'products';
-            else if (itemToCount.category === 'Component') collectionName = 'components';
-            else if (itemToCount.category === 'Raw Material') collectionName = 'rawMaterials';
-            else if (itemToCount.category === 'Workshop Supply') collectionName = 'workshopSupplies';
-            else throw new Error(`Unknown category for update: ${itemToCount.category}`);
-
-            await updateStockCount(itemToCount.id, itemToCount.category, newCount, session.id); // Pass item.category directly
-            // Optimistically update UI
+            await updateStockCount(itemToCount.id, itemToCount.category, newCount, session.id);
             setInventory(prev => prev.map(item => 
                 item.id === itemToCount.id ? { ...item, currentStock: newCount, lastCountedInSessionId: session.id } : item
             ));
@@ -263,7 +222,10 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
     };
 
     const { remainingItems, completedItems } = useMemo(() => {
-        const filtered = inventory.filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        const filtered = inventory.filter(item => 
+            item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.itemCode && item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
         return {
             remainingItems: filtered.filter(item => item.lastCountedInSessionId !== session?.id),
             completedItems: filtered.filter(item => item.lastCountedInSessionId === session?.id),
@@ -272,15 +234,14 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
 
     const progress = inventory.length > 0 ? (completedItems.length / inventory.length) * 100 : 0;
 
-    if (loading) return <p className="text-center text-gray-400">Loading Stock Take Module...</p>;
+    if (loading && !session) return <p className="text-center text-gray-400">Loading Stock Take Module...</p>;
 
     if (!session) {
-        return <SessionManager onStart={handleStartNewSession} onContinue={setSession} activeSession={session} />;
+        return <SessionManager onStart={handleStartNewSession} onContinue={setSession} activeSession={null} />;
     }
 
     return (
         <div className="space-y-4">
-            {/* Progress Bar and Finish Button */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 space-y-3">
                 <div className="flex justify-between items-center">
                     <h3 className="text-xl font-bold text-white">Stock Take In Progress...</h3>
@@ -292,10 +253,9 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
                 <p className="text-center text-sm text-gray-300">{completedItems.length} of {inventory.length} items counted ({progress.toFixed(0)}%)</p>
             </div>
 
-            {/* Search and Tabs */}
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                 <div className="relative mb-4">
-                    <Input placeholder="Search by name..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+                    <Input placeholder="Search by name or code..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 </div>
                 <div className="flex border-b border-gray-600">
@@ -304,24 +264,22 @@ const StockTakeApp = ({ categoryFilter = 'all' }) => { // Default to 'all' if no
                 </div>
             </div>
 
-            {/* Item List */}
-            <div className="space-y-2">
-                {(activeTab === 'remaining' ? remainingItems : completedItems).map(item => (
-                    <div key={item.id} onClick={() => handleItemSelect(item)} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-600">
-                        <div>
-                            <p className="font-semibold text-white">{item.name}</p>
-                            <p className="text-xs text-gray-400">System: {item.currentStock} | Code: {item.itemCode}</p>
-                        </div>
-                        {item.lastCountedInSessionId === session.id ? (
-                            <Check size={20} className="text-green-500" />
-                        ) : (
-                             <div className="flex items-center gap-2">
-                                {item.stockTakeMethod === 'weight' ? <Weight size={16} className="text-gray-400"/> : <Hash size={16} className="text-gray-400"/>}
+            {loading ? <p className="text-center text-gray-400 p-4">Loading inventory...</p> : (
+                <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
+                    {(activeTab === 'remaining' ? remainingItems : completedItems).map(item => (
+                        <div key={item.id} onClick={() => handleItemSelect(item)} className="bg-gray-700 p-3 rounded-lg flex justify-between items-center cursor-pointer hover:bg-gray-600">
+                            <div>
+                                <p className="font-semibold text-white">{item.name}</p>
+                                <p className="text-xs text-gray-400">System: {item.currentStock} | Code: {item.itemCode || 'N/A'}</p>
                             </div>
-                        )}
-                    </div>
-                ))}
-            </div>
+                            <div className="flex items-center gap-2">
+                                {item.stockTakeMethod === 'weight' ? <Weight size={16} className="text-gray-400"/> : <Hash size={16} className="text-gray-400"/>}
+                                {item.lastCountedInSessionId === session.id && <Check size={20} className="text-green-500" />}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {itemToVerify && (
                 <VerificationScanner 

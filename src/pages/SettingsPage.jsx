@@ -1,22 +1,24 @@
-// src/pages/SettingsPage.jsx (UPDATED with Role Manager and Routine Tasks)
+// src/pages/SettingsPage.jsx (UPDATED)
+// A new "Kaizen" tab has been added to the settings page,
+// which renders the new KaizenManager component for a complete workflow.
 
 import React, { useState, useMemo } from 'react';
+import InventoryManager from '../components/features/settings/InventoryManager';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
 import EmployeesManager from '../components/features/settings/EmployeesManager';
-import SuppliersManager from '../components/features/settings/SuppliersManager';
-import InventoryManager from '../components/features/settings/InventoryManager';
 import ToolAccessoriesManager from '../components/features/settings/ToolAccessoriesManager';
-import OverheadsManager from '../components/features/settings/OverheadsManager'; 
+import OverheadsManager from '../components/features/settings/OverheadsManager';
 import SkillsManager from '../components/features/settings/SkillsManager';
-import UnifiedProductManager from '../components/features/settings/UnifiedProductManager';
 import UserManagementPage from './UserManagementPage';
 import CampaignManager from '../components/features/settings/CampaignManager';
-import FinancialSettings from '../components/features/settings/FinancialSettings'; 
+import FinancialSettings from '../components/features/settings/FinancialSettings';
 import TrainingManager from '../components/features/settings/TrainingManager';
 import ReworkReasonsManager from '../components/features/settings/ReworkReasonsManager';
 import RoleManager from '../components/features/settings/RoleManager';
-import RoutineTasksManager from '../components/features/settings/RoutineTasksManager'; // --- IMPORT NEW COMPONENT ---
+import RoutineTasksManager from '../components/features/settings/RoutineTasksManager';
+import LearningPathManager from '../components/features/settings/LearningPathManager';
+import KaizenManager from '../components/features/settings/KaizenManager'; // <-- NEW IMPORT
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -30,16 +32,12 @@ const TabButton = ({ label, isActive, onClick }) => {
 };
 
 const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState('products');
+  const [activeTab, setActiveTab] = useState('inventory');
 
   const tabs = useMemo(() => ({
-    products: {
-      label: 'Products & Recipes',
-      components: [<UnifiedProductManager key="unified-product-manager" />]
-    },
     inventory: {
-      label: 'Inventory & Suppliers',
-      components: [<InventoryManager key="inventory" />, <SuppliersManager key="suppliers" />]
+      label: 'Inventory & Products',
+      components: [<InventoryManager key="inventory" />]
     },
     assets: {
       label: 'Tools & Assets',
@@ -48,16 +46,21 @@ const SettingsPage = () => {
     company: {
        label: 'Company & Staff',
       components: [
-          <DepartmentsManager key="departments" />, 
-          <EmployeesManager key="employees" />, 
-          <SkillsManager key="skills" />, 
+          <DepartmentsManager key="departments" />,
+          <EmployeesManager key="employees" />,
+          <SkillsManager key="skills" />,
           <ReworkReasonsManager key="rework-reasons" />,
-          <RoutineTasksManager key="routine-tasks" /> // --- ADD NEW COMPONENT ---
+          <RoutineTasksManager key="routine-tasks" />
       ]
     },
     training: {
         label: 'Training',
-        components: [<TrainingManager key="training" />]
+        components: [<LearningPathManager key="learning-paths" />, <TrainingManager key="training" />]
+    },
+    // --- NEW KAIZEN TAB ---
+    kaizen: {
+        label: 'Kaizen (Improvement)',
+        components: [<KaizenManager key="kaizen" />]
     },
     financials: {
       label: 'Financials',

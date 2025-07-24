@@ -1,7 +1,8 @@
-// src/App.jsx
+// src/App.jsx (CORRECTED)
+// Fixed a syntax error where a RoleBasedRoute was not closed properly.
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext.jsx';
 
 // Layouts & Guards
@@ -41,69 +42,84 @@ import StockAdjustmentPage from './pages/StockAdjustmentPage.jsx';
 import JobReprintPage from './pages/JobReprintPage.jsx';
 import KanbanPage from './pages/KanbanPage.jsx';
 import PickingQueuePage from './pages/PickingQueuePage.jsx';
-import FloorPlanPage from './pages/FloorPlanPage.jsx'; // --- IMPORT NEW PAGE ---
+import FloorPlanPage from './pages/FloorPlanPage.jsx';
+import AndonDisplayPage from './pages/AndonDisplayPage.jsx';
+
+const StaffLayout = () => (
+    <MainLayout>
+        <Outlet />
+    </MainLayout>
+);
+
+const PortalLayout = () => (
+    <RoleBasedRoute permission="access_portal">
+        <CustomerLayout>
+            <Outlet />
+        </CustomerLayout>
+    </RoleBasedRoute>
+);
 
 function App() {
-    const { user } = useAuth();
+    const { user, loading } = useAuth();
+
+    if (loading) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
+                Loading Application...
+            </div>
+        );
+    }
 
     return (
         <Router>
             <Routes>
-                <Route path="/login" element={user ? <Navigate to="/" /> : <LoginPage />} />
+                {/* A special route for the Andon display that doesn't use the main layout */}
+                <Route path="/andon-display" element={<ProtectedRoute><AndonDisplayPage /></ProtectedRoute>} />
 
-                <Route path="/portal/*" element={
-                    <ProtectedRoute>
-                        <RoleBasedRoute permission="access_portal">
-                            <CustomerLayout>
-                                <Routes>
-                                    <Route index element={<CustomerDashboardPage />} />
-                                    <Route path="products" element={<ProductBrowserPage />} />
-                                    <Route path="order/:orderId" element={<CustomerOrderDetailPage />} />
-                                </Routes>
-                            </CustomerLayout>
-                        </RoleBasedRoute>
-                    </ProtectedRoute>
-                } />
-
-                {/* --- STAFF-FACING ROUTES --- */}
-                <Route path="*" element={
-                    <ProtectedRoute>
-                        <MainLayout>
-                            <Routes>
-                                <Route path="/" element={<RoleBasedRoute permission="dashboard"><DashboardPage /></RoleBasedRoute>} />
-                                <Route path="/tracking" element={<RoleBasedRoute permission="tracking"><LiveTrackingPage /></RoleBasedRoute>} />
-                                <Route path="/scan" element={<RoleBasedRoute permission="scanner"><ScannerPage /></RoleBasedRoute>} />
-                                <Route path="/qc" element={ <RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute> } />
-                                <Route path="/orders" element={ <RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
-                                <Route path="/purchasing" element={ <RoleBasedRoute permission="purchasing"><PurchasingPage /></RoleBasedRoute>} />
-                                <Route path="/stock-take" element={ <RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
-                                <Route path="/creator" element={ <RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute> } />
-                                <Route path="/issues" element={ <RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute> } />
-                                <Route path="/performance" element={ <RoleBasedRoute permission="performance"><PerformancePage /></RoleBasedRoute> } />
-                                <Route path="/employee/:employeeId" element={ <RoleBasedRoute permission="performance"><EmployeeIntelligencePage /></RoleBasedRoute> } />
-                                <Route path="/profitability" element={ <RoleBasedRoute permission="profitability"><ProductViabilityPage /></RoleBasedRoute> } />
-                                <Route path="/valuation" element={ <RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute> } />
-                                <Route path="/calendar" element={ <RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute> } />
-                                <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} />
-                                <Route path="/picking-queue" element={<RoleBasedRoute permission="picking"><PickingQueuePage /></RoleBasedRoute>} />
-                                {/* --- ADD NEW ROUTE HERE --- */}
-                                <Route path="/floorplan" element={<RoleBasedRoute permission="floorplan"><FloorPlanPage /></RoleBasedRoute>} />
-                                <Route path="/settings" element={ <RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute> } />
-                                <Route path="/marketing" element={ <RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute> } />
-                                <Route path="/quotes" element={ <RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute> } />
-                                <Route path="/adjustment" element={<RoleBasedRoute permission="adjustment"><JobCardAdjustmentPage /></RoleBasedRoute>} />
-                                <Route path="/assets" element={<RoleBasedRoute permission="assets"><AssetIntelligencePage /></RoleBasedRoute>} />
-                                <Route path="/job-history" element={<RoleBasedRoute permission="jobHistory"><JobHistoryPage /></RoleBasedRoute>} />
-                                <Route path="/rework-queue" element={<RoleBasedRoute permission="reworkQueue"><ReworkQueuePage /></RoleBasedRoute>} />
-                                <Route path="/multi-stage-wizard" element={<RoleBasedRoute permission="multiStage"><MultiStageWizard /></RoleBasedRoute>} />
-                                <Route path="/stock-adjust" element={<RoleBasedRoute permission="stockAdjust"><StockAdjustmentPage /></RoleBasedRoute>} />
-                                <Route path="/job-reprint" element={<RoleBasedRoute permission="jobReprint"><JobReprintPage /></RoleBasedRoute>} />
-                                
-                                <Route path="*" element={<Navigate to="/" />} />
-                            </Routes>
-                        </MainLayout>
-                    </ProtectedRoute>
-                } />
+                {!user ? (
+                    <>
+                        <Route path="/login" element={<LoginPage />} />
+                        <Route path="*" element={<Navigate to="/login" replace />} />
+                    </>
+                ) : user.role === 'Client' ? (
+                    <Route path="/portal/*" element={<ProtectedRoute><PortalLayout /></ProtectedRoute>}>
+                        <Route index element={<CustomerDashboardPage />} />
+                        <Route path="products" element={<ProductBrowserPage />} />
+                        <Route path="order/:orderId" element={<CustomerOrderDetailPage />} />
+                        <Route path="*" element={<Navigate to="/portal" replace />} />
+                    </Route>
+                ) : (
+                    <Route element={<ProtectedRoute><StaffLayout /></ProtectedRoute>}>
+                        <Route path="/dashboard" element={<RoleBasedRoute permission="dashboard"><DashboardPage /></RoleBasedRoute>} />
+                        <Route path="/tracking" element={<RoleBasedRoute permission="tracking"><LiveTrackingPage /></RoleBasedRoute>} />
+                        <Route path="/scan" element={<RoleBasedRoute permission="scanner"><ScannerPage /></RoleBasedRoute>} />
+                        <Route path="/qc" element={<RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute>} />
+                        <Route path="/orders" element={<RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
+                        <Route path="/purchasing" element={<RoleBasedRoute permission="purchasing"><PurchasingPage /></RoleBasedRoute>} />
+                        <Route path="/stock-take" element={<RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
+                        <Route path="/creator" element={<RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute>} />
+                        <Route path="/issues" element={<RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute>} />
+                        <Route path="/performance" element={<RoleBasedRoute permission="performance"><PerformancePage /></RoleBasedRoute>} />
+                        <Route path="/employee/:employeeId" element={<RoleBasedRoute permission="performance"><EmployeeIntelligencePage /></RoleBasedRoute>} />
+                        <Route path="/profitability" element={<RoleBasedRoute permission="profitability"><ProductViabilityPage /></RoleBasedRoute>} />
+                        <Route path="/valuation" element={<RoleBasedRoute permission="valuation"><ValuationPage /></RoleBasedRoute>} />
+                        <Route path="/calendar" element={<RoleBasedRoute permission="calendar"><CalendarPage /></RoleBasedRoute>} />
+                        <Route path="/kanban" element={<RoleBasedRoute permission="kanban"><KanbanPage /></RoleBasedRoute>} />
+                        <Route path="/picking-queue" element={<RoleBasedRoute permission="picking"><PickingQueuePage /></RoleBasedRoute>} />
+                        <Route path="/floorplan" element={<RoleBasedRoute permission="floorplan"><FloorPlanPage /></RoleBasedRoute>} />
+                        <Route path="/settings" element={<RoleBasedRoute permission="settings"><SettingsPage /></RoleBasedRoute>} />
+                        <Route path="/marketing" element={<RoleBasedRoute permission="marketing"><MarketingPage /></RoleBasedRoute>} />
+                        <Route path="/quotes" element={<RoleBasedRoute permission="quotes"><QuotingPage /></RoleBasedRoute>} />
+                        <Route path="/adjustment" element={<RoleBasedRoute permission="adjustment"><JobCardAdjustmentPage /></RoleBasedRoute>} />
+                        <Route path="/assets" element={<RoleBasedRoute permission="assets"><AssetIntelligencePage /></RoleBasedRoute>} />
+                        <Route path="/job-history" element={<RoleBasedRoute permission="jobHistory"><JobHistoryPage /></RoleBasedRoute>} />
+                        <Route path="/rework-queue" element={<RoleBasedRoute permission="reworkQueue"><ReworkQueuePage /></RoleBasedRoute>} />
+                        <Route path="/multi-stage-wizard" element={<RoleBasedRoute permission="multiStage"><MultiStageWizard /></RoleBasedRoute>} />
+                        <Route path="/stock-adjust" element={<RoleBasedRoute permission="stockAdjust"><StockAdjustmentPage /></RoleBasedRoute>} />
+                        <Route path="/job-reprint" element={<RoleBasedRoute permission="jobReprint"><JobReprintPage /></RoleBasedRoute>} />
+                        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    </Route>
+                )}
             </Routes>
         </Router>
     );

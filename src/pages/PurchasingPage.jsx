@@ -1,5 +1,3 @@
-// src/pages/PurchasingPage.jsx (Upgraded with Toasts)
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     listenToPurchaseQueue, 
@@ -18,8 +16,12 @@ import Input from '../components/ui/Input';
 import { Mail, ThumbsUp, Truck, Package, Wrench, UserPlus, X } from 'lucide-react';
 import InTransitOrders from '../components/features/stock/InTransitOrders';
 import Dropdown from '../components/ui/Dropdown';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
+import StockControlDashboard from '../components/features/stock/StockControlDashboard';
+import FutureDemandAnalyzer from '../components/features/stock/FutureDemandAnalyzer';
+import { BrainCircuit } from 'lucide-react';
 
+// AddSupplierModal Component (Restored)
 const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
     const [newSupplier, setNewSupplier] = useState({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
     
@@ -69,7 +71,7 @@ const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
     );
 };
 
-
+// PurchaseHub Component (Restored)
 const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     const [allPricing, setAllPricing] = useState({});
     const [selectedSuppliers, setSelectedSuppliers] = useState({});
@@ -196,14 +198,14 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
                 if (jobItems.length > 0) {
                     await markOneOffItemsAsOrdered(jobItems.map(item => item.id));
                 }
-                toast.success("Items marked as ordered and moved to 'In-Transit'."); // --- REPLACE ALERT ---
+                toast.success("Items marked as ordered and moved to 'In-Transit'.");
                 onAction();
             } catch(error) {
                 console.error("Error marking items as ordered:", error);
-                toast.error("Failed to mark items as ordered."); // --- REPLACE ALERT ---
+                toast.error("Failed to mark items as ordered.");
             }
         } else {
-            toast.success("Admin purchase request email has been generated."); // --- REPLACE ALERT ---
+            toast.success("Admin purchase request email has been generated.");
         }
     };
 
@@ -281,125 +283,89 @@ const PurchaseHub = ({ stockItems, jobItems, suppliers, onAction }) => {
     );
 };
 
-
+// Main Page Component
 const PurchasingPage = () => {
-    const [activeTab, setActiveTab] = useState('queue');
-    const [purchaseQueue, setPurchaseQueue] = useState([]);
-    const [jobQueue, setJobQueue] = useState([]);
-    const [suppliers, setSuppliers] = useState([]);
-    const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [purchaseQueue, setPurchaseQueue] = useState([]);
+  const [jobQueue, setJobQueue] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isAnalyzerOpen, setAnalyzerOpen] = useState(false);
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const supplierList = await getSuppliers();
-            setSuppliers(supplierList);
-        } catch (error) {
-            console.error("Error fetching suppliers:", error);
-        }
-        setLoading(false);
-    };
-
-    useEffect(() => {
-        fetchData();
-
-        const runJitAnalysis = async (allJobs, currentQueue) => {
-            const inventory = await getAllInventoryItems();
-            const inventoryMap = new Map(inventory.map(i => [i.id, i]));
-            const requiredForFuture = new Map();
-
-            const futureJobs = allJobs.filter(j => j.scheduledDate && j.scheduledDate.toDate() > new Date());
-
-            for(const job of futureJobs) {
-                if(!job.processedConsumables) continue;
-                for(const consumable of job.processedConsumables) {
-                    const currentReq = requiredForFuture.get(consumable.id) || 0;
-                    requiredForFuture.set(consumable.id, currentReq + consumable.quantity);
-                }
-            }
-
-            for(const [itemId, requiredQty] of requiredForFuture.entries()) {
-                const item = inventoryMap.get(itemId);
-                const isAlreadyQueued = currentQueue.some(qItem => qItem.itemId === itemId);
-                
-                if (item && !isAlreadyQueued) {
-                    const projectedStock = (item.currentStock || 0) - requiredQty;
-                    if (projectedStock < (item.reorderLevel || 0)) {
-                        console.log(`JIT: Proactively queueing ${item.name}.`);
-                        await addToPurchaseQueue({
-                            itemId: item.id,
-                            itemName: item.name,
-                            supplierId: item.supplierId,
-                            itemCode: item.itemCode || '',
-                            category: item.category,
-                            currentStock: item.currentStock,
-                            reorderLevel: item.reorderLevel,
-                            standardStockLevel: item.standardStockLevel,
-                            price: item.price,
-                            unit: item.unit
-                        });
-                    }
-                }
-            }
-        };
-
-        const unsubscribeStockQueue = listenToPurchaseQueue(setPurchaseQueue);
-        const unsubscribeJobQueue = listenToOneOffPurchases(items => setJobQueue(items.filter(item => item.status === 'Pending Purchase')));
-        const unsubscribeJobs = listenToJobCards(allJobs => {
-            listenToPurchaseQueue(currentQueue => {
-                runJitAnalysis(allJobs, currentQueue);
-            })();
-        });
-
-        return () => {
-            unsubscribeStockQueue();
-            unsubscribeJobQueue();
-            unsubscribeJobs();
-        };
-    }, []);
-
-    const { pendingStockItems, inTransitItems } = useMemo(() => {
-        return {
-            pendingStockItems: purchaseQueue.filter(i => i.status === 'pending'),
-            inTransitItems: purchaseQueue.filter(i => i.status === 'ordered')
-        }
-    }, [purchaseQueue]);
+  const fetchData = () => {
+    setLoading(true);
+    getSuppliers().then(setSuppliers).catch(err => console.error("Error fetching suppliers:", err));
     
-    const TabButton = ({ id, label, count }) => {
-        const isActive = activeTab === id;
-        return (
-          <button
-            onClick={() => setActiveTab(id)}
-            className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 flex items-center gap-2 transition-colors ${
-              isActive ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:text-gray-200'
-            }`}
-          >
-            {label}
-            {count > 0 && <span className={`text-xs rounded-full px-2 py-0.5 ${isActive ? 'bg-white text-blue-600' : 'bg-gray-600 text-gray-200'}`}>{count}</span>}
-          </button>
-        );
-      };
+    const unsubscribeStock = listenToPurchaseQueue(items => {
+        setPurchaseQueue(items);
+        setLoading(false);
+    });
+    const unsubscribeJobs = listenToOneOffPurchases(items => {
+        setJobQueue(items.filter(item => item.status === 'Pending Purchase'));
+        setLoading(false);
+    });
 
+    return () => {
+        unsubscribeStock();
+        unsubscribeJobs();
+    };
+  };
+
+  useEffect(() => {
+    const unsubscribe = fetchData();
+    return () => unsubscribe();
+  }, []);
+
+  const TabButton = ({ id, label, count }) => {
+    const isActive = activeTab === id;
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-white">Purchasing Hub</h2>
-            <div className="border-b border-gray-700">
-                <nav className="-mb-px flex space-x-6">
-                    <TabButton id="queue" label="Purchase Queue" count={pendingStockItems.length + jobQueue.length} />
-                    <TabButton id="transit" label="In-Transit Orders" count={inTransitItems.length} />
-                </nav>
-            </div>
-
-            <div className="mt-4">
-                {loading ? <p className="text-center text-gray-400 p-8">Loading...</p> : (
-                    <>
-                        {activeTab === 'queue' && <PurchaseHub stockItems={pendingStockItems} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />}
-                        {activeTab === 'transit' && <InTransitOrders items={inTransitItems} suppliers={suppliers} onStockReceived={fetchData} />}
-                    </>
-                )}
-            </div>
-        </div>
+      <button
+        onClick={() => setActiveTab(id)}
+        className={`px-5 py-2 text-sm font-semibold rounded-t-lg border-b-2 flex items-center gap-2 transition-colors ${
+          isActive ? 'border-blue-500 text-white' : 'border-transparent text-gray-400 hover:border-gray-500 hover:text-gray-200'
+        }`}
+      >
+        {label}
+        {count > 0 && <span className={`text-xs rounded-full px-2 py-0.5 ${isActive ? 'bg-white text-blue-600' : 'bg-gray-600 text-gray-200'}`}>{count}</span>}
+      </button>
     );
+  };
+
+  const { pendingStockItems, inTransitItems } = useMemo(() => {
+    return {
+        pendingStockItems: purchaseQueue.filter(i => i.status === 'pending'),
+        inTransitItems: purchaseQueue.filter(i => i.status === 'ordered')
+    }
+  }, [purchaseQueue]);
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+            <h2 className="text-3xl font-bold text-white">Stock Control & Purchasing</h2>
+            <Button onClick={() => setAnalyzerOpen(true)} variant="primary">
+                <BrainCircuit size={18} className="mr-2"/>
+                Predictive Analyzer
+            </Button>
+        </div>
+
+        <div className="border-b border-gray-700">
+            <nav className="-mb-px flex space-x-6">
+                <TabButton id="dashboard" label="Stock Overview" />
+                <TabButton id="queue" label="Purchase Queue" count={pendingStockItems.length + jobQueue.length} />
+                <TabButton id="transit" label="In-Transit Orders" count={inTransitItems.length} />
+            </nav>
+        </div>
+        <div className="mt-6">
+            {activeTab === 'dashboard' && <StockControlDashboard />}
+            {activeTab === 'queue' && (loading ? <p className="text-center text-gray-400 p-8">Loading Queue...</p> : <PurchaseHub stockItems={pendingStockItems} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />)}
+            {activeTab === 'transit' && (loading ? <p className="text-center text-gray-400 p-8">Loading In-Transit Orders...</p> : <InTransitOrders items={inTransitItems} suppliers={suppliers} onStockReceived={fetchData} />)}
+        </div>
+      </div>
+
+      {isAnalyzerOpen && <FutureDemandAnalyzer onClose={() => setAnalyzerOpen(false)} />}
+    </>
+  );
 };
 
 export default PurchasingPage;

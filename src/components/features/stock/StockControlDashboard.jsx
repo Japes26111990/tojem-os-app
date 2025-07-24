@@ -2,7 +2,22 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueue } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { Search, Package, Factory } from 'lucide-react'; // Import Package and Factory icons
+import { Search, Package, Factory, DollarSign } from 'lucide-react'; // Import DollarSign icon
+
+// NEW: KPI Card component for displaying the total value
+const KpiCard = ({ icon, title, value, color }) => (
+    <div className="bg-gray-900/50 p-6 rounded-lg border border-gray-700">
+        <div className="flex items-start space-x-4">
+            <div className={`p-3 rounded-full ${color}`}>
+                {icon}
+            </div>
+            <div>
+                <p className="text-gray-400 text-sm">{title}</p>
+                <p className="text-3xl font-bold text-white">{value}</p>
+            </div>
+        </div>
+    </div>
+);
 
 const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
     const stock = Number(currentStock);
@@ -27,12 +42,12 @@ const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel })
 const StockControlDashboard = () => {
   const [allItems, setAllItems] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
-  const [queuedItemIds, setQueuedItemIds] = new Set(); // Use a Set for efficient lookup
+  const [queuedItemIds, setQueuedItemIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
   const [showLowStock, setShowLowStock] = useState(false);
-  const [inventoryTypeFilter, setInventoryTypeFilter] = useState('all'); // 'all', 'products', 'purchased'
+  const [inventoryTypeFilter, setInventoryTypeFilter] = useState('all');
 
   const fetchData = async () => {
     setLoading(true);
@@ -47,10 +62,16 @@ const StockControlDashboard = () => {
 
   const getSupplierName = (supplierId) => (suppliers || []).find(s => s.id === supplierId)?.name || 'N/A';
 
-  const displayedItems = useMemo(() => {
+  // UPDATED: Added calculation for total inventory value
+  const { displayedItems, totalInventoryValue } = useMemo(() => {
     let filtered = [...(allItems || [])];
+    let value = 0;
 
-    // Apply inventory type filter
+    // Calculate total value before filtering
+    filtered.forEach(item => {
+        value += (item.currentStock || 0) * (item.price || 0);
+    });
+
     if (inventoryTypeFilter === 'products') {
         filtered = filtered.filter(item => item.category === 'Product');
     } else if (inventoryTypeFilter === 'purchased') {
@@ -72,7 +93,7 @@ const StockControlDashboard = () => {
         default: return 0;
       }
     });
-    return filtered;
+    return { displayedItems: filtered, totalInventoryValue: value };
   }, [allItems, searchTerm, sortBy, showLowStock, suppliers, inventoryTypeFilter]);
 
   const handleAddToQueue = async (item) => {
@@ -82,7 +103,7 @@ const StockControlDashboard = () => {
         itemName: item.name,
         supplierId: item.supplierId,
         itemCode: item.itemCode || '',
-        category: item.category, // Ensure category is passed
+        category: item.category,
         currentStock: item.currentStock,
         reorderLevel: item.reorderLevel,
         standardStockLevel: item.standardStockLevel,
@@ -99,8 +120,16 @@ const StockControlDashboard = () => {
   if (loading) return <p className="text-center text-gray-400">Loading all inventory...</p>;
 
   return (
-    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-      <div className="flex flex-wrap gap-4 items-center mb-4 p-4 bg-gray-900/50 rounded-lg">
+    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 space-y-6">
+      {/* NEW: KPI Card for Total Inventory Value */}
+      <KpiCard
+        icon={<DollarSign size={28} />}
+        title="Total Value of Stock on Hand"
+        value={`R ${totalInventoryValue.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        color="bg-green-500/20 text-green-400"
+      />
+
+      <div className="flex flex-wrap gap-4 items-center p-4 bg-gray-900/50 rounded-lg">
           <div className="relative flex-grow">
             <Input placeholder="Search all inventory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -116,7 +145,6 @@ const StockControlDashboard = () => {
             <input type="checkbox" id="lowStockToggle" checked={showLowStock} onChange={e => setShowLowStock(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 text-blue-600 focus:ring-blue-500" />
             <label htmlFor="lowStockToggle" className="text-sm font-medium">Show only low stock</label>
           </div>
-          {/* New Filter for Inventory Type */}
           <div className="flex items-center space-x-2 text-white">
             <label htmlFor="inventoryTypeFilter" className="text-sm font-medium">Show:</label>
             <select value={inventoryTypeFilter} onChange={e => setInventoryTypeFilter(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm">
@@ -131,7 +159,7 @@ const StockControlDashboard = () => {
           <thead>
             <tr className="border-b border-gray-600">
               <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
-              <th className="p-3 text-sm font-semibold text-gray-400">Category</th> {/* Added Category Column */}
+              <th className="p-3 text-sm font-semibold text-gray-400">Category</th>
               <th className="p-3 text-sm font-semibold text-gray-400">Supplier</th>
               <th className="p-3 text-sm font-semibold text-gray-400 w-1/4">Stock Level</th>
               <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>

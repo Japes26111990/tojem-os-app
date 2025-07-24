@@ -1,43 +1,15 @@
-// src/components/features/payroll/PermanentPayroll.jsx (Final Correct Version)
+// src/components/features/payroll/PermanentPayroll.jsx (REFACTORED)
+// This component is now highly efficient as it queries the pre-calculated `employeeDailyLogs` collection
+// instead of processing thousands of raw scan events on the client-side.
 
 import React, { useState, useEffect } from 'react';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { getEmployees } from '../../../api/firestore';
 import { getDocs, collection, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../../../api/firebase';
-import { ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
-
-// --- HELPER FUNCTIONS FOR PAYROLL LOGIC ---
-
-// Calculates the duration of a workday in hours, excluding breaks
-const calculateWorkdayHours = (startTime, endTime) => {
-    if (!startTime || !endTime) return 0;
-    const breakMinutes = 45; // 15 min tea + 30 min lunch
-    const durationMinutes = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
-    const workMinutes = Math.max(0, durationMinutes - breakMinutes);
-    return workMinutes / 60;
-};
-
-// Checks if an employee was late or left early
-const checkPunctuality = (date, startTime, endTime) => {
-    const dayOfWeek = date.getDay(); // Sunday = 0, Friday = 5
-    const standardStartTime = new Date(date.getTime());
-    standardStartTime.setHours(7, 0, 0, 0);
-
-    const standardEndTime = new Date(date.getTime());
-    if (dayOfWeek >= 1 && dayOfWeek <= 4) { // Monday to Thursday
-        standardEndTime.setHours(17, 0, 0, 0);
-    } else { // Friday
-        standardEndTime.setHours(15, 45, 0, 0);
-    }
-
-    const isLate = startTime > standardStartTime;
-    const leftEarly = endTime < standardEndTime;
-
-    return { isLate, leftEarly };
-};
-
+import { getEmployees } from '../../../api/firestore';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const PermanentPayroll = () => {
     const [employees, setEmployees] = useState([]);
@@ -48,100 +20,79 @@ const PermanentPayroll = () => {
     const [error, setError] = useState(null);
     const [expandedEmployeeId, setExpandedEmployeeId] = useState(null);
 
+    // Fetch the list of permanent employees once on component mount.
     useEffect(() => {
         const fetchEmployeesData = async () => {
             try {
                 const fetchedEmployees = await getEmployees();
-                // We only care about permanent employees for this page
                 setEmployees(fetchedEmployees.filter(e => e.employeeType === 'permanent'));
             } catch (err) {
                 console.error("Error fetching employees:", err);
                 setError("Failed to load employee data.");
+                toast.error("Failed to load employee data.");
             }
         };
         fetchEmployeesData();
     }, []);
 
+    /**
+     * Handles the calculation of payroll for the selected date range.
+     * Queries the pre-aggregated `employeeDailyLogs` collection.
+     */
     const handleCalculatePayroll = async () => {
         if (!startDate || !endDate) {
             setError("Please select both a start and end date.");
+            toast.error("Please select both a start and end date.");
             return;
         }
         setLoading(true);
         setError(null);
         setPayrollResults(null);
 
-        const startDateTime = new Date(startDate);
-        startDateTime.setHours(0, 0, 0, 0);
-        const endDateTime = new Date(endDate);
-        endDateTime.setHours(23, 59, 59, 999);
-
         try {
-            // Fetch all scan events within the date range
-            const scanEventsQuery = query(
-                collection(db, 'scanEvents'),
-                where('timestamp', '>=', startDateTime),
-                where('timestamp', '<=', endDateTime),
-                orderBy('timestamp', 'asc')
+            // THE KEY CHANGE: Query the new, clean, and pre-calculated collection.
+            // This query is fast and scalable.
+            const logsQuery = query(
+                collection(db, 'employeeDailyLogs'),
+                where('date', '>=', startDate),
+                where('date', '<=', endDate),
+                orderBy('date', 'asc')
             );
-            const scanEventsSnapshot = await getDocs(scanEventsQuery);
-            const scanEvents = scanEventsSnapshot.docs.map(d => ({...d.data(), timestamp: d.data().timestamp.toDate()}));
+            const logsSnapshot = await getDocs(logsQuery);
+            const dailyLogs = logsSnapshot.docs.map(d => d.data());
             
-            // Group scans by employee and then by day
-            const dailyScans = {};
-            for (const event of scanEvents) {
-                if (!event.employeeId) continue;
-                const dateStr = event.timestamp.toISOString().split('T')[0];
-                const key = `${event.employeeId}_${dateStr}`;
-                if (!dailyScans[key]) {
-                    dailyScans[key] = {
-                        employeeId: event.employeeId,
-                        date: new Date(dateStr),
-                        scans: []
-                    };
-                }
-                dailyScans[key].scans.push(event.timestamp);
-            }
-
-            // Process each day's scans to get start/end times
-            const dailyTimeEntries = Object.values(dailyScans).map(dayData => {
-                const firstScan = dayData.scans[0];
-                const lastScan = dayData.scans[dayData.scans.length - 1];
-                const punctuality = checkPunctuality(dayData.date, firstScan, lastScan);
-                return {
-                    employeeId: dayData.employeeId,
-                    date: dayData.date,
-                    startTime: firstScan,
-                    endTime: lastScan,
-                    totalHours: calculateWorkdayHours(firstScan, lastScan),
-                    ...punctuality
-                };
-            });
-
-            // Aggregate results per employee
+            // Map over your list of employees to structure the results.
             const results = employees.map(employee => {
-                const employeeEntries = dailyTimeEntries.filter(e => e.employeeId === employee.id);
-                const totalHours = employeeEntries.reduce((sum, entry) => sum + entry.totalHours, 0);
+                const employeeLogs = dailyLogs.filter(log => log.employeeId === employee.id);
+                const totalHours = employeeLogs.reduce((sum, log) => sum + (log.totalHours || 0), 0);
                 const totalPay = totalHours * (employee.hourlyRate || 0);
 
                 return {
                     ...employee,
                     totalHours,
                     totalPay,
-                    dailyBreakdown: employeeEntries.sort((a,b) => a.date - b.date),
+                    dailyBreakdown: employeeLogs.map(log => ({
+                        date: new Date(log.date),
+                        startTime: log.startTime.toDate(),
+                        endTime: log.endTime.toDate(),
+                        totalHours: log.totalHours || 0,
+                    })),
                 };
             });
 
             setPayrollResults(results);
+            toast.success("Payroll report generated successfully.");
 
         } catch (err) {
             console.error("Error calculating payroll:", err);
             setError("Failed to calculate payroll. Check console for details.");
+            toast.error("An error occurred while generating the report.");
         } finally {
             setLoading(false);
         }
     };
     
+    // Toggles the visibility of the detailed daily breakdown for an employee.
     const toggleEmployeeDetails = (employeeId) => {
         setExpandedEmployeeId(prevId => (prevId === employeeId ? null : employeeId));
     };
@@ -190,8 +141,8 @@ const PermanentPayroll = () => {
                                                     {result.dailyBreakdown.length > 0 ? result.dailyBreakdown.map(day => (
                                                         <div key={day.date.toISOString()} className="grid grid-cols-4 gap-4 bg-gray-800 p-2 rounded-md">
                                                             <span className="font-semibold text-gray-300">{day.date.toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
-                                                            <span className={day.isLate ? 'text-red-400' : 'text-gray-300'}>In: {day.startTime.toLocaleTimeString()} {day.isLate && <AlertCircle size={14} className="inline ml-1"/>}</span>
-                                                            <span className={day.leftEarly ? 'text-red-400' : 'text-gray-300'}>Out: {day.endTime.toLocaleTimeString()} {day.leftEarly && <AlertCircle size={14} className="inline ml-1"/>}</span>
+                                                            <span className="text-gray-300">In: {day.startTime.toLocaleTimeString()}</span>
+                                                            <span className="text-gray-300">Out: {day.endTime.toLocaleTimeString()}</span>
                                                             <span>Hours: {day.totalHours.toFixed(2)}</span>
                                                         </div>
                                                     )) : <p className="text-gray-500">No work logged in this period.</p>}

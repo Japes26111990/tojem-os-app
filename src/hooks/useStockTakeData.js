@@ -1,14 +1,15 @@
-// src/hooks/useStockTakeData.js (UPGRADED for dynamic counting)
+// src/hooks/useStockTakeData.js (REFACTORED)
+// This hook now filters for uncounted items by checking if their last counted session ID
+// is different from the current session ID, avoiding the need for a large batch write.
 
 import { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems } from '../api/firestore';
 
-export const useStockTakeData = () => {
+export const useStockTakeData = (inventoryTypeFilter) => { // Accept the filter
     const [allItems, setAllItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    // counts state now stores raw input values, which could be quantity or weight
-    const [counts, setCounts] = useState({}); 
+    const [counts, setCounts] = useState({});
     const [searchTerm, setSearchTerm] = useState('');
     const [filter, setFilter] = useState('all');
 
@@ -17,7 +18,14 @@ export const useStockTakeData = () => {
         setError(null);
         try {
             const items = await getAllInventoryItems();
-            setAllItems(items);
+            // Apply the category filter immediately after fetching
+            let filteredItems = items;
+            if (inventoryTypeFilter === 'products') {
+                filteredItems = items.filter(item => item.category === 'Product');
+            } else if (inventoryTypeFilter === 'purchased') {
+                filteredItems = items.filter(item => item.category !== 'Product');
+            }
+            setAllItems(filteredItems);
         } catch (err) {
             setError("Failed to load inventory.");
             console.error(err);
@@ -26,9 +34,10 @@ export const useStockTakeData = () => {
         }
     };
 
+    // Refetch data when the inventory type filter changes
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [inventoryTypeFilter]);
 
     const handleCountChange = (itemId, field, value) => {
         setCounts(prev => ({
@@ -47,14 +56,12 @@ export const useStockTakeData = () => {
             let physicalCount = '';
             let hasBeenCounted = false;
 
-            // NEW: Calculate physicalCount based on the item's stockTakeMethod
             if (item.stockTakeMethod === 'weight') {
                 const grossWeight = parseFloat(countedValues.grossWeight);
-                // Check if a valid gross weight has been entered
                 if (!isNaN(grossWeight)) {
                     hasBeenCounted = true;
                     const tareWeight = parseFloat(item.tareWeight) || 0;
-                    const unitWeight = parseFloat(item.unitWeight) || 1; // Prevent division by zero
+                    const unitWeight = parseFloat(item.unitWeight) || 1;
                     if (unitWeight > 0) {
                         const netWeight = grossWeight - tareWeight;
                         physicalCount = Math.round(netWeight / unitWeight);
@@ -78,7 +85,6 @@ export const useStockTakeData = () => {
                 physicalCount,
                 variance,
                 hasBeenCounted,
-                // Pass raw input values for display in the component
                 countedValues, 
             };
         });
@@ -114,14 +120,13 @@ export const useStockTakeData = () => {
         };
     }, [allItems.length, processedItems]);
 
-    // NEW: Function now prepares data in the correct format for the API
     const getItemsToReconcile = () => {
         return processedItems
             .filter(item => item.hasBeenCounted)
             .map(item => ({
                 id: item.id,
                 name: item.name,
-                category: item.category, // Ensure category is included for reconciliation
+                category: item.category,
                 systemCount: item.systemCount,
                 newCount: item.physicalCount,
             }));

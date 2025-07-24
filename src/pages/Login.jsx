@@ -1,42 +1,34 @@
-// src/pages/Login.jsx (UPDATED for Client Redirect)
+// src/pages/Login.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import TojemLogo from '../assets/TOJEM 2024.png';
-import { useNavigate } from 'react-router-dom';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { signIn, user } = useAuth();
-  const navigate = useNavigate();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signIn } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setIsSubmitting(true);
     try {
       await signIn(email, password);
-      // AuthContext's onAuthStateChanged will handle the rest.
+      // After successful sign-in, the AuthContext state will change.
+      // The main App component will detect this change and automatically
+      // render the correct layout and pages. No navigation is needed here.
     } catch (err) {
       setError('Failed to sign in. Please check your credentials.');
       console.error(err);
+    } finally {
+        setIsSubmitting(false);
     }
   };
-
-  // Effect to redirect after successful login when user object is updated
-  useEffect(() => {
-    if (user && user.uid) {
-      // --- THIS IS THE UPDATED LOGIC ---
-      if (user.role === 'Client') {
-        navigate('/portal');
-      } else {
-        navigate(user.landingPage || '/');
-      }
-    }
-  }, [user, navigate]);
 
   return (
     <div className="bg-gray-900 min-h-screen flex items-center justify-center text-white">
@@ -61,8 +53,8 @@ const LoginPage = () => {
             placeholder="••••••••"
           />
           {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-          <Button type="submit" className="w-full">
-            Sign In
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing In...' : 'Sign In'}
           </Button>
         </form>
       </div> 

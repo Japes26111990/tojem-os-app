@@ -10,7 +10,7 @@ import {
   Briefcase, Banknote, BrainCircuit, DollarSign,
   Aperture, Calculator, NotebookText, Sun,
   Megaphone, ShoppingCart, ClipboardList, Cpu,
-  LayoutGrid, PackageSearch, UserCheck, Map // --- IMPORT Map ICON ---
+  LayoutGrid, PackageSearch, UserCheck, Map
 } from 'lucide-react';
 import NotesApplet from '../features/sidebar/NotesApplet.jsx';
 import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
@@ -96,12 +96,10 @@ const Sidebar = ({ isOpen, isPinned, onMouseEnter, onMouseLeave }) => {
           </NavGroup>
         )}
 
-        {/* --- UPDATED WORKSHOP FLOOR GROUP --- */}
         {(canSee('tracking') || canSee('scanner') || canSee('calendar') || canSee('kanban') || canSee('picking') || canSee('floorplan')) && (
           <NavGroup title="Workshop Floor" icon={<HardHat size={22} />} isOpen={isOpen} defaultOpen={true}>
             {canSee('tracking') && <SidebarLink to="/tracking" icon={<BarChart3 size={18} />} text="Live Tracking" isOpen={isOpen} />}
             {canSee('kanban') && <SidebarLink to="/kanban" icon={<LayoutGrid size={18} />} text="Kanban Board" isOpen={isOpen} />}
-            {/* --- ADD NEW LINK HERE --- */}
             {canSee('floorplan') && <SidebarLink to="/floorplan" icon={<Map size={18} />} text="Floor Plan" isOpen={isOpen} />}
             {canSee('picking') && <SidebarLink to="/picking-queue" icon={<PackageSearch size={18} />} text="Picking Queue" isOpen={isOpen} />}
             {canSee('scanner') && <SidebarLink to="/scan" icon={<ScanLine size={18} />} text="Scanner" isOpen={isOpen} />}
@@ -127,7 +125,7 @@ const Sidebar = ({ isOpen, isPinned, onMouseEnter, onMouseLeave }) => {
           <NavGroup title="Business Intelligence" icon={<BrainCircuit size={22} />} isOpen={isOpen}>
             {canSee('performance') && <SidebarLink to="/performance" icon={<Briefcase size={18} />} text="Performance" isOpen={isOpen} />}
             {canSee('profitability') && <SidebarLink to="/profitability" icon={<DollarSign size={18} />} text="Profitability" isOpen={isOpen} />}
-            {canSee('valuation') && <SidebarLink to="/valuation" icon={<Banknote size={18} />} text="Valuation" isOpen={isOpen} />}
+            {canSee('valuation') && <SidebarLink to="/valuation" icon={<Banknote size={18} />} text="Financials & Planning" isOpen={isOpen} />}
             {canSee('assets') && <SidebarLink to="/assets" icon={<Cpu size={18} />} text="Asset Intelligence" isOpen={isOpen} />}
           </NavGroup>
         )}

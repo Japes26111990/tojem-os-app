@@ -7,7 +7,6 @@ import {
     collection, 
     getDocs, 
     listenToSystemStatus,
-    getRoutineTasks 
 } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
@@ -20,7 +19,7 @@ import MultiYearSalesGraph from '../components/intelligence/MultiYearSalesGraph.
 import TopReworkCausesWidget from '../components/intelligence/TopReworkCausesWidget.jsx';
 import BottleneckWidget from '../components/intelligence/BottleneckWidget.jsx';
 import WorkshopThroughputGraph from '../components/intelligence/WorkshopThroughputGraph.jsx';
-import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget';
+import ManagerFocusWidget from '../components/features/dashboard/ManagerFocusWidget'; // <-- IMPORT THE NEW WIDGET
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
@@ -40,22 +39,18 @@ const DashboardPage = () => {
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
     const [systemStatus, setSystemStatus] = useState(null);
-    const [routineTasks, setRoutineTasks] = useState([]);
-    const [visibleTasks, setVisibleTasks] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         setLoading(true);
         const fetchData = async () => {
             try {
-                const [employeeItems, historicalSalesSnapshot, allRoutineTasks] = await Promise.all([
+                const [employeeItems, historicalSalesSnapshot] = await Promise.all([
                     getEmployees(), 
                     getDocs(collection(db, 'historicalSales')),
-                    getRoutineTasks()
                 ]);
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
-                setRoutineTasks(allRoutineTasks);
 
                 const unsubscribeJobs = listenToJobCards(setJobs);
                 const unsubscribeStatus = listenToSystemStatus(setSystemStatus);
@@ -75,29 +70,6 @@ const DashboardPage = () => {
         const unsubscribePromise = fetchData();
         return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
     }, []);
-
-    useEffect(() => {
-        const taskCheckInterval = setInterval(() => {
-            const now = new Date();
-            const currentTime = now.getHours() * 60 + now.getMinutes();
-            const currentDay = now.toLocaleString('en-ZA', { weekday: 'long' }).toLowerCase();
-
-            const todayTasks = routineTasks.filter(task => {
-                const [hours, minutes] = task.timeOfDay.split(':').map(Number);
-                const taskTime = hours * 60 + minutes;
-
-                const isDaily = task.schedule === 'daily';
-                const isWeekly = task.schedule.startsWith('weekly_') && task.schedule.endsWith(currentDay);
-                
-                return (isDaily || isWeekly) && currentTime >= taskTime;
-            });
-
-            setVisibleTasks(todayTasks);
-        }, 60000);
-
-        return () => clearInterval(taskCheckInterval);
-    }, [routineTasks]);
-
 
     const dashboardData = useMemo(() => {
         if (loading) return null;
@@ -181,9 +153,8 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
-            {visibleTasks.length > 0 && (
-                <RoutineTasksWidget tasks={visibleTasks} />
-            )}
+            {/* --- THE NEW WIDGET REPLACES THE OLD ROUTINE TASKS WIDGET --- */}
+            <ManagerFocusWidget />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">

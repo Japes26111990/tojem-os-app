@@ -4,9 +4,10 @@ import React, { useState } from 'react';
 import { reconcileStockLevels } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { ClipboardList, Save, Search, RefreshCw, Package, Factory } from 'lucide-react'; // Import Package and Factory icons
+import { ClipboardList, Save, Search, RefreshCw, Package, Factory, Truck } from 'lucide-react'; // Import Truck icon
 import { useStockTakeData } from '../hooks/useStockTakeData';
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
+import ConsignmentStockTake from '../components/features/stock/ConsignmentStockTake'; // <-- IMPORT NEW COMPONENT
 import toast from 'react-hot-toast';
 
 // Reusing the TabButton pattern from ScannerPage
@@ -178,11 +179,19 @@ const StockTakePage = () => {
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                 />
+                <TabButton 
+                    id="consignment"
+                    label="Consignment Stock"
+                    icon={<Truck size={22} />}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                />
             </div>
 
             <div className="mt-4">
                 {activeTab === 'purchased' && <StockTakeContent inventoryTypeFilter="purchased" />}
                 {activeTab === 'products' && <StockTakeContent inventoryTypeFilter="products" />}
+                {activeTab === 'consignment' && <ConsignmentStockTake />}
             </div>
         </div>
     );
