@@ -128,36 +128,8 @@ const CalendarPage = () => {
 
   if (error) return <p className="text-center text-red-400">{error}</p>;
 
-  const calendarStyles = `
-    .rbc-calendar { font-family: 'Inter', sans-serif; color: #e2e8f0; background-color: #1f2937; border-radius: 0.75rem; border: 1px solid #374151; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); padding: 1.5rem; height: 100%; }
-    .rbc-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid #374151; }
-    .rbc-toolbar .rbc-toolbar-label { font-size: 1.5rem; font-weight: 700; color: #f9fafb; flex-grow: 1; text-align: center; }
-    .rbc-toolbar button { border: none; background-color: #4b5563; color: #f9fafb; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: background-color 0.2s ease-in-out; cursor: pointer; }
-    .rbc-toolbar button:hover { background-color: #6b7280; }
-    .rbc-toolbar button.rbc-active { background-color: #2563eb; color: white; }
-    .rbc-toolbar .rbc-btn-group { display: flex; gap: 0.5rem; }
-    .rbc-header { padding: 0.5rem 0; font-size: 0.875rem; color: #9ca3af; border-bottom: 1px solid #374151; text-align: center; }
-    .rbc-header + .rbc-header { border-left: none; }
-    .rbc-month-view, .rbc-time-view, .rbc-agenda-view { border: none; }
-    .rbc-row-content { border-top: 1px solid #374151; }
-    .rbc-day-bg { border-right: 1px solid #374151; }
-    .rbc-day-bg:last-child { border-right: none; }
-    .rbc-off-range-bg { background-color: #111827; }
-    .rbc-current-time-indicator { background-color: #ef4444; }
-    .rbc-today { background-color: #3b82f61a; }
-    .rbc-event { background-color: #1d4ed8; border: 1px solid #3b82f6; color: white !important; border-radius: 0.375rem; font-size: 0.875rem; padding: 0.25rem 0.5rem; cursor: pointer; transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out; }
-    .rbc-event:hover { background-color: #3b82f6; border-color: #60a5fa; }
-    .rbc-event.rbc-selected { background-color: #6366f1; border-color: #a78bfa; }
-    .rbc-event-content { white-space: normal; }
-    .rbc-agenda-table { border: 1px solid #374151; border-radius: 0.75rem; }
-    .rbc-agenda-table thead th { color: #9ca3af; border-bottom: 1px solid #374151; }
-    .rbc-agenda-table tbody td { border-bottom: 1px solid #374151; color: #e2e8f0; }
-    .rbc-agenda-time-cell { color: #9ca3af; }
-  `;
-
   return (
     <>
-      <style>{calendarStyles}</style>
       <div className="space-y-4 h-full flex flex-col">
         <div className="flex justify-between items-center flex-shrink-0">
             <h2 className="text-3xl font-bold text-white">Workshop Scheduling</h2>

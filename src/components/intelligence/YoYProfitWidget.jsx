@@ -37,7 +37,9 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
     };
     
     const trend = getTrendInfo();
-    const profitColor = currentMonthProfit >= 0 ? 'text-white' : 'text-red-400';
+    
+    // FIX: Updated color logic for the main profit value
+    const profitColor = currentMonthProfit > 0 ? 'text-green-400' : currentMonthProfit < 0 ? 'text-red-400' : 'text-white';
 
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col justify-between">

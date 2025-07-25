@@ -1,4 +1,6 @@
-// src/pages/KanbanPage.jsx
+// src/pages/KanbanPage.jsx (UPDATED with layout fix)
+// The component's structure has been simplified to work within the updated MainLayout,
+// resolving the nested scroll container error from the @hello-pangea/dnd library.
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees } from '../api/firestore';
@@ -20,9 +22,7 @@ const KanbanPage = () => {
                 const fetchedEmployees = await getEmployees();
                 setEmployees(fetchedEmployees);
                 
-                // We need all jobs for the Kanban board, not paginated
                 const unsubscribe = listenToJobCards((allJobs) => {
-                    // Note: listenToJobCards without pagination returns the array directly
                     setJobs(allJobs);
                     setLoading(false);
                 });
@@ -58,9 +58,7 @@ const KanbanPage = () => {
     }
 
     return (
-        // --- UPDATED STRUCTURE ---
-        // The parent div now controls the overall layout and scrolling,
-        // preventing the nested scroll container issue.
+        // This parent div now correctly uses flexbox to manage its children's height.
         <div className="flex flex-col h-full space-y-6">
             <div className="flex-shrink-0">
                 <h2 className="text-3xl font-bold text-white flex items-center gap-2">
@@ -88,8 +86,8 @@ const KanbanPage = () => {
                 </div>
             </div>
 
-            {/* The KanbanBoard itself is now wrapped in a div that handles overflow */}
-            <div className="flex-grow overflow-x-auto pb-4">
+            {/* This container will now correctly grow to fill the available space */}
+            <div className="flex-grow min-h-0">
                 <KanbanBoard jobs={filteredJobs} employees={employees} />
             </div>
         </div>

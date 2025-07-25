@@ -1,6 +1,6 @@
-// src/api/firestore.js (FULLY REFACTORED & CORRECTED)
-// This version re-introduces any missing functions like `getPurchaseQueue`
-// to ensure full compatibility with all components, while keeping the unified inventory system.
+// src/api/firestore.js (UPDATED with Audit Logging)
+// A new `logAuditEvent` function has been added to create a secure, permanent record
+// of important actions taken within the application, such as user creation or stock reconciliation.
 
 import {
     collection,
@@ -26,16 +26,35 @@ import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
 // =================================================================================================
+// NEW: AUDIT LOGGING API
+// =================================================================================================
+
+/**
+ * Creates a secure audit log for a sensitive action.
+ * @param {string} action - The action being performed (e.g., 'user_created', 'stock_reconciled').
+ * @param {string} userId - The UID of the user performing the action.
+ * @param {string} userEmail - The email of the user performing the action.
+ * @param {Object} details - An object containing relevant details about the event.
+ * @returns {Promise}
+ */
+export const logAuditEvent = (action, userId, userEmail, details) => {
+    const auditLogsCollection = collection(db, 'auditLogs');
+    return addDoc(auditLogsCollection, {
+        action,
+        userId,
+        userEmail,
+        details,
+        timestamp: serverTimestamp(),
+    });
+};
+
+
+// =================================================================================================
 // UNIFIED INVENTORY API
 // =================================================================================================
 
 const inventoryCollection = collection(db, 'inventoryItems');
 
-/**
- * Fetches all items from the unified inventory. Can be filtered by category.
- * @param {string} [category] - Optional category to filter by (e.g., 'Product', 'Component').
- * @returns {Promise<Array>} A promise that resolves to an array of inventory items.
- */
 export const getAllInventoryItems = async (category) => {
     let q = inventoryCollection;
     if (category) {
@@ -45,11 +64,6 @@ export const getAllInventoryItems = async (category) => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-/**
- * Adds a new item to the inventory. The category must be specified in the data.
- * @param {Object} itemData - The data for the new inventory item, including a 'category' field.
- * @returns {Promise} A promise that resolves when the item is added.
- */
 export const addInventoryItem = (itemData) => {
     if (!itemData.category) {
         return Promise.reject(new Error("Item data must include a 'category' field."));
@@ -57,23 +71,12 @@ export const addInventoryItem = (itemData) => {
     return addDoc(inventoryCollection, { ...itemData, createdAt: serverTimestamp() });
 };
 
-/**
- * Updates an existing inventory item.
- * @param {string} itemId - The ID of the item to update.
- * @param {Object} updatedData - The data to update.
- * @returns {Promise}
- */
 export const updateInventoryItem = (itemId, updatedData) => {
     const itemDoc = doc(db, 'inventoryItems', itemId);
     const { id, ...dataToSave } = updatedData;
     return updateDoc(itemDoc, dataToSave);
 };
 
-/**
- * Deletes an inventory item and all its associated supplier pricing.
- * @param {string} itemId - The ID of the item to delete.
- * @returns {Promise}
- */
 export const deleteInventoryItem = async (itemId) => {
     const batch = writeBatch(db);
     batch.delete(doc(db, 'inventoryItems', itemId));
@@ -82,11 +85,6 @@ export const deleteInventoryItem = async (itemId) => {
     return batch.commit();
 };
 
-/**
- * Finds a single inventory item by its unique itemCode.
- * @param {string} itemCode - The unique item code to search for.
- * @returns {Promise<Object>} The found inventory item.
- */
 export const findInventoryItemByItemCode = async (itemCode) => {
     if (!itemCode) throw new Error("Item code is required.");
     const q = query(inventoryCollection, where("itemCode", "==", itemCode), limit(1));
@@ -98,12 +96,6 @@ export const findInventoryItemByItemCode = async (itemCode) => {
     return { id: itemDoc.id, ...itemDoc.data() };
 };
 
-/**
- * Updates stock level based on a weight measurement.
- * @param {string} itemId - The ID of the item.
- * @param {number} grossWeight - The gross weight measured.
- * @returns {Promise<Object>}
- */
 export const updateStockByWeight = async (itemId, grossWeight) => {
     if (!itemId || isNaN(parseFloat(grossWeight))) {
         throw new Error("Item ID and a valid gross weight are required.");
@@ -131,7 +123,6 @@ export const updateStockByWeight = async (itemId, grossWeight) => {
 // ALL OTHER APIs
 // =================================================================================================
 
-// --- SCAN EVENTS ---
 export const logScanEvent = (jobData, newStatus, options = {}) => {
     const { haltReason = null } = options;
     const eventData = {
@@ -146,7 +137,6 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
     return addDoc(collection(db, 'scanEvents'), eventData);
 };
 
-// --- KAIZEN & PRAISE ---
 export const addKaizenSuggestion = (suggestionData) => addDoc(collection(db, 'kaizenSuggestions'), { ...suggestionData, createdAt: serverTimestamp(), status: 'new' });
 export const addPraise = (praiseData) => addDoc(collection(db, 'praise'), { ...praiseData, createdAt: serverTimestamp() });
 export const listenToPraiseForEmployee = (employeeId, callback) => {
@@ -154,7 +144,6 @@ export const listenToPraiseForEmployee = (employeeId, callback) => {
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 };
 
-// --- SYSTEM STATUS ---
 export const listenToSystemStatus = (callback) => {
     const statusDocRef = doc(db, 'systemStatus', 'latest');
     return onSnapshot(statusDocRef, (doc) => {
@@ -166,7 +155,6 @@ export const listenToSystemStatus = (callback) => {
     });
 };
 
-// --- DEPARTMENTS ---
 export const getDepartments = async () => getDocs(collection(db, 'departments')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addDepartment = (departmentName) => addDoc(collection(db, 'departments'), { name: departmentName, requiredSkills: [] });
 export const deleteDepartment = (departmentId) => deleteDoc(doc(db, 'departments', departmentId));
@@ -188,7 +176,6 @@ export const getDepartmentSkills = async (departmentId) => {
     return [];
 };
 
-// --- SKILLS ---
 export const getSkills = async () => getDocs(query(collection(db, 'skills'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addSkill = (skillName) => addDoc(collection(db, 'skills'), { name: skillName });
 export const updateSkill = (skillId, updatedData) => updateDoc(doc(db, 'skills', skillId), updatedData);
@@ -198,7 +185,6 @@ export const getSkillHistoryForEmployee = async (employeeId) => {
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 
-// --- TOOLS & ACCESSORIES ---
 export const getTools = async () => getDocs(collection(db, 'tools')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addTool = (toolData) => addDoc(collection(db, 'tools'), { ...toolData, associatedSkills: toolData.associatedSkills || [] });
 export const deleteTool = (toolId) => deleteDoc(doc(db, 'tools', toolId));
@@ -206,7 +192,6 @@ export const getToolAccessories = async () => getDocs(collection(db, 'toolAccess
 export const addToolAccessory = (accessoryData) => addDoc(collection(db, 'toolAccessories'), { ...accessoryData, associatedSkills: accessoryData.associatedSkills || [] });
 export const deleteToolAccessory = (accessoryId) => deleteDoc(doc(db, 'toolAccessories', accessoryId));
 
-// --- EMPLOYEES ---
 export const getEmployees = async () => getDocs(collection(db, 'employees')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addEmployee = (employeeData) => addDoc(collection(db, 'employees'), employeeData);
 export const deleteEmployee = (employeeId) => deleteDoc(doc(db, 'employees', employeeId));
@@ -237,7 +222,6 @@ export const updateEmployeeSkillsAndLogHistory = async (employee, skillsData, al
     return batch.commit();
 };
 
-// --- SUPPLIERS & PRICING ---
 export const getSuppliers = async () => getDocs(collection(db, 'suppliers')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addSupplier = (supplierData) => addDoc(collection(db, 'suppliers'), supplierData);
 export const updateSupplier = (supplierId, updatedData) => updateDoc(doc(db, 'suppliers', supplierId), updatedData);
@@ -251,7 +235,6 @@ export const addSupplierPrice = (priceData) => addDoc(collection(db, 'supplierIt
 export const updateSupplierPrice = (priceId, updatedData) => updateDoc(doc(db, 'supplierItemPricing', priceId), updatedData);
 export const deleteSupplierPrice = (priceId) => deleteDoc(doc(db, 'supplierItemPricing', priceId));
 
-// --- OVERHEADS ---
 export const getOverheadCategories = async () => getDocs(collection(db, 'overheadsCategories')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addOverheadCategory = (categoryData) => addDoc(collection(db, 'overheadsCategories'), categoryData);
 export const updateOverheadCategory = (categoryId, updatedData) => updateDoc(doc(db, 'overheadsCategories', categoryId), updatedData);
@@ -268,7 +251,6 @@ export const addOverheadExpense = (categoryId, expenseData) => addDoc(collection
 export const updateOverheadExpense = (categoryId, expenseId, updatedData) => updateDoc(doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId), updatedData);
 export const deleteOverheadExpense = (categoryId, expenseId) => deleteDoc(doc(db, 'overheadsCategories', categoryId, 'expenses', expenseId));
 
-// --- PURCHASE QUEUE ---
 const purchaseQueueCollection = collection(db, 'purchaseQueue');
 export const getPurchaseQueue = async () => {
     const snapshot = await getDocs(purchaseQueueCollection);
@@ -319,7 +301,6 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     }
 };
 
-// --- JOB STEP DETAILS (RECIPES) ---
 export const getJobStepDetails = async () => getDocs(collection(db, 'jobStepDetails')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const setJobStepDetail = (productId, departmentId, data) => {
     const recipeId = `${productId}_${departmentId}`;
@@ -348,23 +329,35 @@ export const updateStandardRecipe = async (jobData) => {
     return updateDoc(recipeRef, recipeDataToUpdate);
 };
 
-// --- JOB CARDS ---
 const jobCardsCollection = collection(db, 'createdJobCards');
 export const addJobCard = (jobCardData) => addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
+
 export const listenToJobCards = (callback, options = {}) => {
-    let q = query(jobCardsCollection, orderBy('createdAt', 'desc'));
+    const jobsCollectionRef = collection(db, 'createdJobCards');
+    let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
     if (options.limit) {
-        if (options.startAfter) q = query(q, startAfter(options.startAfter));
+        if (options.startAfter) {
+            q = query(q, startAfter(options.startAfter));
+        }
         q = query(q, limit(options.limit));
+        
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             const lastVisible = snapshot.docs[snapshot.docs.length - 1];
-            callback({ jobs, lastVisible });
+            callback({ jobs, lastVisible }); 
+        }, (error) => {
+            console.error("Error listening to paginated job cards:", error);
         });
     } else {
-        return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        return onSnapshot(q, (snapshot) => {
+            const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            callback(jobs);
+        }, (error) => {
+            console.error("Error listening to all job cards:", error);
+        });
     }
 };
+
 export const getJobByJobId = async (jobId) => {
     const q = query(jobCardsCollection, where("jobId", "==", jobId));
     const querySnapshot = await getDocs(q);
@@ -381,7 +374,6 @@ export const updateJobPriorities = async (orderedJobs) => {
     return batch.commit();
 };
 
-// --- QC & JOB ADJUSTMENT ---
 export const getJobsAwaitingQC = async () => {
     const q = query(jobCardsCollection, where('status', '==', 'Awaiting QC'));
     const snapshot = await getDocs(q);
@@ -428,7 +420,6 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
     });
 };
 
-// --- GENERIC DOCUMENT API ---
 export const updateDocument = async (collectionName, docId, data) => {
     const docRef = doc(db, collectionName, docId);
     const dataToSave = { ...data };
@@ -440,7 +431,6 @@ export const deleteDocument = async (collectionName, docId) => {
     return deleteDoc(docRef);
 };
 
-// --- PRODUCT CATALOG (NOW A VIEW OF INVENTORY) ---
 export const getProducts = async () => getAllInventoryItems('Product');
 export const addProduct = async (productData) => {
     const q = query(inventoryCollection, where("partNumber", "==", productData.partNumber), where("category", "==", "Product"));
@@ -451,13 +441,11 @@ export const addProduct = async (productData) => {
 export const updateProduct = (productId, updatedData) => updateInventoryItem(productId, updatedData);
 export const deleteProduct = (productId) => deleteInventoryItem(productId);
 
-// --- PRODUCT CATEGORIES (Legacy, may be phased out) ---
 const productCategoriesCollection = collection(db, 'productCategories');
 export const getProductCategories = async () => getDocs(query(productCategoriesCollection, orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addProductCategory = (categoryName) => addDoc(productCategoriesCollection, { name: categoryName });
 export const deleteProductCategory = (categoryId) => deleteDoc(doc(db, 'productCategories', categoryId));
 
-// --- PRODUCT RECIPE LINKS ---
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
 export const getLinkedRecipesForProduct = async (productId) => {
     const q = query(productRecipeLinksCollection, where('productId', '==', productId));
@@ -466,7 +454,6 @@ export const getLinkedRecipesForProduct = async (productId) => {
 export const linkRecipeToProduct = (linkData) => addDoc(productRecipeLinksCollection, linkData);
 export const unlinkRecipeFromProduct = (linkId) => deleteDoc(doc(db, 'productRecipeLinks', linkId));
 
-// --- PAYROLL & REPORTING ---
 export const getCompletedJobsInRange = async (startDate, endDate) => {
     const q = query(jobCardsCollection, where('status', '==', 'Complete'), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -477,7 +464,6 @@ export const getCompletedJobsForEmployee = async (employeeId) => {
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 
-// --- USER MANAGEMENT ---
 export const getAllUsers = async () => getDocs(collection(db, 'users')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const updateUserRole = async (userId, newRole, discountPercentage, companyName) => {
     const dataToUpdate = { role: newRole };
@@ -488,26 +474,21 @@ export const updateUserRole = async (userId, newRole, discountPercentage, compan
 export const createUserWithRole = httpsCallable(functions, 'createUserAndSetRole');
 export const deleteUserWithRole = httpsCallable(functions, 'deleteUserAndRole');
 
-// --- ROLES ---
 export const getRoles = async () => getDocs(collection(db, 'roles')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 
-// --- MARKETING & SALES ---
 export const getCampaigns = async () => getDocs(query(collection(db, 'marketingCampaigns'), orderBy('startDate', 'desc'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addCampaign = (campaignData) => addDoc(collection(db, 'marketingCampaigns'), { ...campaignData, leadsGenerated: 0, createdAt: serverTimestamp() });
 export const updateCampaign = (campaignId, updatedData) => updateDoc(doc(db, 'marketingCampaigns', campaignId), updatedData);
 export const deleteCampaign = (campaignId) => deleteDoc(doc(db, 'marketingCampaigns', campaignId));
 
-// --- TRAINING RESOURCES ---
 export const getTrainingResources = async () => getDocs(collection(db, 'trainingResources')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addTrainingResource = (data) => addDoc(collection(db, 'trainingResources'), data);
 export const updateTrainingResource = (id, data) => updateDoc(doc(db, 'trainingResources', id), data);
 export const deleteTrainingResource = (id) => deleteDoc(doc(db, 'trainingResources', id));
 
-// --- SUBCONTRACTOR LOGS ---
 export const addSubcontractorAdHocLog = (logData) => addDoc(collection(db, 'subcontractorAdHocLogs'), { ...logData, createdAt: serverTimestamp() });
 export const addSubcontractorTeamLog = (logData) => addDoc(collection(db, 'subcontractorTeamLogs'), { ...logData, createdAt: serverTimestamp() });
 
-// --- QUOTES & SALES ORDERS ---
 export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quoteData, status: 'draft', createdAt: serverTimestamp() });
 export const createSalesOrderFromQuote = async (quote) => {
     const batch = writeBatch(db);
@@ -550,7 +531,6 @@ export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newSta
     return updateDoc(orderRef, { lineItems: updatedLineItems });
 };
 
-// --- STOCK TAKE ---
 export const updateStockCount = async (itemId, category, newCount, sessionId) => {
     const itemRef = doc(db, 'inventoryItems', itemId);
     return updateDoc(itemRef, {
@@ -558,16 +538,24 @@ export const updateStockCount = async (itemId, category, newCount, sessionId) =>
         lastCountedInSessionId: sessionId
     });
 };
+
 export const reconcileStockLevels = async (itemsToReconcile) => {
-    const batch = writeBatch(db);
-    for (const item of itemsToReconcile) {
-        const itemRef = doc(db, 'inventoryItems', item.id);
-        batch.update(itemRef, { currentStock: item.newCount });
+    const BATCH_LIMIT = 500;
+    const batches = [];
+    
+    for (let i = 0; i < itemsToReconcile.length; i += BATCH_LIMIT) {
+        const batch = writeBatch(db);
+        const chunk = itemsToReconcile.slice(i, i + BATCH_LIMIT);
+        for (const item of chunk) {
+            const itemRef = doc(db, 'inventoryItems', item.id);
+            batch.update(itemRef, { currentStock: item.newCount });
+        }
+        batches.push(batch.commit());
     }
-    return batch.commit();
+
+    return Promise.all(batches);
 };
 
-// --- CUSTOMER ORDERS & FEEDBACK ---
 export const submitCustomerOrder = httpsCallable(functions, 'submitCustomerOrder');
 export const listenToCustomerSalesOrders = (customerEmail, callback) => {
     const q = query(collection(db, 'salesOrders'), where('customerEmail', '==', customerEmail));
@@ -584,7 +572,6 @@ export const listenToJobsForSalesOrder = (salesOrderId, callback) => {
 };
 export const addCustomerFeedback = (feedbackData) => addDoc(collection(db, 'customerFeedback'), { ...feedbackData, submittedAt: serverTimestamp() });
 
-// --- REWORK & KUDOS ---
 export const getReworkReasons = async () => getDocs(query(collection(db, 'reworkReasons'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const giveKudosToJob = (jobId) => updateDoc(doc(db, 'createdJobCards', jobId), { kudos: true });
 export const listenToReworkQueue = (callback) => {
@@ -593,13 +580,11 @@ export const listenToReworkQueue = (callback) => {
 };
 export const resolveReworkJob = (jobDocId) => updateDoc(doc(db, 'createdJobCards', jobDocId), { status: 'Pending', issueReason: 'Rework Resolved - Re-queued' });
 
-// --- ROUTINE TASKS ---
 export const getRoutineTasks = async () => getDocs(query(collection(db, 'routineTasks'), orderBy('timeOfDay'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addRoutineTask = (taskData) => addDoc(collection(db, 'routineTasks'), taskData);
 export const updateRoutineTask = (taskId, updatedData) => updateDoc(doc(db, 'routineTasks', taskId), updatedData);
 export const deleteRoutineTask = (taskId) => deleteDoc(doc(db, 'routineTasks', taskId));
 
-// --- PICKING LISTS ---
 export const listenToPickingLists = (callback) => {
     const q = query(collection(db, 'pickingLists'), where('status', '==', 'pending'));
     return onSnapshot(q, (snapshot) => {
@@ -610,7 +595,6 @@ export const listenToPickingLists = (callback) => {
 };
 export const markPickingListAsCompleted = (listId) => updateDoc(doc(db, 'pickingLists', listId), { status: 'completed' });
 
-// --- CONSIGNMENT STOCK ---
 export const getClientUsers = async () => getDocs(query(collection(db, 'users'), where('role', '==', 'Client'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const listenToConsignmentStockForClient = (clientId, callback) => {
     if (!clientId) return () => {};
@@ -630,7 +614,6 @@ export const updateConsignmentStockCounts = async (updates) => {
     return batch.commit();
 };
 
-// --- LEARNING PATHS ---
 export const getLearningPaths = async () => getDocs(query(collection(db, 'learningPaths'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addLearningPath = (pathData) => addDoc(collection(db, 'learningPaths'), { ...pathData, skillIds: [] });
 export const updateLearningPath = (pathId, updatedData) => updateDoc(doc(db, 'learningPaths', pathId), updatedData);

@@ -1,27 +1,25 @@
-// src/pages/UserManagementPage.jsx (UPDATED for Client Management)
+// src/pages/UserManagementPage.jsx (UPDATED with Audit Logging)
+// This component now calls the `logAuditEvent` function whenever a new user is
+// created or an existing user is deleted, creating a secure record of the action.
 
 import React, { useState, useEffect } from 'react';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
-import { getAllUsers, updateUserRole, createUserWithRole, deleteUserWithRole, getRoles } from '../api/firestore';
-import { PlusCircle, Edit, Trash2, User, Mail, Shield, Percent, Building } from 'lucide-react';
+import { getAllUsers, updateUserRole, createUserWithRole, deleteUserWithRole, getRoles, logAuditEvent } from '../api/firestore'; // <-- IMPORT logAuditEvent
+import { useAuth } from '../contexts/AuthContext'; // <-- IMPORT useAuth
+import { PlusCircle, Edit, Trash2, User, Building, Shield, Percent } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const UserManagementPage = () => {
+    const { user: currentUser } = useAuth(); // Get the currently logged-in user
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [allRoles, setAllRoles] = useState([]);
-
-    // State for new internal staff user
     const [newStaffUser, setNewStaffUser] = useState({ email: '', password: '', role: '' });
-    
-    // State for new client user
     const [newClientUser, setNewClientUser] = useState({ companyName: '', email: '', password: '', discountPercentage: '0' });
-
     const [addingUser, setAddingUser] = useState(false);
-
     const [editingUserId, setEditingUserId] = useState(null);
     const [editingUserRole, setEditingUserRole] = useState('');
     const [editingUserName, setEditingUserName] = useState('');
@@ -60,6 +58,13 @@ const UserManagementPage = () => {
         try {
             const result = await createUserWithRole(newClientUser.email, newClientUser.password, 'Client', newClientUser.discountPercentage, newClientUser.companyName);
             toast.success(`Client user ${result.email} created successfully!`);
+            
+            // --- NEW: Log the audit event ---
+            await logAuditEvent('client_user_created', currentUser.uid, currentUser.email, {
+                createdUserEmail: newClientUser.email,
+                companyName: newClientUser.companyName,
+            });
+
             setNewClientUser({ companyName: '', email: '', password: '', discountPercentage: '0' });
             fetchUsersAndRoles();
         } catch (err) {
@@ -80,6 +85,13 @@ const UserManagementPage = () => {
         try {
             const result = await createUserWithRole(newStaffUser.email, newStaffUser.password, newStaffUser.role);
             toast.success(`Staff user ${result.email} created successfully!`);
+
+            // --- NEW: Log the audit event ---
+            await logAuditEvent('staff_user_created', currentUser.uid, currentUser.email, {
+                createdUserEmail: newStaffUser.email,
+                assignedRole: newStaffUser.role,
+            });
+
             setNewStaffUser({ email: '', password: '', role: '' });
             fetchUsersAndRoles();
         } catch (err) {
@@ -103,7 +115,17 @@ const UserManagementPage = () => {
         try {
             await updateUserRole(userId, editingUserRole, editingUserDiscount, editingUserCompany);
             toast.success(`User updated for ${editingUserName}!`);
-            handleCancelEdit(); // Reset form after successful update
+
+            // --- NEW: Log the audit event ---
+            await logAuditEvent('user_role_updated', currentUser.uid, currentUser.email, {
+                targetUserId: userId,
+                targetUserEmail: editingUserName,
+                newRole: editingUserRole,
+                newDiscount: editingUserDiscount,
+                newCompany: editingUserCompany,
+            });
+
+            handleCancelEdit();
             fetchUsersAndRoles();
         } catch (err) {
             console.error("Error updating user:", err.message);
@@ -123,13 +145,21 @@ const UserManagementPage = () => {
         toast((t) => (
             <span>
                 Delete user {userToDelete.email}? This is permanent.
-                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteUserWithRole(userToDelete.id)
-                        .then(() => {
-                            toast.success(`User ${userToDelete.email} deleted.`);
-                            fetchUsersAndRoles();
-                        })
-                        .catch(err => toast.error("Failed to delete user."));
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    try {
+                        await deleteUserWithRole({ userId: userToDelete.id });
+                        toast.success(`User ${userToDelete.email} deleted.`);
+                        
+                        // --- NEW: Log the audit event ---
+                        await logAuditEvent('user_deleted', currentUser.uid, currentUser.email, {
+                            deletedUserId: userToDelete.id,
+                            deletedUserEmail: userToDelete.email,
+                        });
+
+                        fetchUsersAndRoles();
+                    } catch (err) {
+                        toast.error("Failed to delete user.");
+                    }
                     toast.dismiss(t.id);
                 }}>
                     Delete
@@ -168,12 +198,11 @@ const UserManagementPage = () => {
                 </form>
             </div>
 
-
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <h3 className="text-xl font-bold text-white mb-4">Existing Users</h3>
                 {error && <div className="p-3 bg-red-800 text-red-100 rounded-lg text-center mb-4">{error}</div>}
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left" aria-label="User Management Table">
                         <thead>
                             <tr className="border-b border-gray-600">
                                 <th className="p-3 text-sm font-semibold text-gray-400">User / Company</th>
@@ -191,7 +220,7 @@ const UserManagementPage = () => {
                                         <div className="flex items-center gap-2 font-semibold">
                                             {user.role === 'Client' ? <Building size={16} className="text-gray-500"/> : <User size={16} className="text-gray-500"/>}
                                             {editingUserId === user.id 
-                                                ? <Input value={editingUserCompany} onChange={(e) => setEditingUserCompany(e.target.value)} placeholder="Company Name"/>
+                                                ? <Input value={editingUserCompany} onChange={(e) => setEditingUserCompany(e.target.value)} placeholder="Company Name" aria-label={`Editing company name for ${user.email}`}/>
                                                 : (user.companyName || user.email)
                                             }
                                         </div>
@@ -199,7 +228,7 @@ const UserManagementPage = () => {
                                     </td>
                                     <td className="p-3">
                                         {editingUserId === user.id ? (
-                                            <Dropdown value={editingUserRole} onChange={(e) => setEditingUserRole(e.target.value)} options={allRoles} className="w-full" />
+                                            <Dropdown value={editingUserRole} onChange={(e) => setEditingUserRole(e.target.value)} options={allRoles} className="w-full" aria-label={`Editing role for ${user.email}`} />
                                         ) : (
                                             <span className="flex items-center gap-2 text-gray-300">
                                                 <Shield size={16} className="text-gray-500"/>
@@ -209,7 +238,7 @@ const UserManagementPage = () => {
                                     </td>
                                     <td className="p-3">
                                         {editingUserId === user.id ? (
-                                            <Input type="number" value={editingUserDiscount} onChange={(e) => setEditingUserDiscount(e.target.value)} placeholder="0" min="0" max="100" />
+                                            <Input type="number" value={editingUserDiscount} onChange={(e) => setEditingUserDiscount(e.target.value)} placeholder="0" min="0" max="100" aria-label={`Editing discount for ${user.email}`} />
                                         ) : (
                                             <span className="flex items-center gap-2 text-gray-300">
                                                 <Percent size={16} className="text-gray-500"/>
@@ -220,13 +249,13 @@ const UserManagementPage = () => {
                                     <td className="p-3 flex space-x-2">
                                         {editingUserId === user.id ? (
                                             <>
-                                                <Button variant="primary" onClick={() => handleUpdateUser(user.id)} className="py-1 px-3 text-xs">Save</Button>
-                                                <Button variant="secondary" onClick={handleCancelEdit} className="py-1 px-3 text-xs">Cancel</Button>
+                                                <Button variant="primary" onClick={() => handleUpdateUser(user.id)} className="py-1 px-3 text-xs" aria-label={`Save changes for ${user.email}`}>Save</Button>
+                                                <Button variant="secondary" onClick={handleCancelEdit} className="py-1 px-3 text-xs" aria-label={`Cancel editing for ${user.email}`}>Cancel</Button>
                                             </>
                                         ) : (
                                             <>
-                                                <Button variant="secondary" onClick={() => handleEditUser(user)} className="py-1 px-3 text-xs"><Edit size={16} className="mr-1"/> Edit</Button>
-                                                <Button variant="danger" onClick={() => handleDeleteUser(user)} className="py-1 px-3 text-xs"><Trash2 size={16} className="mr-1"/> Delete</Button>
+                                                <Button variant="secondary" onClick={() => handleEditUser(user)} className="py-1 px-3 text-xs" aria-label={`Edit user ${user.email}`}><Edit size={16} className="mr-1"/> Edit</Button>
+                                                <Button variant="danger" onClick={() => handleDeleteUser(user)} className="py-1 px-3 text-xs" aria-label={`Delete user ${user.email}`}><Trash2 size={16} className="mr-1"/> Delete</Button>
                                             </>
                                         )}
                                     </td>

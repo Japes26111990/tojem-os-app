@@ -1,5 +1,4 @@
-// src/App.jsx (CORRECTED)
-// Fixed a syntax error where a RoleBasedRoute was not closed properly.
+// src/App.jsx
 
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
@@ -29,7 +28,6 @@ import MarketingPage from './pages/MarketingPage.jsx';
 import QuotingPage from './pages/QuotingPage.jsx';
 import JobCardAdjustmentPage from './pages/JobCardAdjustmentPage.jsx';
 import SalesOrderPage from './pages/SalesOrderPage.jsx';
-import PurchasingPage from './pages/PurchasingPage.jsx';
 import StockTakePage from './pages/StockTakePage.jsx';
 import AssetIntelligencePage from './pages/AssetIntelligencePage.jsx';
 import ProductBrowserPage from './pages/ProductBrowserPage.jsx';
@@ -44,6 +42,10 @@ import KanbanPage from './pages/KanbanPage.jsx';
 import PickingQueuePage from './pages/PickingQueuePage.jsx';
 import FloorPlanPage from './pages/FloorPlanPage.jsx';
 import AndonDisplayPage from './pages/AndonDisplayPage.jsx';
+import TimeAttendanceReport from './pages/TimeAttendanceReport.jsx';
+import KpiDashboardPage from './pages/KpiDashboardPage.jsx';
+import StockHubPage from './pages/StockHubPage.jsx';
+import ProductCatalogPage from './pages/ProductCatalogPage.jsx';
 
 const StaffLayout = () => (
     <MainLayout>
@@ -73,7 +75,6 @@ function App() {
     return (
         <Router>
             <Routes>
-                {/* A special route for the Andon display that doesn't use the main layout */}
                 <Route path="/andon-display" element={<ProtectedRoute><AndonDisplayPage /></ProtectedRoute>} />
 
                 {!user ? (
@@ -91,11 +92,12 @@ function App() {
                 ) : (
                     <Route element={<ProtectedRoute><StaffLayout /></ProtectedRoute>}>
                         <Route path="/dashboard" element={<RoleBasedRoute permission="dashboard"><DashboardPage /></RoleBasedRoute>} />
+                        <Route path="/kpi-dashboard" element={<RoleBasedRoute permission="dashboard"><KpiDashboardPage /></RoleBasedRoute>} />
                         <Route path="/tracking" element={<RoleBasedRoute permission="tracking"><LiveTrackingPage /></RoleBasedRoute>} />
                         <Route path="/scan" element={<RoleBasedRoute permission="scanner"><ScannerPage /></RoleBasedRoute>} />
                         <Route path="/qc" element={<RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute>} />
                         <Route path="/orders" element={<RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
-                        <Route path="/purchasing" element={<RoleBasedRoute permission="purchasing"><PurchasingPage /></RoleBasedRoute>} />
+                        <Route path="/stock-hub" element={<RoleBasedRoute permission="purchasing"><StockHubPage /></RoleBasedRoute>} />
                         <Route path="/stock-take" element={<RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
                         <Route path="/creator" element={<RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute>} />
                         <Route path="/issues" element={<RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute>} />
@@ -117,6 +119,8 @@ function App() {
                         <Route path="/multi-stage-wizard" element={<RoleBasedRoute permission="multiStage"><MultiStageWizard /></RoleBasedRoute>} />
                         <Route path="/stock-adjust" element={<RoleBasedRoute permission="stockAdjust"><StockAdjustmentPage /></RoleBasedRoute>} />
                         <Route path="/job-reprint" element={<RoleBasedRoute permission="jobReprint"><JobReprintPage /></RoleBasedRoute>} />
+                        <Route path="/time-attendance" element={<RoleBasedRoute permission="performance"><TimeAttendanceReport /></RoleBasedRoute>} />
+                        <Route path="/product-catalog" element={<RoleBasedRoute permission="settings"><ProductCatalogPage /></RoleBasedRoute>} />
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
                     </Route>
                 )}

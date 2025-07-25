@@ -1,4 +1,5 @@
-// src/components/intelligence/WorkshopThroughputGraph.jsx (NEW FILE)
+// src/components/intelligence/WorkshopThroughputGraph.jsx
+
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { HardHat } from 'lucide-react';

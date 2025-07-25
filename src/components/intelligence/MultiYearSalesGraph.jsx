@@ -23,7 +23,9 @@ const MultiYearSalesGraph = ({ salesData, years }) => {
     const colors = ['#8884d8', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444'];
 
     return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full">
+        // FIX: Removed the "h-full" class to prevent sizing conflicts with the parent container.
+        // The component's height is now reliably controlled by the ResponsiveContainer below.
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="font-bold text-white mb-4 flex items-center gap-2">
                 <TrendingUp size={20} className="text-green-400"/>
                 Historical Sales Performance

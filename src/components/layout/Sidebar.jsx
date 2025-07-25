@@ -1,4 +1,5 @@
-// src/components/layout/Sidebar.jsx
+// src/components/layout/Sidebar.jsx (UPDATED)
+// Added a new link for the Time & Attendance report under the Business Intelligence NavGroup.
 
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
@@ -10,7 +11,7 @@ import {
   Briefcase, Banknote, BrainCircuit, DollarSign,
   Aperture, Calculator, NotebookText, Sun,
   Megaphone, ShoppingCart, ClipboardList, Cpu,
-  LayoutGrid, PackageSearch, UserCheck, Map
+  LayoutGrid, PackageSearch, UserCheck, Map, Clock // <-- Import Clock icon
 } from 'lucide-react';
 import NotesApplet from '../features/sidebar/NotesApplet.jsx';
 import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
@@ -127,6 +128,8 @@ const Sidebar = ({ isOpen, isPinned, onMouseEnter, onMouseLeave }) => {
             {canSee('profitability') && <SidebarLink to="/profitability" icon={<DollarSign size={18} />} text="Profitability" isOpen={isOpen} />}
             {canSee('valuation') && <SidebarLink to="/valuation" icon={<Banknote size={18} />} text="Financials & Planning" isOpen={isOpen} />}
             {canSee('assets') && <SidebarLink to="/assets" icon={<Cpu size={18} />} text="Asset Intelligence" isOpen={isOpen} />}
+            {/* --- NEW LINK --- */}
+            {canSee('performance') && <SidebarLink to="/time-attendance" icon={<Clock size={18} />} text="Time & Attendance" isOpen={isOpen} />}
           </NavGroup>
         )}
         

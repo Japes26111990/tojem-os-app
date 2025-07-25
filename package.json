@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^18.0.1",
@@ -18,6 +19,7 @@
     "react": "^19.1.0",
     "react-big-calendar": "^1.19.4",
     "react-calendar": "^6.0.0",
+    "react-csv": "^2.2.2",
     "react-dom": "^19.1.0",
     "react-hot-toast": "^2.5.2",
     "react-router-dom": "^7.6.2",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "@vitejs/plugin-react": "^4.4.1",
@@ -33,6 +36,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.19",
     "globals": "^16.0.0",
+    "jest": "^30.0.5",
     "postcss": "^8.5.5",
     "tailwindcss": "^3.4.1",
     "vite": "^6.3.5"

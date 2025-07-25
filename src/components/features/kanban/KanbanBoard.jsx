@@ -1,18 +1,19 @@
-// src/components/features/kanban/KanbanBoard.jsx
+// src/components/features/kanban/KanbanBoard.jsx (UPDATED with Optimistic UI)
+// The onDragEnd handler has been significantly improved to provide a smooth,
+// instantaneous user experience by manually updating the local state immediately
+// after a drag, preventing the "jumping" effect caused by Firestore latency.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { logScanEvent } from '../../../api/firestore';
 import toast from 'react-hot-toast';
-import { GripVertical, GraduationCap } from 'lucide-react'; // Import GraduationCap
+import { GripVertical, GraduationCap } from 'lucide-react';
 
-const JobCard = ({ job, index, employeeName }) => {
-    // --- NEW: Logic to determine if training is recommended ---
+const JobCard = ({ job, index }) => {
     const isTrainingRecommended = useMemo(() => {
         if (!job.requiredSkills || !job.employeeSkills) return false;
         return job.requiredSkills.some(reqSkill => {
             const employeeProficiency = job.employeeSkills[reqSkill.skillId] || 0;
-            // Recommend training if proficiency is below the minimum and the minimum is above beginner level
             return reqSkill.minProficiency > 1 && employeeProficiency < reqSkill.minProficiency;
         });
     }, [job.requiredSkills, job.employeeSkills]);
@@ -32,8 +33,7 @@ const JobCard = ({ job, index, employeeName }) => {
                             <p className="font-semibold text-white text-sm">{job.partName}</p>
                             <p className="text-xs text-gray-400 font-mono">{job.jobId}</p>
                             <div className="flex items-center gap-2 mt-1">
-                                <p className="text-xs text-blue-400">{employeeName}</p>
-                                {/* --- NEW: Display training icon if recommended --- */}
+                                <p className="text-xs text-blue-400">{job.employeeName || 'Unassigned'}</p>
                                 {isTrainingRecommended && (
                                     <span title="Training recommended for this job">
                                         <GraduationCap size={16} className="text-yellow-400" />
@@ -48,7 +48,7 @@ const JobCard = ({ job, index, employeeName }) => {
     );
 };
 
-const KanbanColumn = ({ status, jobs, employeesMap }) => {
+const KanbanColumn = ({ status, jobs }) => {
     const statusConfig = {
         'Pending': { title: 'Pending', color: 'border-t-yellow-400' },
         'In Progress': { title: 'In Progress', color: 'border-t-blue-400' },
@@ -71,7 +71,6 @@ const KanbanColumn = ({ status, jobs, employeesMap }) => {
                                 key={job.id} 
                                 job={job} 
                                 index={index} 
-                                employeeName={employeesMap.get(job.employeeId)?.name || 'Unassigned'}
                             />
                         ))}
                         {provided.placeholder}
@@ -83,59 +82,78 @@ const KanbanColumn = ({ status, jobs, employeesMap }) => {
 };
 
 const KanbanBoard = ({ jobs, employees }) => {
-    const employeesMap = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
+    // --- NEW: Local state to manage the jobs for a smooth UI ---
+    const [localJobs, setLocalJobs] = useState(jobs);
 
-    // --- NEW: Enrich jobs with employee skill data for the check ---
-    const enrichedJobs = useMemo(() => {
-        return jobs.map(job => {
+    // When the jobs from props change (from Firestore), update our local state
+    useEffect(() => {
+        const employeesMap = new Map(employees.map(e => [e.id, e]));
+        const enrichedJobs = jobs.map(job => {
             const employee = employeesMap.get(job.employeeId);
             return {
                 ...job,
-                employeeSkills: employee ? employee.skills : {}
+                employeeSkills: employee ? employee.skills : {},
+                employeeName: employee ? employee.name : 'Unassigned'
             };
         });
-    }, [jobs, employeesMap]);
+        setLocalJobs(enrichedJobs);
+    }, [jobs, employees]);
 
     const columns = useMemo(() => {
-        const pending = enrichedJobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
-        const inProgress = enrichedJobs.filter(j => j.status === 'In Progress');
-        const awaitingQc = enrichedJobs.filter(j => j.status === 'Awaiting QC');
+        const pending = localJobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+        const inProgress = localJobs.filter(j => j.status === 'In Progress');
+        const awaitingQc = localJobs.filter(j => j.status === 'Awaiting QC');
         return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
-    }, [enrichedJobs]);
+    }, [localJobs]);
 
-    const onDragEnd = async (result) => {
+    const onDragEnd = (result) => {
         const { source, destination, draggableId } = result;
-        if (!destination) return;
+        if (!destination || (source.droppableId === destination.droppableId && source.index === destination.index)) {
+            return;
+        }
 
-        if (source.droppableId !== destination.droppableId) {
-            const job = jobs.find(j => j.id === draggableId);
-            if (!job) return;
+        const jobToMove = localJobs.find(j => j.id === draggableId);
+        if (!jobToMove) return;
 
-            // WIP Limit Check
-            if (destination.droppableId === 'In Progress') {
-                const employeeWip = jobs.filter(j => j.employeeId === job.employeeId && j.status === 'In Progress');
-                if (employeeWip.length > 0) {
-                    toast.error(`${job.employeeName} is already working on another job.`);
-                    return;
-                }
-            }
-            
-            try {
-                await logScanEvent(job, destination.droppableId);
-                toast.success(`Event logged for job ${job.jobId} to "${destination.droppableId}"`);
-            } catch (error) {
-                console.error("Failed to log scan event:", error);
-                toast.error("Failed to log the status change event.");
+        // WIP Limit Check
+        if (destination.droppableId === 'In Progress') {
+            const employeeWip = localJobs.filter(j => j.employeeId === jobToMove.employeeId && j.status === 'In Progress');
+            if (employeeWip.length > 0) {
+                toast.error(`${jobToMove.employeeName} is already working on another job.`);
+                return;
             }
         }
+        
+        // --- THIS IS THE FIX: Optimistic UI Update ---
+        // 1. Manually update the local state immediately for a smooth visual transition.
+        const updatedJobs = localJobs.map(job => 
+            job.id === draggableId 
+                ? { ...job, status: destination.droppableId } 
+                : job
+        );
+        setLocalJobs(updatedJobs);
+        // --- END OF FIX ---
+
+        // 2. Send the update to the backend in the background.
+        // The Firestore listener will eventually send this same update back, but our UI won't flicker.
+        logScanEvent(jobToMove, destination.droppableId)
+            .then(() => {
+                toast.success(`Job moved to "${destination.droppableId}"`);
+            })
+            .catch(error => {
+                console.error("Failed to log scan event:", error);
+                toast.error("Failed to update job status.");
+                // If the backend update fails, revert the local state to show the error.
+                setLocalJobs(jobs); 
+            });
     };
 
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex flex-col md:flex-row gap-6 h-full overflow-x-auto">
-                <KanbanColumn status="Pending" jobs={columns['Pending']} employeesMap={employeesMap} />
-                <KanbanColumn status="In Progress" jobs={columns['In Progress']} employeesMap={employeesMap} />
-                <KanbanColumn status="Awaiting QC" jobs={columns['Awaiting QC']} employeesMap={employeesMap} />
+                <KanbanColumn status="Pending" jobs={columns['Pending']} />
+                <KanbanColumn status="In Progress" jobs={columns['In Progress']} />
+                <KanbanColumn status="Awaiting QC" jobs={columns['Awaiting QC']} />
             </div>
         </DragDropContext>
     );

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getTools, addTool, deleteTool, updateDocument, getSkills } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { Wrench, PlusCircle, Save, DollarSign, Clock } from 'lucide-react'; // --- CORRECTED: Removed 'Tool' icon ---
+import { Wrench, PlusCircle, Save, DollarSign, Clock, Trash2, Edit } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ToolsManager = () => {
@@ -199,7 +199,6 @@ const ToolsManager = () => {
                     </div>
                 </div>
 
-
                 {formData.name.trim() && (
                     <div className="border-t border-gray-700 pt-4 mt-4">
                          <h4 className="text-lg font-semibold text-white mb-3">Associated Skills for "{formData.name}"</h4>
@@ -287,7 +286,6 @@ const ToolsManager = () => {
                             )}
                             {tool.maintenanceIntervalHours > 0 && (
                                 <span className="text-xs flex items-center gap-1 bg-teal-500/20 text-teal-300 px-2 py-0.5 rounded-full" title="Maintenance Interval">
-                                    {/* --- CORRECTED: Use Wrench icon --- */}
                                     <Wrench size={12}/>
                                     {`${tool.maintenanceIntervalHours} hrs`}
                                 </span>

@@ -1,4 +1,5 @@
-// src/pages/DashboardPage.jsx
+// src/pages/DashboardPage.jsx (UPDATED)
+// This version now fetches and displays the RoutineTasksWidget for the current day.
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -7,6 +8,7 @@ import {
     collection, 
     getDocs, 
     listenToSystemStatus,
+    getRoutineTasks // <-- NEW IMPORT
 } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
@@ -19,7 +21,8 @@ import MultiYearSalesGraph from '../components/intelligence/MultiYearSalesGraph.
 import TopReworkCausesWidget from '../components/intelligence/TopReworkCausesWidget.jsx';
 import BottleneckWidget from '../components/intelligence/BottleneckWidget.jsx';
 import WorkshopThroughputGraph from '../components/intelligence/WorkshopThroughputGraph.jsx';
-import ManagerFocusWidget from '../components/features/dashboard/ManagerFocusWidget'; // <-- IMPORT THE NEW WIDGET
+import ManagerFocusWidget from '../components/features/dashboard/ManagerFocusWidget';
+import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget'; // <-- NEW IMPORT
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
@@ -39,18 +42,28 @@ const DashboardPage = () => {
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
     const [systemStatus, setSystemStatus] = useState(null);
+    const [todaysTasks, setTodaysTasks] = useState([]); // <-- NEW STATE
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         setLoading(true);
         const fetchData = async () => {
             try {
-                const [employeeItems, historicalSalesSnapshot] = await Promise.all([
+                const [employeeItems, historicalSalesSnapshot, routineTasks] = await Promise.all([
                     getEmployees(), 
                     getDocs(collection(db, 'historicalSales')),
+                    getRoutineTasks() // <-- FETCH ROUTINE TASKS
                 ]);
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
+
+                // --- NEW: Logic to filter tasks for today ---
+                const dayOfWeek = moment().format('dddd').toLowerCase(); // e.g., 'friday'
+                const filteredTasks = routineTasks.filter(task => {
+                    return task.schedule === 'daily' || task.schedule === `weekly_${dayOfWeek}`;
+                });
+                setTodaysTasks(filteredTasks);
+                // --- END NEW LOGIC ---
 
                 const unsubscribeJobs = listenToJobCards(setJobs);
                 const unsubscribeStatus = listenToSystemStatus(setSystemStatus);
@@ -153,8 +166,11 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
-            {/* --- THE NEW WIDGET REPLACES THE OLD ROUTINE TASKS WIDGET --- */}
-            <ManagerFocusWidget />
+            {/* --- WIDGETS ARE NOW DISPLAYED IN A GRID --- */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ManagerFocusWidget />
+                <RoutineTasksWidget tasks={todaysTasks} />
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
