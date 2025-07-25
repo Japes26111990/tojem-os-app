@@ -6,7 +6,7 @@ import Button from '../components/ui/Button';
 import { QrCode } from 'lucide-react';
 import toast from 'react-hot-toast';
 import QrScannerModal from '../components/features/scanner/QrScannerModal';
-import ScannedProductDisplay from '../components/features/portal/ScannedProductDisplay'; // We will create this next
+import ScannedProductDisplay from '../components/features/portal/ScannedProductDisplay';
 
 const ClientScannerPage = () => {
     const [scannedProduct, setScannedProduct] = useState(null);

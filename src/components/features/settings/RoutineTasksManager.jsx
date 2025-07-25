@@ -1,7 +1,7 @@
-// src/components/features/settings/RoutineTasksManager.jsx (NEW FILE)
+// src/components/features/settings/RoutineTasksManager.jsx
 
 import React, { useState, useEffect } from 'react';
-import { getRoutineTasks, addRoutineTask, updateRoutineTask, deleteRoutineTask } from '../../../api/firestore';
+import { getRoutineTasks, addRoutineTask, updateRoutineTask, deleteRoutineTask, getEmployees } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
 import Dropdown from '../../ui/Dropdown';
@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 
 const RoutineTasksManager = () => {
     const [tasks, setTasks] = useState([]);
+    const [employees, setEmployees] = useState([]); // State for employees
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState(null);
     const [formData, setFormData] = useState({
@@ -18,6 +19,8 @@ const RoutineTasksManager = () => {
         description: '',
         schedule: 'daily',
         timeOfDay: '16:45',
+        isPrintable: false, // New field
+        assignedEmployeeId: '', // New field
     });
 
     const scheduleOptions = [
@@ -32,11 +35,15 @@ const RoutineTasksManager = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const fetchedTasks = await getRoutineTasks();
+            const [fetchedTasks, fetchedEmployees] = await Promise.all([
+                getRoutineTasks(),
+                getEmployees()
+            ]);
             setTasks(fetchedTasks);
+            setEmployees(fetchedEmployees);
         } catch (error) {
-            console.error("Error fetching routine tasks:", error);
-            toast.error("Could not load routine tasks.");
+            console.error("Error fetching routine tasks or employees:", error);
+            toast.error("Could not load required data.");
         }
         setLoading(false);
     };
@@ -46,13 +53,13 @@ const RoutineTasksManager = () => {
     }, []);
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const { name, value, type, checked } = e.target;
+        setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
 
     const handleCancelEdit = () => {
         setEditingId(null);
-        setFormData({ name: '', description: '', schedule: 'daily', timeOfDay: '16:45' });
+        setFormData({ name: '', description: '', schedule: 'daily', timeOfDay: '16:45', isPrintable: false, assignedEmployeeId: '' });
     };
 
     const handleEditClick = (task) => {
@@ -62,6 +69,8 @@ const RoutineTasksManager = () => {
             description: task.description,
             schedule: task.schedule,
             timeOfDay: task.timeOfDay,
+            isPrintable: task.isPrintable || false,
+            assignedEmployeeId: task.assignedEmployeeId || '',
         });
     };
 
@@ -109,26 +118,37 @@ const RoutineTasksManager = () => {
         }
     };
 
+    const getEmployeeName = (employeeId) => {
+        return employees.find(e => e.id === employeeId)?.name || 'Not Assigned';
+    };
+
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-4">Manage Routine Tasks</h3>
             <p className="text-sm text-gray-400 mb-4">
-                Create recurring daily or weekly tasks like cleanup or maintenance. These will appear on the main dashboard at the scheduled time.
+                Create recurring daily or weekly tasks. Printable tasks will generate a mini job card on the dashboard.
             </p>
             
             <form onSubmit={handleSubmit} className="p-4 mb-6 bg-gray-900/50 rounded-lg space-y-4">
                 <h4 className="text-lg font-semibold text-white">{editingId ? 'Edit Task' : 'Add New Task'}</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Input label="Task Name" name="name" value={formData.name} onChange={handleInputChange} placeholder="e.g., End of Day Cleanup" />
                     <Dropdown label="Schedule" name="schedule" value={formData.schedule} onChange={handleInputChange} options={scheduleOptions} />
                     <Input label="Time of Day" name="timeOfDay" type="time" value={formData.timeOfDay} onChange={handleInputChange} />
+                    <Dropdown label="Assign To (Default)" name="assignedEmployeeId" value={formData.assignedEmployeeId} onChange={handleInputChange} options={employees} placeholder="Select Employee..." />
                 </div>
                 <Textarea label="Description / Checklist (one item per line)" name="description" value={formData.description} onChange={handleInputChange} placeholder="Sweep workshop floor&#10;Empty all bins" rows={3}/>
-                <div className="flex justify-end gap-2">
-                    {editingId && <Button type="button" variant="secondary" onClick={handleCancelEdit}>Cancel</Button>}
-                    <Button type="submit" variant="primary">
-                        {editingId ? <><Edit size={16} className="mr-2"/>Save Changes</> : <><PlusCircle size={16} className="mr-2"/>Add Task</>}
-                    </Button>
+                <div className="flex justify-between items-center">
+                    <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+                        <input type="checkbox" name="isPrintable" checked={formData.isPrintable} onChange={handleInputChange} className="h-4 w-4 rounded bg-gray-700 text-blue-600"/>
+                        Make this task a printable job card
+                    </label>
+                    <div className="flex justify-end gap-2">
+                        {editingId && <Button type="button" variant="secondary" onClick={handleCancelEdit}>Cancel</Button>}
+                        <Button type="submit" variant="primary">
+                            {editingId ? <><Edit size={16} className="mr-2"/>Save Changes</> : <><PlusCircle size={16} className="mr-2"/>Add Task</>}
+                        </Button>
+                    </div>
                 </div>
             </form>
 
@@ -141,6 +161,10 @@ const RoutineTasksManager = () => {
                                 <p className="font-bold text-white">{task.name}</p>
                                 <p className="text-sm text-gray-400">
                                     {scheduleOptions.find(s => s.id === task.schedule)?.name} at {task.timeOfDay}
+                                    <span className="mx-2">|</span>
+                                    Assigned to: {getEmployeeName(task.assignedEmployeeId)}
+                                    <span className="mx-2">|</span>
+                                    <span className={task.isPrintable ? 'text-blue-400' : 'text-gray-500'}>{task.isPrintable ? 'Printable' : 'Not Printable'}</span>
                                 </p>
                             </div>
                             <div className="flex gap-2">

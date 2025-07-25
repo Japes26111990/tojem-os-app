@@ -10,7 +10,8 @@ const QrCodePrintModal = ({ product, onClose }) => {
 
     useEffect(() => {
         if (canvasRef.current && product?.partNumber) {
-            QRCode.toCanvas(canvasRef.current, product.partNumber, { width: 200 }, (error) => {
+            // Adjust QR code size to leave space for text
+            QRCode.toCanvas(canvasRef.current, product.partNumber, { width: 150, margin: 1 }, (error) => {
                 if (error) console.error(error);
             });
         }
@@ -23,18 +24,51 @@ const QrCodePrintModal = ({ product, onClose }) => {
         const printWindow = window.open('', '_blank');
         printWindow.document.write(`
             <html>
-                <head><title>Print QR Code</title></head>
-                <body style="text-align: center; margin-top: 50px;">
-                    <h3>${product.name}</h3>
-                    <p>P/N: ${product.partNumber}</p>
+                <head>
+                    <title>Print QR Code - ${product.partNumber}</title>
+                    <style>
+                        @media print {
+                            @page {
+                                size: 23mm 23mm;
+                                margin: 0;
+                            }
+                            body {
+                                margin: 0;
+                                padding: 1mm; /* Small padding inside the sticker */
+                                font-family: sans-serif;
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                            }
+                            img {
+                                max-width: 100%;
+                                height: auto;
+                            }
+                            p {
+                                font-size: 7pt; /* Small font size for the label */
+                                font-weight: bold;
+                                margin: 2mm 0 0 0;
+                                padding: 0;
+                                text-align: center;
+                                word-break: break-word;
+                            }
+                        }
+                    </style>
+                </head>
+                <body>
                     <img src="${canvas.toDataURL()}" />
+                    <p>${product.name}</p>
                 </body>
             </html>
         `);
         printWindow.document.close();
         printWindow.focus();
-        printWindow.print();
-        printWindow.close();
+        // A short delay helps ensure images are loaded before printing
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
     };
 
     return (
@@ -45,9 +79,10 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                 </div>
                 <div className="p-6 flex flex-col items-center justify-center">
-                    <h3 className="text-lg font-semibold text-white">{product.name}</h3>
-                    <p className="text-sm text-gray-400 mb-4">{product.partNumber}</p>
+                    {/* The displayed canvas is for preview, the printed version is styled separately */}
                     <canvas ref={canvasRef}></canvas>
+                    <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
+                    <p className="text-sm text-gray-400">{product.partNumber}</p>
                 </div>
                 <div className="p-4 bg-gray-900/50 flex justify-end">
                     <Button onClick={handlePrint} variant="primary">

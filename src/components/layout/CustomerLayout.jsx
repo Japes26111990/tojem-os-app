@@ -4,8 +4,8 @@ import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../ui/Button';
 import TojemLogo from '../../assets/TOJEM 2024.png';
-import { Link } from 'react-router-dom'; // Import Link
-import { QrCode } from 'lucide-react'; // Import Icon
+import { Link } from 'react-router-dom';
+import { QrCode } from 'lucide-react';
 
 const CustomerLayout = ({ children }) => {
     const { user, signOut } = useAuth();
@@ -17,7 +17,6 @@ const CustomerLayout = ({ children }) => {
                     <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
                 </Link>
                 <div className="flex items-center space-x-4">
-                    {/* NEW SCANNER BUTTON */}
                     <Link to="/portal/scanner">
                         <Button variant="primary" className="py-1 px-3 text-sm">
                             <QrCode size={16} className="mr-2" />

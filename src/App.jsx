@@ -46,6 +46,8 @@ import TimeAttendanceReport from './pages/TimeAttendanceReport.jsx';
 import KpiDashboardPage from './pages/KpiDashboardPage.jsx';
 import StockHubPage from './pages/StockHubPage.jsx';
 import ProductCatalogPage from './pages/ProductCatalogPage.jsx';
+import ClientScannerPage from './pages/ClientScannerPage.jsx';
+import ConsumablesCatalogPage from './pages/ConsumablesCatalogPage.jsx';
 
 const StaffLayout = () => (
     <MainLayout>
@@ -87,6 +89,7 @@ function App() {
                         <Route index element={<CustomerDashboardPage />} />
                         <Route path="products" element={<ProductBrowserPage />} />
                         <Route path="order/:orderId" element={<CustomerOrderDetailPage />} />
+                        <Route path="scanner" element={<ClientScannerPage />} />
                         <Route path="*" element={<Navigate to="/portal" replace />} />
                     </Route>
                 ) : (
@@ -121,6 +124,7 @@ function App() {
                         <Route path="/job-reprint" element={<RoleBasedRoute permission="jobReprint"><JobReprintPage /></RoleBasedRoute>} />
                         <Route path="/time-attendance" element={<RoleBasedRoute permission="performance"><TimeAttendanceReport /></RoleBasedRoute>} />
                         <Route path="/product-catalog" element={<RoleBasedRoute permission="settings"><ProductCatalogPage /></RoleBasedRoute>} />
+                        <Route path="/consumables-catalog" element={<RoleBasedRoute permission="settings"><ConsumablesCatalogPage /></RoleBasedRoute>} />
                         <Route path="*" element={<Navigate to="/dashboard" replace />} />
                     </Route>
                 )}

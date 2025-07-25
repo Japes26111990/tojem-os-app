@@ -3,14 +3,14 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import Button from '../ui/Button';
-import TopNavBar from './TopNavBar'; // <-- IMPORT THE NEW TOPNAVBAR
+import TopNavBar from './TopNavBar';
 import NotificationBell from './NotificationBell';
 import TojemLogo from '../../assets/TOJEM 2024.png';
+import AppletSidebar from './AppletSidebar'; // <-- NEW IMPORT
 
 const MainLayout = ({ children }) => {
   const { user, signOut } = useAuth();
 
-  // This layout is for users who have the sidebar hidden by their role
   if (user?.hideSidebar) {
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">
@@ -33,19 +33,14 @@ const MainLayout = ({ children }) => {
     );
   }
 
-  // This is the new main layout with the top navigation bar
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white">
-      {/* HEADER: Updated for better alignment and spacing */}
-      <header className="flex items-center justify-between p-2 border-b border-gray-700 bg-gray-800/50 flex-shrink-0">
-        {/* Left section for navigation */}
+      <header className="flex items-center justify-between p-2 border-b border-gray-700 bg-gray-800/50 flex-shrink-0 z-50">
         <div className="flex-grow">
             <TopNavBar />
         </div>
-
-        {/* Right section for user info and actions */}
         <div className="flex items-center space-x-4 pr-2">
-            <div className="w-px h-8 bg-gray-700"></div> {/* Vertical separator */}
+            <div className="w-px h-8 bg-gray-700"></div>
             <NotificationBell />
             <div className="text-right">
                <p className="text-sm text-gray-400 truncate max-w-[150px]">{user?.email || 'Guest'}</p>
@@ -57,9 +52,12 @@ const MainLayout = ({ children }) => {
         </div>
       </header>
       
-      <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto">
-         {children}
-      </main>
+      <div className="flex-1 flex">
+        <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto mr-16"> {/* <-- ADDED MARGIN FOR APPLET BAR */}
+            {children}
+        </main>
+        <AppletSidebar /> {/* <-- ADDED THE NEW APPLET SIDEBAR */}
+      </div>
     </div>
   );
 };

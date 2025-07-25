@@ -9,16 +9,9 @@ import {
   Calendar as CalendarIcon, SlidersHorizontal, ChevronDown,
   Briefcase, Banknote, BrainCircuit, DollarSign,
   Megaphone, ShoppingCart, ClipboardList, Cpu,
-  LayoutGrid, PackageSearch, UserCheck, Map, Clock, BarChart,
-  Aperture, NotebookText, Sun, Calculator, Factory
+  LayoutGrid, PackageSearch, UserCheck, Map, Clock, BarChart, Factory
 } from 'lucide-react';
 import TojemLogo from '../../assets/TOJEM 2024.png';
-
-// Import the applet components
-import NotesApplet from '../features/sidebar/NotesApplet.jsx';
-import WeatherApplet from '../features/sidebar/WeatherApplet.jsx';
-import CalendarApplet from '../features/sidebar/CalendarApplet.jsx';
-import CalculatorApplet from '../features/sidebar/CalculatorApplet.jsx';
 
 const NavLinkItem = ({ to, icon, text }) => (
   <NavLink
@@ -36,16 +29,14 @@ const NavLinkItem = ({ to, icon, text }) => (
 
 const NavGroup = ({ title, icon, children, dropdownWidth = 'w-64' }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const timeoutRef = useRef(null); // Ref to hold the timeout ID
+  const timeoutRef = useRef(null);
 
-  // Add a delay on mouse leave to prevent premature closing
   const handleMouseEnter = () => {
-    clearTimeout(timeoutRef.current); // Clear any pending close timer
+    clearTimeout(timeoutRef.current);
     setIsOpen(true);
   };
 
   const handleMouseLeave = () => {
-    // Set a timer to close the menu after a short delay (e.g., 150ms)
     timeoutRef.current = setTimeout(() => {
       setIsOpen(false);
     }, 150);
@@ -98,6 +89,7 @@ const TopNavBar = () => {
             {canSee('purchasing') && <NavLinkItem to="/stock-hub" icon={<Package size={16} />} text="Stock Hub" />}
             {canSee('stockTake') && <NavLinkItem to="/stock-take" icon={<ClipboardList size={16} />} text="Stock Take App" />}
             {canSee('settings') && <NavLinkItem to="/product-catalog" icon={<Factory size={16} />} text="Product Catalog" />}
+            {canSee('settings') && <NavLinkItem to="/consumables-catalog" icon={<PackageSearch size={16} />} text="Consumables Catalog" />}
           </NavGroup>
         )}
 
@@ -130,18 +122,6 @@ const TopNavBar = () => {
             {canSee('performance') && <NavLinkItem to="/time-attendance" icon={<Clock size={16} />} text="Time & Attendance" />}
           </NavGroup>
         )}
-
-        <NavGroup title="Tools" icon={<Aperture size={18} />} dropdownWidth="w-72">
-            <div className="p-2 space-y-2">
-                <NotesApplet />
-                <hr className="border-gray-700" />
-                <WeatherApplet />
-                <hr className="border-gray-700" />
-                <CalendarApplet />
-                 <hr className="border-gray-700" />
-                <CalculatorApplet />
-            </div>
-        </NavGroup>
 
         {canSee('settings') && <NavLink to="/settings" className="flex items-center px-4 py-2 text-sm font-semibold text-gray-300 rounded-md hover:bg-gray-700 transition-colors"><SlidersHorizontal size={18} /><span className="ml-2">Settings</span></NavLink>}
       </div>
