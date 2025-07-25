@@ -1,4 +1,4 @@
-// src/api/firestore.js (UPDATED with Audit Logging)
+// src/api/firestore.js (UPDATED with Audit Logging & Routine Task Completion)
 // A new `logAuditEvent` function has been added to create a secure, permanent record
 // of important actions taken within the application, such as user creation or stock reconciliation.
 
@@ -24,6 +24,47 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
+
+// =================================================================================================
+// NEW: ROUTINE TASK COMPLETION API
+// =================================================================================================
+
+/**
+ * Marks a routine task as complete for a specific day.
+ * @param {string} taskId - The ID of the routine task.
+ * @param {string} taskName - The name of the task.
+ * @param {string} userId - The UID of the user completing the task.
+ * @param {string} userEmail - The email of the user completing the task.
+ * @returns {Promise}
+ */
+export const markRoutineTaskAsDone = (taskId, taskName, userId, userEmail) => {
+    const completionId = `${taskId}_${new Date().toISOString().split('T')[0]}`;
+    const completionRef = doc(db, 'routineTaskCompletions', completionId);
+    return setDoc(completionRef, {
+        taskId,
+        taskName,
+        completedByUserId: userId,
+        completedByUserEmail: userEmail,
+        completionDate: new Date().toISOString().split('T')[0],
+        timestamp: serverTimestamp(),
+    });
+};
+
+/**
+ * Fetches the IDs of all routine tasks completed today.
+ * @returns {Promise<Set<string>>} A Set containing the IDs of tasks completed today.
+ */
+export const getTodaysCompletedRoutineTasks = async () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const q = query(collection(db, 'routineTaskCompletions'), where('completionDate', '==', todayStr));
+    const snapshot = await getDocs(q);
+    const completedIds = new Set();
+    snapshot.forEach(doc => {
+        completedIds.add(doc.data().taskId);
+    });
+    return completedIds;
+};
+
 
 // =================================================================================================
 // NEW: AUDIT LOGGING API

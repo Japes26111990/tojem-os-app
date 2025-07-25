@@ -1,5 +1,4 @@
-// src/pages/DashboardPage.jsx (UPDATED)
-// This version now fetches and displays the RoutineTasksWidget for the current day.
+// src/pages/DashboardPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -8,7 +7,8 @@ import {
     collection, 
     getDocs, 
     listenToSystemStatus,
-    getRoutineTasks // <-- NEW IMPORT
+    getRoutineTasks,
+    getTodaysCompletedRoutineTasks // <-- NEW IMPORT
 } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
@@ -22,7 +22,7 @@ import TopReworkCausesWidget from '../components/intelligence/TopReworkCausesWid
 import BottleneckWidget from '../components/intelligence/BottleneckWidget.jsx';
 import WorkshopThroughputGraph from '../components/intelligence/WorkshopThroughputGraph.jsx';
 import ManagerFocusWidget from '../components/features/dashboard/ManagerFocusWidget';
-import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget'; // <-- NEW IMPORT
+import RoutineTasksWidget from '../components/features/dashboard/RoutineTasksWidget';
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center space-x-3">
@@ -42,36 +42,47 @@ const DashboardPage = () => {
     const [employees, setEmployees] = useState([]);
     const [historicalSales, setHistoricalSales] = useState([]);
     const [systemStatus, setSystemStatus] = useState(null);
-    const [todaysTasks, setTodaysTasks] = useState([]); // <-- NEW STATE
+    const [todaysTasks, setTodaysTasks] = useState([]);
     const [loading, setLoading] = useState(true);
+
+    // NEW: Function to refetch task data when one is completed
+    const refreshTasks = async () => {
+        try {
+            const [allTasks, completedIds] = await Promise.all([
+                getRoutineTasks(),
+                getTodaysCompletedRoutineTasks()
+            ]);
+
+            const dayOfWeek = moment().format('dddd').toLowerCase();
+            const filteredTasks = allTasks.filter(task => {
+                const isScheduledToday = task.schedule === 'daily' || task.schedule === `weekly_${dayOfWeek}`;
+                const isNotCompleted = !completedIds.has(task.id);
+                return isScheduledToday && isNotCompleted;
+            });
+            setTodaysTasks(filteredTasks);
+        } catch (error) {
+            console.error("Failed to refresh tasks:", error);
+        }
+    };
 
     useEffect(() => {
         setLoading(true);
+        let unsubscribeJobs = () => {};
+        let unsubscribeStatus = () => {};
+
         const fetchData = async () => {
             try {
-                const [employeeItems, historicalSalesSnapshot, routineTasks] = await Promise.all([
+                const [employeeItems, historicalSalesSnapshot] = await Promise.all([
                     getEmployees(), 
                     getDocs(collection(db, 'historicalSales')),
-                    getRoutineTasks() // <-- FETCH ROUTINE TASKS
                 ]);
                 setEmployees(employeeItems);
                 setHistoricalSales(historicalSalesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data()})))
 
-                // --- NEW: Logic to filter tasks for today ---
-                const dayOfWeek = moment().format('dddd').toLowerCase(); // e.g., 'friday'
-                const filteredTasks = routineTasks.filter(task => {
-                    return task.schedule === 'daily' || task.schedule === `weekly_${dayOfWeek}`;
-                });
-                setTodaysTasks(filteredTasks);
-                // --- END NEW LOGIC ---
+                await refreshTasks(); // Initial fetch of tasks
 
-                const unsubscribeJobs = listenToJobCards(setJobs);
-                const unsubscribeStatus = listenToSystemStatus(setSystemStatus);
-                
-                return () => {
-                    unsubscribeJobs();
-                    unsubscribeStatus();
-                };
+                unsubscribeJobs = listenToJobCards(setJobs);
+                unsubscribeStatus = listenToSystemStatus(setSystemStatus);
 
             } catch (error) {
                 console.error("Failed to fetch dashboard data:", error);
@@ -80,8 +91,11 @@ const DashboardPage = () => {
             }
         }
         
-        const unsubscribePromise = fetchData();
-        return () => { unsubscribePromise.then(cleanup => cleanup && cleanup()); };
+        fetchData();
+        return () => {
+            unsubscribeJobs();
+            unsubscribeStatus();
+        };
     }, []);
 
     const dashboardData = useMemo(() => {
@@ -166,10 +180,9 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
-            {/* --- WIDGETS ARE NOW DISPLAYED IN A GRID --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ManagerFocusWidget />
-                <RoutineTasksWidget tasks={todaysTasks} />
+                <RoutineTasksWidget tasks={todaysTasks} onTaskComplete={refreshTasks} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
