@@ -1,6 +1,4 @@
-// src/api/firestore.js (UPDATED with Audit Logging & Routine Task Completion)
-// A new `logAuditEvent` function has been added to create a secure, permanent record
-// of important actions taken within the application, such as user creation or stock reconciliation.
+// src/api/firestore.js
 
 import {
     collection,
@@ -26,17 +24,9 @@ import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
 // =================================================================================================
-// NEW: ROUTINE TASK COMPLETION API
+// ROUTINE TASK COMPLETION API
 // =================================================================================================
 
-/**
- * Marks a routine task as complete for a specific day.
- * @param {string} taskId - The ID of the routine task.
- * @param {string} taskName - The name of the task.
- * @param {string} userId - The UID of the user completing the task.
- * @param {string} userEmail - The email of the user completing the task.
- * @returns {Promise}
- */
 export const markRoutineTaskAsDone = (taskId, taskName, userId, userEmail) => {
     const completionId = `${taskId}_${new Date().toISOString().split('T')[0]}`;
     const completionRef = doc(db, 'routineTaskCompletions', completionId);
@@ -50,10 +40,6 @@ export const markRoutineTaskAsDone = (taskId, taskName, userId, userEmail) => {
     });
 };
 
-/**
- * Fetches the IDs of all routine tasks completed today.
- * @returns {Promise<Set<string>>} A Set containing the IDs of tasks completed today.
- */
 export const getTodaysCompletedRoutineTasks = async () => {
     const todayStr = new Date().toISOString().split('T')[0];
     const q = query(collection(db, 'routineTaskCompletions'), where('completionDate', '==', todayStr));
@@ -67,17 +53,9 @@ export const getTodaysCompletedRoutineTasks = async () => {
 
 
 // =================================================================================================
-// NEW: AUDIT LOGGING API
+// AUDIT LOGGING API
 // =================================================================================================
 
-/**
- * Creates a secure audit log for a sensitive action.
- * @param {string} action - The action being performed (e.g., 'user_created', 'stock_reconciled').
- * @param {string} userId - The UID of the user performing the action.
- * @param {string} userEmail - The email of the user performing the action.
- * @param {Object} details - An object containing relevant details about the event.
- * @returns {Promise}
- */
 export const logAuditEvent = (action, userId, userEmail, details) => {
     const auditLogsCollection = collection(db, 'auditLogs');
     return addDoc(auditLogsCollection, {
@@ -486,6 +464,26 @@ const productCategoriesCollection = collection(db, 'productCategories');
 export const getProductCategories = async () => getDocs(query(productCategoriesCollection, orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addProductCategory = (categoryName) => addDoc(productCategoriesCollection, { name: categoryName });
 export const deleteProductCategory = (categoryId) => deleteDoc(doc(db, 'productCategories', categoryId));
+
+// --- Functions to manage Catalog Data dropdowns ---
+const getGenericOptions = async (collectionName) => {
+    const q = query(collection(db, collectionName), orderBy('name'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getMakes = () => getGenericOptions('makes');
+// UPDATED: addMake now accepts an array of categoryIds
+export const addMake = (name, categoryIds) => addDoc(collection(db, 'makes'), { name, categoryIds });
+export const deleteMake = (id) => deleteDoc(doc(db, 'makes', id));
+
+export const getModels = () => getGenericOptions('models');
+export const addModel = (name, makeId) => addDoc(collection(db, 'models'), { name, makeId });
+export const deleteModel = (id) => deleteDoc(doc(db, 'models', id));
+
+export const getUnits = () => getGenericOptions('units');
+export const addUnit = (name) => addDoc(collection(db, 'units'), { name });
+export const deleteUnit = (id) => deleteDoc(doc(db, 'units', id));
 
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
 export const getLinkedRecipesForProduct = async (productId) => {

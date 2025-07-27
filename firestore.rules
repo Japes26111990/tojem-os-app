@@ -17,8 +17,6 @@ service cloud.firestore {
     }
 
     // --- Core System Collections ---
-
-    // USERS & ROLES: Defines who can do what.
     match /users/{userId} {
       allow read: if isAuth() && (request.auth.uid == userId || isManager());
       allow write: if isManager();
@@ -27,14 +25,10 @@ service cloud.firestore {
       allow read: if isAuth();
       allow write: if isManager();
     }
-
-    // SCAN EVENTS: The secure entry point for status changes.
     match /scanEvents/{eventId} {
       allow read, update, delete: if false;
       allow create: if isAuth();
     }
-
-    // NOTIFICATIONS: System-generated alerts.
     match /notifications/{notificationId} {
       allow read: if isAuth() && resource.data.targetRole == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
       allow update: if isAuth();
@@ -42,74 +36,58 @@ service cloud.firestore {
     }
     
     // --- Production & Workshop Collections ---
-
-    // JOB CARDS: The core of the workshop.
     match /createdJobCards/{jobId} {
-      // --- FIX: Allow any authenticated user to read job cards ---
       allow read: if isAuth();
-      // Writes are still restricted to managers (for manual edits) or backend functions.
       allow create, update, delete: if isManager();
     }
-
-    // RECIPES & PRODUCTS: The manufacturing DNA.
-    match /products/{docId} { allow read: if isAuth(); allow write: if isManager(); }
-    match /productCategories/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /jobStepDetails/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /productRecipeLinks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
 
-    // --- Supply Chain Collections ---
+    // --- Rules for Catalog Data Dropdowns ---
+    match /productCategories/{docId} { allow read, write: if isAuth(); }
+    // 'manufacturers' rule has been removed
+    match /makes/{docId} { allow read, write: if isAuth(); }
+    match /models/{docId} { allow read, write: if isAuth(); }
+    match /units/{docId} { allow read, write: if isAuth(); }
 
-    // INVENTORY: Components, materials, supplies.
-    match /components/{docId} { allow read: if isAuth(); allow write: if isManager(); }
-    match /rawMaterials/{docId} { allow read: if isAuth(); allow write: if isManager(); }
-    match /workshopSupplies/{docId} { allow read: if isAuth(); allow write: if isManager(); }
-    
-    // PURCHASING & SUPPLIERS
+    // --- Supply Chain Collections ---
+    match /inventoryItems/{itemId} {
+        allow read: if isAuth();
+        allow write: if isManager();
+    }
     match /purchaseQueue/{docId} { allow read, write: if isAuth(); }
     match /suppliers/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /supplierItemPricing/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /oneOffPurchases/{docId} { allow read, write: if isAuth(); }
-    
-    // PICKING LISTS
     match /pickingLists/{docId} { allow read, write: if isAuth(); }
 
     // --- Company & Staff Collections ---
-
-    // EMPLOYEES, DEPARTMENTS, SKILLS
     match /employees/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /departments/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /skills/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /skillHistory/{docId} { allow read, write: if isAuth(); }
-    
-    // TOOLS & ASSETS
     match /tools/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /toolAccessories/{docId} { allow read: if isAuth(); allow write: if isManager(); }
 
     // --- Sales & Customer Collections ---
-
-    // SALES ORDERS: Clients can only see their own orders.
     match /salesOrders/{orderId} {
       allow read: if isManager() || (isClient() && resource.data.customerEmail == request.auth.token.email);
       allow write: if isManager();
     }
-    
-    // QUOTES & CAMPAIGNS
     match /quotes/{docId} { allow read, write: if isManager(); }
     match /marketingCampaigns/{docId} { allow read, write: if isManager(); }
 
     // --- Administration & BI Collections ---
-
-    // FINANCIALS & LOGS
     match /overheadsCategories/{docId=**} { allow read, write: if isManager(); }
     match /historicalSales/{docId} { allow read, write: if isManager(); }
     match /dailyWorkLogs/{docId} { allow read: if isManager(); allow write: if false; }
     
-    // KAIZEN, PRAISE, TRAINING
+    // --- KAIZEN, PRAISE, TRAINING ---
     match /kaizenSuggestions/{docId} { allow create: if isAuth(); allow read, update, delete: if isManager(); }
     match /praise/{docId} { allow create: if isAuth(); allow read: if isAuth(); allow update, delete: if isManager(); }
     match /trainingResources/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     
-    // OTHER
+    // --- OTHER ---
     match /reworkReasons/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /routineTasks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /systemStatus/{docId} { allow read: if isAuth(); allow write: if false; }

@@ -3,9 +3,9 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions'; // Import getFunctions
+import { getFunctions } from 'firebase/functions';
 
-// Your web app's Firebase configuration from the .env.local file
+// Your web app's Firebase configuration from the .env file
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -21,6 +21,6 @@ const app = initializeApp(firebaseConfig);
 // Initialize and export Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app); // Initialize and export getFunctions
+export const functions = getFunctions(app);
 
 export default app;

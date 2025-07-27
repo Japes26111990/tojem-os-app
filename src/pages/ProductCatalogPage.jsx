@@ -9,7 +9,9 @@ import { Search, PlusCircle, Factory, QrCode, Edit, Trash2, Upload } from 'lucid
 import toast from 'react-hot-toast';
 import ProductModal from '../components/features/catalog/ProductModal';
 import QrCodePrintModal from '../components/features/catalog/QrCodePrintModal';
-import ProductImportModal from '../components/features/catalog/ProductImportModal'; // <-- NEW IMPORT
+import ProductImportModal from '../components/features/catalog/ProductImportModal';
+import { writeBatch, doc } from 'firebase/firestore';
+import { db } from '../api/firebase';
 
 const ProductCatalogPage = () => {
     const [products, setProducts] = useState([]);
@@ -21,14 +23,14 @@ const ProductCatalogPage = () => {
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false); // <-- NEW STATE
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
     const fetchProducts = async () => {
         setLoading(true);
         try {
             const allItems = await getAllInventoryItems();
-            // Filter for only manufactured products
             setProducts(allItems.filter(item => item.category === 'Product'));
         } catch (error) {
             toast.error("Failed to load product catalog.");
@@ -40,6 +42,71 @@ const ProductCatalogPage = () => {
     useEffect(() => {
         fetchProducts();
     }, []);
+    
+    const filteredProducts = useMemo(() => {
+        return products.filter(product => {
+            const searchMatch = (
+                 product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+            const makeMatch = !filters.make || product.make === filters.make;
+            const modelMatch = !filters.model || product.model === filters.model;
+            return searchMatch && makeMatch && modelMatch;
+        });
+    }, [products, searchTerm, filters]);
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            const allVisibleIds = new Set(filteredProducts.map(p => p.id));
+            setSelectedIds(allVisibleIds);
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+
+    const handleSelectSingle = (productId, isChecked) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (isChecked) {
+                newSet.add(productId);
+            } else {
+                newSet.delete(productId);
+            }
+            return newSet;
+        });
+    };
+    
+    const isAllSelected = filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
+
+    const handleDeleteSelected = () => {
+        if (selectedIds.size === 0) return;
+        toast((t) => (
+            <span>
+                Delete {selectedIds.size} selected products?
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    toast.dismiss(t.id);
+                    const batch = writeBatch(db);
+                    selectedIds.forEach(id => {
+                        const docRef = doc(db, 'inventoryItems', id);
+                        batch.delete(docRef);
+                    });
+                    try {
+                        await batch.commit();
+                        toast.success(`${selectedIds.size} products deleted successfully.`);
+                        setSelectedIds(new Set());
+                        fetchProducts();
+                    } catch (err) {
+                        toast.error("Failed to delete selected products.");
+                    }
+                }}>
+                    Confirm Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: '⚠️' });
+    };
 
     const handleOpenModal = (product = null) => {
         setSelectedProduct(product);
@@ -54,7 +121,7 @@ const ProductCatalogPage = () => {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
-        fetchProducts(); // Refresh data after modal closes
+        fetchProducts();
     };
 
     const handleDelete = (productId) => {
@@ -79,7 +146,6 @@ const ProductCatalogPage = () => {
         ), { icon: '⚠️' });
     };
 
-    // Deriving filter options from the product list
     const makes = useMemo(() => [...new Set(products.map(p => p.make).filter(Boolean))].map(m => ({ id: m, name: m })), [products]);
     const models = useMemo(() => {
         if (!filters.make) return [];
@@ -91,31 +157,24 @@ const ProductCatalogPage = () => {
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
             if (name === 'make') {
-                newFilters.model = ''; // Reset model if make changes
+                newFilters.model = '';
             }
             return newFilters;
         });
     };
 
-    const filteredProducts = useMemo(() => {
-        return products.filter(product => {
-            const searchMatch = (
-                product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
-            );
-            const makeMatch = !filters.make || product.make === filters.make;
-            const modelMatch = !filters.model || product.model === filters.model;
-            return searchMatch && makeMatch && modelMatch;
-        });
-    }, [products, searchTerm, filters]);
-
     return (
         <>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Catalog</h2>
+                     <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Command Center</h2>
                     <div className="flex gap-2">
-                        {/* NEW IMPORT BUTTON */}
+                        {selectedIds.size > 0 && (
+                            <Button onClick={handleDeleteSelected} variant="danger">
+                                <Trash2 size={18} className="mr-2" />
+                                Delete Selected ({selectedIds.size})
+                            </Button>
+                        )}
                         <Button onClick={() => setIsImportModalOpen(true)} variant="secondary">
                             <Upload size={18} className="mr-2" />
                             Import from CSV
@@ -137,7 +196,7 @@ const ProductCatalogPage = () => {
                                 onChange={e => setSearchTerm(e.target.value)}
                                 className="pl-10"
                             />
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
                         <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" />
                         <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
@@ -149,36 +208,62 @@ const ProductCatalogPage = () => {
                         <table className="w-full text-left">
                             <thead className="bg-gray-900/50">
                                 <tr>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
+                                     <th className="p-3 w-4">
+                                        <input 
+                                            type="checkbox"
+                                            checked={isAllSelected}
+                                            onChange={handleSelectAll}
+                                            className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                        />
+                                     </th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Model</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {loading ? (
-                                    <tr><td colSpan="6" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                 {loading ? (
+                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">Loading products...</td></tr>
                                 ) : filteredProducts.length === 0 ? (
-                                    <tr><td colSpan="6" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
-                                ) : (
+                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
+                                 ) : (
                                     filteredProducts.map(product => (
-                                        <tr key={product.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                        <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
+                                            <td className="p-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(product.id)}
+                                                    onChange={(e) => handleSelectSingle(product.id, e.target.checked)}
+                                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                                />
+                                            </td>
+                                            <td className="p-2">
+                                                <img 
+                                                    src={product.photoUrl || `https://placehold.co/100x75/1f2937/9ca3af?text=No+Image`} 
+                                                    alt={product.name}
+                                                    className="w-20 h-14 object-cover rounded-md"
+                                                />
+                                            </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
                                             <td className="p-3 text-gray-400">{product.make || 'N/A'}</td>
                                             <td className="p-3 text-gray-400">{product.model || 'N/A'}</td>
+                                            <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
                                                 <div className="flex justify-center gap-2">
-                                                    <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
+                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))
+                                     ))
                                 )}
                             </tbody>
                         </table>
@@ -200,7 +285,6 @@ const ProductCatalogPage = () => {
                 />
             )}
 
-            {/* NEW: Render the import modal */}
             {isImportModalOpen && (
                 <ProductImportModal
                     onClose={() => setIsImportModalOpen(false)}

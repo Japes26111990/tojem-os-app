@@ -1,18 +1,18 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/25/2025 16:27:24
+Generated on: 07/27/2025 20:29:04
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firebase.js
+FILE: C:\Development\tojem-os-app\src\api\firebase.js
 ==================================================
 // src/api/firebase.js
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import { getFunctions } from 'firebase/functions'; // Import getFunctions
+import { getFunctions } from 'firebase/functions';
 
-// Your web app's Firebase configuration from the .env.local file
+// Your web app's Firebase configuration from the .env file
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -28,17 +28,15 @@ const app = initializeApp(firebaseConfig);
 // Initialize and export Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app); // Initialize and export getFunctions
+export const functions = getFunctions(app);
 
 export default app;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firestore.js
+FILE: C:\Development\tojem-os-app\src\api\firestore.js
 ==================================================
-// src/api/firestore.js (UPDATED with Audit Logging & Routine Task Completion)
-// A new `logAuditEvent` function has been added to create a secure, permanent record
-// of important actions taken within the application, such as user creation or stock reconciliation.
+// src/api/firestore.js
 
 import {
     collection,
@@ -64,17 +62,9 @@ import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
 
 // =================================================================================================
-// NEW: ROUTINE TASK COMPLETION API
+// ROUTINE TASK COMPLETION API
 // =================================================================================================
 
-/**
- * Marks a routine task as complete for a specific day.
- * @param {string} taskId - The ID of the routine task.
- * @param {string} taskName - The name of the task.
- * @param {string} userId - The UID of the user completing the task.
- * @param {string} userEmail - The email of the user completing the task.
- * @returns {Promise}
- */
 export const markRoutineTaskAsDone = (taskId, taskName, userId, userEmail) => {
     const completionId = `${taskId}_${new Date().toISOString().split('T')[0]}`;
     const completionRef = doc(db, 'routineTaskCompletions', completionId);
@@ -88,10 +78,6 @@ export const markRoutineTaskAsDone = (taskId, taskName, userId, userEmail) => {
     });
 };
 
-/**
- * Fetches the IDs of all routine tasks completed today.
- * @returns {Promise<Set<string>>} A Set containing the IDs of tasks completed today.
- */
 export const getTodaysCompletedRoutineTasks = async () => {
     const todayStr = new Date().toISOString().split('T')[0];
     const q = query(collection(db, 'routineTaskCompletions'), where('completionDate', '==', todayStr));
@@ -105,17 +91,9 @@ export const getTodaysCompletedRoutineTasks = async () => {
 
 
 // =================================================================================================
-// NEW: AUDIT LOGGING API
+// AUDIT LOGGING API
 // =================================================================================================
 
-/**
- * Creates a secure audit log for a sensitive action.
- * @param {string} action - The action being performed (e.g., 'user_created', 'stock_reconciled').
- * @param {string} userId - The UID of the user performing the action.
- * @param {string} userEmail - The email of the user performing the action.
- * @param {Object} details - An object containing relevant details about the event.
- * @returns {Promise}
- */
 export const logAuditEvent = (action, userId, userEmail, details) => {
     const auditLogsCollection = collection(db, 'auditLogs');
     return addDoc(auditLogsCollection, {
@@ -525,6 +503,26 @@ export const getProductCategories = async () => getDocs(query(productCategoriesC
 export const addProductCategory = (categoryName) => addDoc(productCategoriesCollection, { name: categoryName });
 export const deleteProductCategory = (categoryId) => deleteDoc(doc(db, 'productCategories', categoryId));
 
+// --- Functions to manage Catalog Data dropdowns ---
+const getGenericOptions = async (collectionName) => {
+    const q = query(collection(db, collectionName), orderBy('name'));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getMakes = () => getGenericOptions('makes');
+// UPDATED: addMake now accepts an array of categoryIds
+export const addMake = (name, categoryIds) => addDoc(collection(db, 'makes'), { name, categoryIds });
+export const deleteMake = (id) => deleteDoc(doc(db, 'makes', id));
+
+export const getModels = () => getGenericOptions('models');
+export const addModel = (name, makeId) => addDoc(collection(db, 'models'), { name, makeId });
+export const deleteModel = (id) => deleteDoc(doc(db, 'models', id));
+
+export const getUnits = () => getGenericOptions('units');
+export const addUnit = (name) => addDoc(collection(db, 'units'), { name });
+export const deleteUnit = (id) => deleteDoc(doc(db, 'units', id));
+
 const productRecipeLinksCollection = collection(db, 'productRecipeLinks');
 export const getLinkedRecipesForProduct = async (productId) => {
     const q = query(productRecipeLinksCollection, where('productId', '==', productId));
@@ -704,7 +702,7 @@ export { collection, query, where, getDocs, onSnapshot };
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firestore.test.js
+FILE: C:\Development\tojem-os-app\src\api\firestore.test.js
 ==================================================
 // src/api/firestore.test.js
 
@@ -809,7 +807,7 @@ describe('Firestore API Tests', () => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobUtils.test.js
+FILE: C:\Development\tojem-os-app\src\api\jobUtils.test.js
 ==================================================
 // src/utils/jobUtils.test.js
 
@@ -896,7 +894,7 @@ describe('calculateJobDuration', () => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\calendar\SchedulingAssistantModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\calendar\SchedulingAssistantModal.jsx
 ==================================================
 // src/components/features/calendar/SchedulingAssistantModal.jsx
 
@@ -1180,211 +1178,74 @@ export default SchedulingAssistantModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\ProductImportModal.jsx
-==================================================
-// src/components/features/catalog/ProductImportModal.jsx
-
-import React, { useState } from 'react';
-import { writeBatch, doc, collection } from 'firebase/firestore';
-import { db } from '../../../api/firebase';
-import Button from '../../ui/Button';
-import Input from '../../ui/Input'; // <-- FIX: Added the missing import for the Input component
-import { X, Upload, CheckCircle } from 'lucide-react';
-import toast from 'react-hot-toast';
-
-// Simple CSV parsing function to remove the external dependency
-const parseCsvData = (csvText) => {
-    try {
-        const lines = csvText.replace(/\r/g, '').split('\n');
-        if (lines.length < 2) return [];
-        
-        const header = lines[0].split(',').map(h => h.trim());
-        const data = [];
-
-        for (let i = 1; i < lines.length; i++) {
-            if (!lines[i].trim()) continue;
-            const values = lines[i].split(',').map(v => v.trim());
-            const rowObject = {};
-            header.forEach((col, index) => {
-                rowObject[col] = values[index];
-            });
-            data.push(rowObject);
-        }
-        return data;
-    } catch (error) {
-        console.error("CSV Parsing Error:", error);
-        toast.error("Could not parse the CSV file. Please check its format.");
-        return [];
-    }
-};
-
-const ProductImportModal = ({ onClose, onImportSuccess }) => {
-    const [file, setFile] = useState(null);
-    const [parsedData, setParsedData] = useState([]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const handleFileChange = (e) => {
-        const selectedFile = e.target.files[0];
-        if (selectedFile && selectedFile.type === 'text/csv') {
-            setFile(selectedFile);
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                const results = parseCsvData(event.target.result);
-                setParsedData(results);
-            };
-            reader.readAsText(selectedFile);
-        } else {
-            toast.error("Please select a valid .csv file.");
-        }
-    };
-
-    const handleImport = async () => {
-        if (parsedData.length === 0) {
-            return toast.error("No valid data to import.");
-        }
-        setIsSubmitting(true);
-        try {
-            const batch = writeBatch(db);
-            const inventoryCollection = collection(db, 'inventoryItems');
-
-            parsedData.forEach((row) => {
-                // Basic validation for required fields
-                if (row.name && row.partNumber) {
-                    const newDocRef = doc(inventoryCollection);
-                    const productData = {
-                        name: row.name,
-                        partNumber: row.partNumber,
-                        make: row.make || '',
-                        model: row.model || '',
-                        manufacturer: row.manufacturer || '',
-                        sellingPrice: parseFloat(row.sellingPrice) || 0,
-                        photoUrl: row.photoUrl || '',
-                        category: 'Product', // All imported items are Products
-                        currentStock: 0, // Default stock values
-                        reorderLevel: 0,
-                        standardStockLevel: 0,
-                    };
-                    batch.set(newDocRef, productData);
-                }
-            });
-
-            await batch.commit();
-            toast.success(`${parsedData.length} products imported successfully!`);
-            onImportSuccess();
-            onClose();
-        } catch (error) {
-            console.error("Error importing products:", error);
-            toast.error("An error occurred during the import.");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-3xl max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center p-4 border-b border-gray-700">
-                    <h2 className="text-xl font-bold text-white">Import Products from CSV</h2>
-                    <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
-                </div>
-                <div className="p-6 overflow-y-auto space-y-4">
-                    <div>
-                        <h3 className="font-semibold text-white">Instructions:</h3>
-                        <p className="text-sm text-gray-400">Upload a CSV file with the following headers (case-sensitive):</p>
-                        <code className="block bg-gray-900 p-2 rounded-md text-xs text-gray-300 mt-2">
-                            name,partNumber,make,model,manufacturer,sellingPrice,photoUrl
-                        </code>
-                        <p className="text-xs text-gray-500 mt-1">Only 'name' and 'partNumber' are required. Other fields are optional.</p>
-                    </div>
-                    <Input type="file" accept=".csv" onChange={handleFileChange} />
-
-                    {parsedData.length > 0 && (
-                        <div>
-                            <h4 className="font-semibold text-white mb-2">Data Preview ({parsedData.length} rows found)</h4>
-                            <div className="max-h-60 overflow-y-auto border border-gray-700 rounded-lg">
-                                <table className="w-full text-xs text-left">
-                                    <thead className="bg-gray-700 sticky top-0">
-                                        <tr>
-                                            <th className="p-2">Name</th>
-                                            <th className="p-2">Part Number</th>
-                                            <th className="p-2">Make</th>
-                                            <th className="p-2">Model</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {parsedData.slice(0, 10).map((row, index) => (
-                                            <tr key={index} className="border-b border-gray-700">
-                                                <td className="p-2 text-white">{row.name}</td>
-                                                <td className="p-2 text-gray-300">{row.partNumber}</td>
-                                                <td className="p-2 text-gray-400">{row.make}</td>
-                                                <td className="p-2 text-gray-400">{row.model}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                                {parsedData.length > 10 && <p className="text-center text-xs text-gray-500 p-2">...and {parsedData.length - 10} more rows.</p>}
-                            </div>
-                        </div>
-                    )}
-                </div>
-                <div className="p-4 bg-gray-900/50 flex justify-end">
-                    <Button onClick={handleImport} variant="primary" disabled={isSubmitting || parsedData.length === 0}>
-                        <CheckCircle size={16} className="mr-2" />
-                        {isSubmitting ? 'Importing...' : `Import ${parsedData.length} Products`}
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default ProductImportModal;
-
-
-
-==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\ProductModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\catalog\ProductImportModal.jsx
 ==================================================
 // src/components/features/catalog/ProductModal.jsx
 
-import React, { useState, useEffect } from 'react';
-import { addInventoryItem, updateInventoryItem } from '../../../api/firestore';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+    addInventoryItem, 
+    updateInventoryItem, 
+    getProductCategories,
+    getMakes,
+    getModels,
+    getUnits
+} from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
 import { X, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ProductModal = ({ product, onClose }) => {
     const [formData, setFormData] = useState({
-        name: '',
-        partNumber: '',
-        make: '',
-        model: '',
-        manufacturer: '',
-        sellingPrice: '',
-        photoUrl: '',
-        category: 'Product', // This is fixed for this modal
+        name: '', partNumber: '', make: '', model: '', sellingPrice: '',
+        price: '', photoUrl: '', categoryId: '', currentStock: '', reorderLevel: '',
+        standardStockLevel: '', unit: '', category: 'Product',
     });
+
+    const [dropdownData, setDropdownData] = useState({
+        categories: [], makes: [], models: [], units: []
+    });
+
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
+        const fetchDropdowns = async () => {
+            const [cats, mks, mdls, uts] = await Promise.all([
+                getProductCategories(),
+                getMakes(),
+                getModels(),
+                getUnits()
+            ]);
+            setDropdownData({ categories: cats, makes: mks, models: mdls, units: uts });
+        };
+        fetchDropdowns();
+
         if (product) {
             setFormData({
-                name: product.name || '',
-                partNumber: product.partNumber || '',
-                make: product.make || '',
-                model: product.model || '',
-                manufacturer: product.manufacturer || '',
+                name: product.name || '', partNumber: product.partNumber || '',
+                make: product.make || '', model: product.model || '',
+                // manufacturer field is removed
                 sellingPrice: product.sellingPrice || '',
-                photoUrl: product.photoUrl || '',
-                category: 'Product',
+                price: product.price || '', photoUrl: product.photoUrl || '',
+                categoryId: product.categoryId || '', currentStock: product.currentStock || '',
+                reorderLevel: product.reorderLevel || '', standardStockLevel: product.standardStockLevel || '',
+                unit: product.unit || '', category: 'Product',
             });
         }
     }, [product]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData(prev => {
+            const updated = { ...prev, [name]: value };
+            // Reset dependent dropdowns when a parent changes
+            if (name === 'make') {
+                updated.model = '';
+            }
+            return updated;
+        });
     };
 
     const handleSubmit = async () => {
@@ -1393,9 +1254,14 @@ const ProductModal = ({ product, onClose }) => {
         }
         setIsSubmitting(true);
         try {
-            const dataToSave = {
+            // Ensure manufacturer is not saved
+            const { manufacturer, ...dataToSave } = {
                 ...formData,
                 sellingPrice: parseFloat(formData.sellingPrice) || 0,
+                price: parseFloat(formData.price) || 0,
+                currentStock: Number(formData.currentStock) || 0,
+                reorderLevel: Number(formData.reorderLevel) || 0,
+                standardStockLevel: Number(formData.standardStockLevel) || 0,
             };
 
             if (product) {
@@ -1413,25 +1279,41 @@ const ProductModal = ({ product, onClose }) => {
         }
     };
 
+    const filteredModels = useMemo(() => {
+        if (!formData.make) return [];
+        return dropdownData.models.filter(model => model.makeId === formData.make);
+    }, [formData.make, dropdownData.models]);
+
     return (
         <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
                     <h2 className="text-xl font-bold text-white">{product ? 'Edit Product' : 'Add New Product'}</h2>
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                 </div>
                 <div className="p-6 overflow-y-auto space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <Input label="Product Name" name="name" value={formData.name} onChange={handleInputChange} required />
-                        <Input label="Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} required />
+                        <Input label="Part Number / Product ID" name="partNumber" value={formData.partNumber} onChange={handleInputChange} required />
+                        <Dropdown label="Product Category" name="categoryId" value={formData.categoryId} onChange={handleInputChange} options={dropdownData.categories} placeholder="e.g., Truck Parts" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Dropdown label="Make" name="make" value={formData.make} onChange={handleInputChange} options={dropdownData.makes} placeholder="e.g., Volvo, Scania" />
+                        <Dropdown label="Model / Year" name="model" value={formData.model} onChange={handleInputChange} options={filteredModels} placeholder="e.g., FH Series, 2018" disabled={!formData.make} />
+                    </div>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-700">
+                        <Input label="Selling Price (R)" name="sellingPrice" type="number" value={formData.sellingPrice} onChange={handleInputChange} />
+                        <Input label="Cost Price (R)" name="price" type="number" value={formData.price} onChange={handleInputChange} />
+                        <Dropdown label="Unit of Measure" name="unit" value={formData.unit} onChange={handleInputChange} options={dropdownData.units} placeholder="e.g., each, kg, box" />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Input label="Manufacturer" name="manufacturer" value={formData.manufacturer} onChange={handleInputChange} placeholder="e.g., Volvo" />
-                        <Input label="Make" name="make" value={formData.make} onChange={handleInputChange} placeholder="e.g., FH Series" />
-                        <Input label="Model" name="model" value={formData.model} onChange={handleInputChange} placeholder="e.g., 2018" />
+                        <Input label="Stock on Hand" name="currentStock" type="number" value={formData.currentStock} onChange={handleInputChange} />
+                        <Input label="Min Stock Level (Re-order)" name="reorderLevel" type="number" value={formData.reorderLevel} onChange={handleInputChange} />
+                        <Input label="Standard Stock Level" name="standardStockLevel" type="number" value={formData.standardStockLevel} onChange={handleInputChange} />
                     </div>
-                    <Input label="Selling Price (R)" name="sellingPrice" type="number" value={formData.sellingPrice} onChange={handleInputChange} />
-                    <Input label="Image URL" name="photoUrl" value={formData.photoUrl} onChange={handleInputChange} placeholder="https://..." />
+                    <div className="pt-4 border-t border-gray-700">
+                        <Input label="Image URL" name="photoUrl" value={formData.photoUrl} onChange={handleInputChange} placeholder="https://..." />
+                    </div>
                 </div>
                 <div className="p-4 bg-gray-900/50 flex justify-end">
                     <Button onClick={handleSubmit} variant="primary" disabled={isSubmitting}>
@@ -1449,21 +1331,185 @@ export default ProductModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\QrCodePrintModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\catalog\ProductModal.jsx
+==================================================
+// src/components/features/catalog/ProductModal.jsx
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+    addInventoryItem, 
+    updateInventoryItem, 
+    getProductCategories,
+    getMakes,
+    getModels,
+    getUnits
+} from '../../../api/firestore';
+import Button from '../../ui/Button';
+import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
+import { X, Save } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const ProductModal = ({ product, onClose }) => {
+    const [formData, setFormData] = useState({
+        name: '', partNumber: '', make: '', model: '', categoryId: '', sellingPrice: '',
+        price: '', photoUrl: '', currentStock: '', reorderLevel: '',
+        standardStockLevel: '', unit: '', category: 'Product',
+    });
+
+    const [dropdownData, setDropdownData] = useState({
+        categories: [], makes: [], models: [], units: []
+    });
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchDropdowns = async () => {
+            const [cats, mks, mdls, uts] = await Promise.all([
+                getProductCategories(),
+                getMakes(),
+                getModels(),
+                getUnits()
+            ]);
+            setDropdownData({ categories: cats, makes: mks, models: mdls, units: uts });
+        };
+        fetchDropdowns();
+
+        if (product) {
+            setFormData({
+                name: product.name || '', partNumber: product.partNumber || '',
+                make: product.make || '', model: product.model || '',
+                categoryId: product.categoryId || '', sellingPrice: product.sellingPrice || '',
+                price: product.price || '', photoUrl: product.photoUrl || '',
+                currentStock: product.currentStock || '',
+                reorderLevel: product.reorderLevel || '', standardStockLevel: product.standardStockLevel || '',
+                unit: product.unit || '', category: 'Product',
+            });
+        }
+    }, [product]);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => {
+            const updated = { ...prev, [name]: value };
+            if (name === 'categoryId') {
+                updated.make = '';
+                updated.model = '';
+            }
+            if (name === 'make') {
+                updated.model = '';
+            }
+            return updated;
+        });
+    };
+
+    const handleSubmit = async () => {
+        if (!formData.name || !formData.partNumber) {
+            return toast.error("Product Name and Part Number are required.");
+        }
+        setIsSubmitting(true);
+        try {
+            const dataToSave = {
+                ...formData,
+                sellingPrice: parseFloat(formData.sellingPrice) || 0,
+                price: parseFloat(formData.price) || 0,
+                currentStock: Number(formData.currentStock) || 0,
+                reorderLevel: Number(formData.reorderLevel) || 0,
+                standardStockLevel: Number(formData.standardStockLevel) || 0,
+            };
+
+            if (product) {
+                await updateInventoryItem(product.id, dataToSave);
+                toast.success("Product updated successfully!");
+            } else {
+                await addInventoryItem(dataToSave);
+                toast.success("Product added successfully!");
+            }
+            onClose();
+        } catch (error) {
+            toast.error(`Failed to save product: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // --- UPDATED: Filter makes based on the new many-to-many relationship ---
+    const filteredMakes = useMemo(() => {
+        if (!formData.categoryId) return [];
+        // A make is included if its `categoryIds` array contains the selected categoryId
+        return dropdownData.makes.filter(make => 
+            Array.isArray(make.categoryIds) && make.categoryIds.includes(formData.categoryId)
+        );
+    }, [formData.categoryId, dropdownData.makes]);
+
+    const filteredModels = useMemo(() => {
+        if (!formData.make) return [];
+        return dropdownData.models.filter(model => model.makeId === formData.make);
+    }, [formData.make, dropdownData.models]);
+
+    return (
+        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                    <h2 className="text-xl font-bold text-white">{product ? 'Edit Product' : 'Add New Product'}</h2>
+                    <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input label="Product Name" name="name" value={formData.name} onChange={handleInputChange} required />
+                        <Input label="Part Number / Product ID" name="partNumber" value={formData.partNumber} onChange={handleInputChange} required />
+                        <Dropdown label="Product Category" name="categoryId" value={formData.categoryId} onChange={handleInputChange} options={dropdownData.categories} placeholder="Select Category..." />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <Dropdown label="Make" name="make" value={formData.make} onChange={handleInputChange} options={filteredMakes} placeholder="Select Make..." disabled={!formData.categoryId} />
+                        <Dropdown label="Model / Year" name="model" value={formData.model} onChange={handleInputChange} options={filteredModels} placeholder="Select Model/Year..." disabled={!formData.make} />
+                    </div>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-700">
+                        <Input label="Selling Price (R)" name="sellingPrice" type="number" value={formData.sellingPrice} onChange={handleInputChange} />
+                        <Input label="Cost Price (R)" name="price" type="number" value={formData.price} onChange={handleInputChange} />
+                        <Dropdown label="Unit of Measure" name="unit" value={formData.unit} onChange={handleInputChange} options={dropdownData.units} placeholder="e.g., each, kg, box" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <Input label="Stock on Hand" name="currentStock" type="number" value={formData.currentStock} onChange={handleInputChange} />
+                        <Input label="Min Stock Level (Re-order)" name="reorderLevel" type="number" value={formData.reorderLevel} onChange={handleInputChange} />
+                        <Input label="Standard Stock Level" name="standardStockLevel" type="number" value={formData.standardStockLevel} onChange={handleInputChange} />
+                    </div>
+                    <div className="pt-4 border-t border-gray-700">
+                        <Input label="Image URL" name="photoUrl" value={formData.photoUrl} onChange={handleInputChange} placeholder="https://..." />
+                    </div>
+                </div>
+                <div className="p-4 bg-gray-900/50 flex justify-end">
+                    <Button onClick={handleSubmit} variant="primary" disabled={isSubmitting}>
+                        <Save size={16} className="mr-2" />
+                        {isSubmitting ? 'Saving...' : 'Save Product'}
+                    </Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default ProductModal;
+
+
+
+==================================================
+FILE: C:\Development\tojem-os-app\src\components\features\catalog\QrCodePrintModal.jsx
 ==================================================
 // src/components/features/catalog/QrCodePrintModal.jsx
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Button from '../../ui/Button';
+import Input from '../../ui/Input';
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
 
 const QrCodePrintModal = ({ product, onClose }) => {
     const canvasRef = useRef(null);
+    const [quantity, setQuantity] = useState(1);
 
     useEffect(() => {
         if (canvasRef.current && product?.partNumber) {
-            // Adjust QR code size to leave space for text
             QRCode.toCanvas(canvasRef.current, product.partNumber, { width: 150, margin: 1 }, (error) => {
                 if (error) console.error(error);
             });
@@ -1480,44 +1526,64 @@ const QrCodePrintModal = ({ product, onClose }) => {
                 <head>
                     <title>Print QR Code - ${product.partNumber}</title>
                     <style>
+                        * { box-sizing: border-box; }
+                        body { margin: 0; font-family: sans-serif; }
+                        .sticker {
+                            width: 23mm;
+                            height: 23mm;
+                            padding: 3mm 1mm 1mm 1mm; 
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: flex-start; 
+                            gap: 1mm;
+                            page-break-after: always;
+                            position: relative;
+                            overflow: hidden;
+                        }
+                        /* NEW: This rule prevents the final blank label from printing */
+                        .sticker:last-child {
+                            page-break-after: auto;
+                        }
+                        img { 
+                            max-width: 100%; 
+                            max-height: 14mm;
+                            height: auto; 
+                        }
+                        p {
+                            font-size: 7pt;
+                            font-weight: bold;
+                            margin: 0;
+                            padding: 0;
+                            text-align: center;
+                            word-break: break-all;
+                            line-height: 1;
+                        }
                         @media print {
                             @page {
                                 size: 23mm 23mm;
                                 margin: 0;
                             }
-                            body {
-                                margin: 0;
-                                padding: 1mm; /* Small padding inside the sticker */
-                                font-family: sans-serif;
-                                display: flex;
-                                flex-direction: column;
-                                align-items: center;
-                                justify-content: center;
-                            }
-                            img {
-                                max-width: 100%;
-                                height: auto;
-                            }
-                            p {
-                                font-size: 7pt; /* Small font size for the label */
-                                font-weight: bold;
-                                margin: 2mm 0 0 0;
-                                padding: 0;
-                                text-align: center;
-                                word-break: break-word;
-                            }
                         }
                     </style>
                 </head>
                 <body>
-                    <img src="${canvas.toDataURL()}" />
-                    <p>${product.name}</p>
-                </body>
-            </html>
         `);
+
+        for (let i = 0; i < quantity; i++) {
+            printWindow.document.write(`
+                <div class="sticker">
+                    <div class="content">
+                        <img src="${canvas.toDataURL()}" />
+                        <p>${product.partNumber}</p>
+                    </div>
+                </div>
+            `);
+        }
+
+        printWindow.document.write('</body></html>');
         printWindow.document.close();
         printWindow.focus();
-        // A short delay helps ensure images are loaded before printing
         setTimeout(() => {
             printWindow.print();
             printWindow.close();
@@ -1532,15 +1598,24 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                 </div>
                 <div className="p-6 flex flex-col items-center justify-center">
-                    {/* The displayed canvas is for preview, the printed version is styled separately */}
                     <canvas ref={canvasRef}></canvas>
                     <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
                     <p className="text-sm text-gray-400">{product.partNumber}</p>
+                    <div className="mt-4 w-full max-w-xs">
+                        <Input
+                            label="Quantity to Print"
+                            type="number"
+                            value={quantity}
+                            onChange={(e) => setQuantity(Number(e.target.value))}
+                            min="1"
+                            className="text-center"
+                        />
+                    </div>
                 </div>
                 <div className="p-4 bg-gray-900/50 flex justify-end">
                     <Button onClick={handlePrint} variant="primary">
                         <Printer size={16} className="mr-2" />
-                        Print Label
+                        Print {quantity} Label(s)
                     </Button>
                 </div>
             </div>
@@ -1551,9 +1626,8 @@ const QrCodePrintModal = ({ product, onClose }) => {
 export default QrCodePrintModal;
 
 
-
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dashboard\ManagerFocusWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\dashboard\ManagerFocusWidget.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { listenToJobCards, listenToPurchaseQueue, collection, onSnapshot, query, where } from '../../../api/firestore';
@@ -1698,7 +1772,7 @@ export default ManagerFocusWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dashboard\RoutineTasksWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\dashboard\RoutineTasksWidget.jsx
 ==================================================
 // src/components/features/dashboard/RoutineTasksWidget.jsx
 
@@ -1816,7 +1890,7 @@ export default RoutineTasksWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dispatch\DispatchQueue.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\dispatch\DispatchQueue.jsx
 ==================================================
 // src/components/features/dispatch/DispatchQueue.jsx (NEW FILE)
 
@@ -1986,7 +2060,7 @@ export default DispatchQueue;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\floorplan\FloorPlan.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\floorplan\FloorPlan.jsx
 ==================================================
 // src/components/features/floorplan/FloorPlan.jsx (NEW FILE)
 
@@ -2055,7 +2129,7 @@ export default FloorPlan;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\CustomJobCreator.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\CustomJobCreator.jsx
 ==================================================
 // src/components/features/job_cards/CustomJobCreator.jsx (Upgraded with Category, VIN, and Standardized Printing)
 
@@ -2539,7 +2613,7 @@ export default CustomJobCreator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobCardCreator.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\JobCardCreator.jsx
 ==================================================
 // src/components/features/job_cards/JobCardCreator.jsx
 
@@ -2948,7 +3022,7 @@ export default JobCardCreator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobDetailsPanel.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\JobDetailsPanel.jsx
 ==================================================
 // src/components/features/job_cards/JobDetailsPanel.jsx
 
@@ -3028,7 +3102,7 @@ export default JobDetailsPanel;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\MultiStageJobWizard.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\MultiStageJobWizard.jsx
 ==================================================
 // src/components/features/job_cards/MultiStageJobWizard.jsx
 
@@ -3176,7 +3250,7 @@ export default MultiStageJobWizard;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\PrintConfirmationModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\PrintConfirmationModal.jsx
 ==================================================
 // src/components/features/job_cards/PrintConfirmationModal.jsx (NEW FILE)
 
@@ -3244,7 +3318,7 @@ export default PrintConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\StandardJobCreatorModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\job_cards\StandardJobCreatorModal.jsx
 ==================================================
 // src/components/features/job_cards/StandardJobCreatorModal.jsx (Upgraded with Toasts)
 
@@ -3471,7 +3545,7 @@ export default StandardJobCreatorModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\kanban\KanbanBoard.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\kanban\KanbanBoard.jsx
 ==================================================
 // src/components/features/kanban/KanbanBoard.jsx (UPDATED with Optimistic UI)
 // The onDragEnd handler has been significantly improved to provide a smooth,
@@ -3639,7 +3713,7 @@ export default KanbanBoard;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\LivePayrollSummary.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\payroll\LivePayrollSummary.jsx
 ==================================================
 // src/components/features/payroll/LivePayrollSummary.jsx (FIXED)
 
@@ -3747,7 +3821,7 @@ export default LivePayrollSummary;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\PermanentPayroll.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\payroll\PermanentPayroll.jsx
 ==================================================
 // src/components/features/payroll/PermanentPayroll.jsx (REFACTORED)
 // This component is now highly efficient as it queries the pre-calculated `employeeDailyLogs` collection
@@ -3916,7 +3990,7 @@ export default PermanentPayroll;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\SubcontractorLedger.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\payroll\SubcontractorLedger.jsx
 ==================================================
 // src/components/features/payroll/SubcontractorLedger.jsx (Upgraded with Toasts)
 
@@ -4112,7 +4186,7 @@ export default SubcontractorLedger;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\picking\PickingQueue.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\picking\PickingQueue.jsx
 ==================================================
 // src/components/features/picking/PickingQueue.jsx
 
@@ -4270,7 +4344,7 @@ export default PickingQueue;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\CustomerKanban.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\portal\CustomerKanban.jsx
 ==================================================
 // src/components/features/portal/CustomerKanban.jsx (NEW FILE)
 
@@ -4323,7 +4397,7 @@ export default CustomerKanban;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\FeedbackModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\portal\FeedbackModal.jsx
 ==================================================
 // src/components/features/portal/FeedbackModal.jsx (NEW FILE)
 
@@ -4412,7 +4486,7 @@ export default FeedbackModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\LiveQuoteSidebar.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\portal\LiveQuoteSidebar.jsx
 ==================================================
 // src/components/features/portal/LiveQuoteSidebar.jsx
 
@@ -4521,7 +4595,7 @@ export default LiveQuoteSidebar;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\OrderConfirmationModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\portal\OrderConfirmationModal.jsx
 ==================================================
 // src/components/features/portal/OrderConfirmationModal.jsx
 
@@ -4596,7 +4670,7 @@ export default OrderConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\ScannedProductDisplay.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\portal\ScannedProductDisplay.jsx
 ==================================================
 // src/components/features/portal/ScannedProductDisplay.jsx
 
@@ -4720,7 +4794,7 @@ export default ScannedProductDisplay;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\qc\QcQueue.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\qc\QcQueue.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, processQcDecision } from '../../../api/firestore'; // Use the new function
@@ -4806,7 +4880,7 @@ export default QcQueue;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddCustomWorkModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\quotes\AddCustomWorkModal.jsx
 ==================================================
 // src/components/features/quotes/AddCustomWorkModal.jsx (Updated for minutes)
 
@@ -4939,7 +5013,7 @@ export default AddCustomWorkModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddPurchasedItemModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\quotes\AddPurchasedItemModal.jsx
 ==================================================
 // src/components/features/quotes/AddPurchasedItemModal.jsx (New File)
 
@@ -5024,7 +5098,7 @@ export default AddPurchasedItemModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\QuoteCreator.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\quotes\QuoteCreator.jsx
 ==================================================
 // src/components/features/quotes/QuoteCreator.jsx (FIXED: Missing export)
 
@@ -5205,7 +5279,7 @@ export default QuoteCreator; // --- THIS LINE WAS MISSING ---
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\recipes\ConsumableEditor.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\recipes\ConsumableEditor.jsx
 ==================================================
 // src/components/features/recipes/ConsumableEditor.jsx (New Reusable Component)
 
@@ -5397,7 +5471,7 @@ export default ConsumableEditor;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\JobCardScanner.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\scanner\JobCardScanner.jsx
 ==================================================
 // src/components/features/scanner/JobCardScanner.jsx
 
@@ -5630,7 +5704,7 @@ export default JobCardScanner;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\QrScannerModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\scanner\QrScannerModal.jsx
 ==================================================
 // src/components/features/scanner/QrScannerModal.jsx (New File)
 
@@ -5729,7 +5803,7 @@ export default QrScannerModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\Scanner.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\scanner\Scanner.jsx
 ==================================================
 // src/components/features/scanner/Scanner.jsx (Upgraded with Camera Scanning)
 
@@ -5890,7 +5964,7 @@ export default Scanner;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\StockTakeScanner.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\scanner\StockTakeScanner.jsx
 ==================================================
 // src/components/features/scanner/StockTakeScanner.jsx (Upgraded with Camera Scanning)
 
@@ -6094,7 +6168,7 @@ export default StockTakeScanner;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\CampaignManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\CampaignManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../../../api/firestore';
@@ -6282,7 +6356,7 @@ export default CampaignManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\DepartmentsManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\DepartmentsManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore';
@@ -6414,7 +6488,7 @@ export default DepartmentsManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeeSkillsModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\EmployeeSkillsModal.jsx
 ==================================================
 // src/components/features/settings/EmployeeSkillsModal.jsx (Upgraded with Toasts)
 
@@ -6579,7 +6653,7 @@ export default EmployeeSkillsModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeesManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\EmployeesManager.jsx
 ==================================================
 // src/components/features/settings/EmployeesManager.jsx (Upgraded with Toasts)
 
@@ -6777,7 +6851,7 @@ export default EmployeesManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\FinancialSettings.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\FinancialSettings.jsx
 ==================================================
 // src/components/features/settings/FinancialSettings.jsx (Upgraded with Toasts)
 
@@ -6934,7 +7008,7 @@ export default FinancialSettings;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\InventoryManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\InventoryManager.jsx
 ==================================================
 // src/components/features/settings/InventoryManager.jsx (UNIFIED)
 // This single component now manages all inventory categories (Products, Components, etc.)
@@ -7184,7 +7258,7 @@ export default InventoryManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\KaizenManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\KaizenManager.jsx
 ==================================================
 // src/components/features/settings/KaizenManager.jsx (NEW FILE)
 // This component provides a management interface for reviewing and actioning
@@ -7319,7 +7393,7 @@ export default KaizenManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\LearningPathManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\LearningPathManager.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -7497,7 +7571,196 @@ export default LearningPathManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MasterProductManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\MakeManager.jsx
+==================================================
+// src/components/features/settings/MakeManager.jsx
+import React, { useState, useEffect } from 'react';
+import { getMakes, addMake, deleteMake, updateDocument, getProductCategories } from '../../../api/firestore';
+import Input from '../../ui/Input';
+import Button from '../../ui/Button';
+import toast from 'react-hot-toast';
+
+const MakeManager = () => {
+    const [makes, setMakes] = useState([]);
+    const [categories, setCategories] = useState([]);
+    const [newMakeName, setNewMakeName] = useState('');
+    const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
+    const [editingMakeId, setEditingMakeId] = useState(null);
+    const [editingMakeName, setEditingMakeName] = useState('');
+    const [editingCategoryIds, setEditingCategoryIds] = useState(new Set());
+
+    const fetchData = async () => {
+        const [fetchedMakes, fetchedCategories] = await Promise.all([getMakes(), getProductCategories()]);
+        setMakes(fetchedMakes);
+        setCategories(fetchedCategories);
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const handleAddOrUpdate = async (e) => {
+        e.preventDefault();
+        const name = (editingMakeId ? editingMakeName : newMakeName).trim();
+        const categoryIds = Array.from(editingMakeId ? editingCategoryIds : selectedCategoryIds);
+        
+        if (!name) return toast.error("Make name is required.");
+        if (categoryIds.length === 0) return toast.error("Please select at least one category.");
+
+        try {
+            if (editingMakeId) {
+                await updateDocument('makes', editingMakeId, { name, categoryIds });
+                toast.success("Make updated!");
+                setEditingMakeId(null);
+            } else {
+                await addMake(name, categoryIds);
+                toast.success("Make added!");
+                setNewMakeName('');
+                setSelectedCategoryIds(new Set());
+            }
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to save make.");
+        }
+    };
+    
+    const handleDelete = (id) => {
+        toast((t) => (
+            <span>
+                Delete this make?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteMake(id).then(() => {
+                        toast.success("Make deleted.");
+                        fetchData();
+                    }).catch(() => toast.error("Failed to delete."));
+                    toast.dismiss(t.id);
+                }}>Delete</Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+            </span>
+        ));
+    };
+
+    const handleEditClick = (make) => {
+        setEditingMakeId(make.id);
+        setEditingMakeName(make.name);
+        setEditingCategoryIds(new Set(make.categoryIds || []));
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMakeId(null);
+        setEditingMakeName('');
+        setEditingCategoryIds(new Set());
+    };
+
+    const handleCategoryToggle = (categoryId, isEditing) => {
+        if (isEditing) {
+            setEditingCategoryIds(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(categoryId)) {
+                    newSet.delete(categoryId);
+                } else {
+                    newSet.add(categoryId);
+                }
+                return newSet;
+            });
+        } else {
+            setSelectedCategoryIds(prev => {
+                const newSet = new Set(prev);
+                if (newSet.has(categoryId)) {
+                    newSet.delete(categoryId);
+                } else {
+                    newSet.add(categoryId);
+                }
+                return newSet;
+            });
+        }
+    };
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Manage Makes</h3>
+            <form onSubmit={handleAddOrUpdate} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
+                <Input
+                    label="New Make Name"
+                    type="text"
+                    value={newMakeName}
+                    onChange={(e) => setNewMakeName(e.target.value)}
+                    placeholder="Enter make name..."
+                />
+                <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Link to Categories</label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-gray-800 rounded-md">
+                        {categories.map(cat => (
+                            <label key={cat.id} className="flex items-center space-x-2 text-gray-200">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedCategoryIds.has(cat.id)}
+                                    onChange={() => handleCategoryToggle(cat.id, false)}
+                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span>{cat.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+                <Button type="submit" variant="primary" className="w-full">Add Make</Button>
+            </form>
+            <div className="space-y-3">
+                {makes.map(make => (
+                    <div key={make.id} className="bg-gray-700 p-3 rounded-lg">
+                        {editingMakeId === make.id ? (
+                            <div className="space-y-3">
+                                <Input
+                                    label="Make Name"
+                                    value={editingMakeName}
+                                    onChange={(e) => setEditingMakeName(e.target.value)}
+                                />
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Update Linked Categories</label>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-gray-800 rounded-md">
+                                        {categories.map(cat => (
+                                            <label key={cat.id} className="flex items-center space-x-2 text-gray-200">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={editingCategoryIds.has(cat.id)}
+                                                    onChange={() => handleCategoryToggle(cat.id, true)}
+                                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                                />
+                                                <span>{cat.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex gap-2 justify-end">
+                                    <Button onClick={handleCancelEdit} variant="secondary" size="sm">Cancel</Button>
+                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-gray-200 font-semibold">{make.name}</p>
+                                    <p className="text-xs text-blue-400">
+                                        { (make.categoryIds || []).map(id => categories.find(c=>c.id===id)?.name).join(', ') || 'Uncategorized' }
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button onClick={() => handleEditClick(make)} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDelete(make.id)} variant="danger" size="sm">Delete</Button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export default MakeManager;
+
+
+
+==================================================
+FILE: C:\Development\tojem-os-app\src\components\features\settings\MasterProductManager.jsx
 ==================================================
 // src/components/features/settings/MasterProductManager.jsx (New File)
 
@@ -7703,7 +7966,139 @@ export default MasterProductManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\OverheadsManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\ModelManager.jsx
+==================================================
+// src/components/features/settings/ModelManager.jsx
+import React, { useState, useEffect, useMemo } from 'react';
+import { getModels, addModel, deleteModel, updateDocument, getMakes } from '../../../api/firestore';
+import Input from '../../ui/Input';
+import Button from '../../ui/Button';
+import Dropdown from '../../ui/Dropdown';
+import toast from 'react-hot-toast';
+
+const ModelManager = () => {
+    const [models, setModels] = useState([]);
+    const [makes, setMakes] = useState([]);
+    const [newModelName, setNewModelName] = useState('');
+    const [selectedMakeId, setSelectedMakeId] = useState('');
+    const [editingModelId, setEditingModelId] = useState(null);
+    const [editingModelName, setEditingModelName] = useState('');
+
+    const fetchData = async () => {
+        const [fetchedModels, fetchedMakes] = await Promise.all([getModels(), getMakes()]);
+        setModels(fetchedModels);
+        setMakes(fetchedMakes);
+    };
+
+    useEffect(() => { fetchData(); }, []);
+
+    const handleAddOrUpdate = async (e) => {
+        e.preventDefault();
+        const name = (editingModelId ? editingModelName : newModelName).trim();
+        if (!name || !selectedMakeId) {
+            return toast.error("Please select a make and enter a model name.");
+        }
+
+        try {
+            if (editingModelId) {
+                // Note: Updating the parent 'make' is not supported via this simple UI to prevent data integrity issues.
+                await updateDocument('models', editingModelId, { name });
+                toast.success("Model updated!");
+                setEditingModelId(null);
+                setEditingModelName('');
+            } else {
+                await addModel(name, selectedMakeId);
+                toast.success("Model added!");
+                setNewModelName('');
+            }
+            fetchData();
+        } catch (error) {
+            toast.error("Failed to save model.");
+        }
+    };
+    
+    const handleDelete = (id) => {
+        toast((t) => (
+            <span>
+                Delete this model?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteModel(id).then(() => {
+                        toast.success("Model deleted.");
+                        fetchData();
+                    }).catch(() => toast.error("Failed to delete."));
+                    toast.dismiss(t.id);
+                }}>Delete</Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+            </span>
+        ));
+    };
+
+    const makeMap = useMemo(() => new Map(makes.map(m => [m.id, m.name])), [makes]);
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Manage Models/Years</h3>
+            <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
+                <Dropdown
+                    label="Parent Make"
+                    value={selectedMakeId}
+                    onChange={(e) => setSelectedMakeId(e.target.value)}
+                    options={makes}
+                    placeholder="Select a make..."
+                />
+                <Input
+                    label="New Model/Year Name"
+                    type="text"
+                    value={newModelName}
+                    onChange={(e) => setNewModelName(e.target.value)}
+                    placeholder="e.g., FH Series, 2022..."
+                    className="flex-grow"
+                />
+                <Button type="submit" variant="primary">Add Model</Button>
+            </form>
+            <div className="space-y-3">
+                {models.map(model => (
+                    <div key={model.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                        {editingModelId === model.id ? (
+                            <Input
+                                type="text"
+                                value={editingModelName}
+                                onChange={(e) => setEditingModelName(e.target.value)}
+                                className="flex-grow mr-2"
+                                autoFocus
+                            />
+                        ) : (
+                            <div>
+                                <p className="text-gray-200">{model.name}</p>
+                                <p className="text-xs text-blue-400">{makeMap.get(model.makeId) || 'Unlinked'}</p>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                            {editingModelId === model.id ? (
+                                <>
+                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                    <Button onClick={() => setEditingModelId(null)} variant="secondary" size="sm">Cancel</Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button onClick={() => { setEditingModelId(model.id); setEditingModelName(model.name); setSelectedMakeId(model.makeId); }} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDelete(model.id)} variant="danger" size="sm">Delete</Button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export default ModelManager;
+
+
+
+==================================================
+FILE: C:\Development\tojem-os-app\src\components\features\settings\OverheadsManager.jsx
 ==================================================
 // src/components/features/settings/OverheadsManager.jsx (Upgraded with Toasts)
 
@@ -7988,7 +8383,179 @@ export default OverheadsManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ReworkReasonsManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\ProductCategoryManager.jsx
+==================================================
+// src/components/features/settings/ProductCategoryManager.jsx
+import React, { useState, useMemo } from 'react';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore';
+import { db } from '../../../api/firebase';
+import Input from '../../ui/Input';
+import Button from '../../ui/Button';
+import Dropdown from '../../ui/Dropdown';
+import toast from 'react-hot-toast';
+import { addMake, addModel } from '../../../api/firestore';
+
+const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName }) => {
+    const [newItemName, setNewItemName] = useState('');
+    const [editingItemId, setEditingItemId] = useState(null);
+    const [editingItemName, setEditingItemName] = useState('');
+    const [selectedParentId, setSelectedParentId] = useState('');
+    const [editingParentId, setEditingParentId] = useState('');
+
+    const handleAddOrUpdate = async (e) => {
+        e.preventDefault();
+        const name = (editingItemId ? editingItemName : newItemName).trim();
+        if (!name) return;
+        if (parentCollection && !selectedParentId && !editingItemId) {
+            return toast.error(`Please select a ${parentName}.`);
+        }
+
+        try {
+            if (editingItemId) {
+                const dataToUpdate = { name };
+                if (parentCollection && editingParentId) {
+                    const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
+                    dataToUpdate[parentIdField] = editingParentId;
+                }
+                await updateDoc(doc(db, collectionName, editingItemId), dataToUpdate);
+                toast.success(`${title.slice(7)} updated!`);
+                setEditingItemId(null);
+                setEditingItemName('');
+                setEditingParentId('');
+            } else {
+                let addPromise;
+                if (collectionName === 'makes') {
+                    addPromise = addMake(name, selectedParentId);
+                } else if (collectionName === 'models') {
+                    addPromise = addModel(name, selectedParentId);
+                } else {
+                    addPromise = addDoc(collection(db, collectionName), { name });
+                }
+                await addPromise;
+                toast.success(`${title.slice(7)} added!`);
+                setNewItemName('');
+                setSelectedParentId('');
+            }
+            onDataChange();
+        } catch (error) {
+            toast.error(`Failed to save ${title.slice(7).toLowerCase()}.`);
+        }
+    };
+    
+    const handleDelete = (id) => {
+        toast((t) => (
+            <span>
+                Delete this item?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteDoc(doc(db, collectionName, id)).then(() => {
+                        toast.success("Item deleted.");
+                        onDataChange();
+                    }).catch(() => toast.error("Failed to delete."));
+                    toast.dismiss(t.id);
+                }}>Delete</Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+            </span>
+        ));
+    };
+    
+    const parentMap = useMemo(() => {
+        if (!parentCollection) return null;
+        return new Map(parentCollection.map(p => [p.id, p.name]));
+    }, [parentCollection]);
+
+    const handleEditClick = (item) => {
+        setEditingItemId(item.id);
+        setEditingItemName(item.name);
+        const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
+        setEditingParentId(item[parentIdField] || '');
+    };
+    
+    const handleCancelEdit = () => {
+        setEditingItemId(null);
+        setEditingItemName('');
+        setEditingParentId('');
+    };
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">{title}</h3>
+            <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
+                {parentCollection && (
+                    <Dropdown
+                        label={`Parent ${parentName}`}
+                        value={selectedParentId}
+                        onChange={(e) => setSelectedParentId(e.target.value)}
+                        options={parentCollection}
+                        placeholder={`Select a ${parentName}...`}
+                    />
+                )}
+                <Input
+                    label={`New ${title.slice(7).toLowerCase()} name`}
+                    type="text"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder="Enter name..."
+                    className="flex-grow"
+                />
+                <Button type="submit" variant="primary">Add {title.slice(7)}</Button>
+            </form>
+            <div className="space-y-3">
+                {items.map(item => (
+                    <div key={item.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                        {editingItemId === item.id ? (
+                            <div className="flex-grow flex items-end gap-2">
+                                <Input
+                                    label="Name"
+                                    type="text"
+                                    value={editingItemName}
+                                    onChange={(e) => setEditingItemName(e.target.value)}
+                                    className="flex-grow"
+                                    autoFocus
+                                />
+                                {parentCollection && (
+                                    <Dropdown
+                                        label={`Parent ${parentName}`}
+                                        value={editingParentId}
+                                        onChange={(e) => setEditingParentId(e.target.value)}
+                                        options={parentCollection}
+                                    />
+                                )}
+                            </div>
+                        ) : (
+                            <div>
+                                <p className="text-gray-200">{item.name}</p>
+                                {parentMap && (item.makeId || item.categoryId) && <p className="text-xs text-blue-400">{parentMap.get(item.makeId || item.categoryId) || 'Unlinked'}</p>}
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2 ml-4">
+                            {editingItemId === item.id ? (
+                                <>
+                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                    <Button onClick={handleCancelEdit} variant="secondary" size="sm">Cancel</Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button onClick={() => handleEditClick(item)} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDelete(item.id)} variant="danger" size="sm">Delete</Button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+export const ProductCategoryManager = ({ items, onDataChange }) => <GenericManager title="Manage Product Categories" collectionName="productCategories" items={items} onDataChange={onDataChange} />;
+export const MakeManager = ({ items, categories, onDataChange }) => <GenericManager title="Manage Makes" collectionName="makes" items={items} onDataChange={onDataChange} parentCollection={categories} parentName="Category" />;
+export const ModelManager = ({ items, makes, onDataChange }) => <GenericManager title="Manage Models/Years" collectionName="models" items={items} onDataChange={onDataChange} parentCollection={makes} parentName="Make" />;
+export const UnitManager = ({ items, onDataChange }) => <GenericManager title="Manage Units of Measure" collectionName="units" items={items} onDataChange={onDataChange} />;
+
+
+
+==================================================
+FILE: C:\Development\tojem-os-app\src\components\features\settings\ReworkReasonsManager.jsx
 ==================================================
 // src/components/features/settings/ReworkReasonsManager.jsx (Upgraded with Toasts)
 
@@ -8109,7 +8676,7 @@ export default ReworkReasonsManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RoleManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\RoleManager.jsx
 ==================================================
 // src/components/features/settings/RoleManager.jsx
 
@@ -8348,7 +8915,7 @@ export default RoleManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RoutineTasksManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\RoutineTasksManager.jsx
 ==================================================
 // src/components/features/settings/RoutineTasksManager.jsx
 
@@ -8537,7 +9104,7 @@ export default RoutineTasksManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\SkillsManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\SkillsManager.jsx
 ==================================================
 // src/components/features/settings/SkillsManager.jsx (Upgraded with Toasts)
 
@@ -8699,7 +9266,7 @@ export default SkillsManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\SuppliersManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\SuppliersManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getSuppliers, addSupplier, deleteSupplier, updateSupplier } from '../../../api/firestore';
@@ -8847,7 +9414,7 @@ export default SuppliersManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolAccessoriesManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\ToolAccessoriesManager.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getTools, getToolAccessories, addToolAccessory, deleteToolAccessory, updateDocument } from '../../../api/firestore';
@@ -9015,7 +9582,7 @@ export default ToolAccessoriesManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolsManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\ToolsManager.jsx
 ==================================================
 // src/components/features/settings/ToolsManager.jsx
 
@@ -9326,7 +9893,7 @@ export default ToolsManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\TrainingManager.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\TrainingManager.jsx
 ==================================================
 // src/components/features/settings/TrainingManager.jsx (Upgraded with Toasts)
 
@@ -9500,7 +10067,18 @@ export default TrainingManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\CalculatorApplet.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\settings\UnitManager.jsx
+==================================================
+// src/components/features/settings/UnitManager.jsx
+import GenericManager from './ProductCategoryManager';
+
+const UnitManager = () => <GenericManager title="Manage Units of Measure" collectionName="units" />;
+
+export default UnitManager;
+
+
+==================================================
+FILE: C:\Development\tojem-os-app\src\components\features\sidebar\CalculatorApplet.jsx
 ==================================================
 import React, { useState } from 'react';
 
@@ -9611,7 +10189,7 @@ export default CalculatorApplet;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\CalendarApplet.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\sidebar\CalendarApplet.jsx
 ==================================================
 import React, { useState } from 'react';
 import Calendar from 'react-calendar';
@@ -9643,7 +10221,7 @@ export default CalendarApplet;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\NotesApplet.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\sidebar\NotesApplet.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 
@@ -9676,7 +10254,7 @@ export default NotesApplet;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\WeatherApplet.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\sidebar\WeatherApplet.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { Sun, Cloud, CloudRain, Wind, Thermometer, ArrowDown, ArrowUp } from 'lucide-react';
@@ -9759,7 +10337,7 @@ export default WeatherApplet;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\ConsignmentStockTake.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\ConsignmentStockTake.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -9940,7 +10518,7 @@ export default ConsignmentStockTake;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\FutureDemandAnalyzer.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\FutureDemandAnalyzer.jsx
 ==================================================
 import React, { useState, useMemo } from 'react';
 import { listenToJobCards, getAllInventoryItems } from '../../../api/firestore';
@@ -10087,7 +10665,7 @@ export default FutureDemandAnalyzer;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\InTransitOrders.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\InTransitOrders.jsx
 ==================================================
 // src/components/features/stock/InTransitOrders.jsx
 
@@ -10231,7 +10809,7 @@ export default InTransitOrders;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\PurchaseQueue.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\PurchaseQueue.jsx
 ==================================================
 // src/components/features/stock/PurchaseQueue.jsx (Upgraded for Dynamic Supplier Quoting)
 
@@ -10439,7 +11017,7 @@ export default PurchaseQueue;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockControlDashboard.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\StockControlDashboard.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueue } from '../../../api/firestore';
@@ -10649,7 +11227,7 @@ export default StockControlDashboard;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockCountModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\StockCountModal.jsx
 ==================================================
 // src/components/features/stock/StockCountModal.jsx
 
@@ -10714,7 +11292,7 @@ export default StockCountModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeApp.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\StockTakeApp.jsx
 ==================================================
 // src/components/features/stock/StockTakeApp.jsx (REFACTORED)
 // The `handleStartNewSession` function no longer performs a batch write,
@@ -11026,7 +11604,7 @@ export default StockTakeApp;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeComponents.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\stock\StockTakeComponents.jsx
 ==================================================
 // src/components/features/stock/StockTakeComponents.jsx (Whitespace Fixed)
 
@@ -11123,7 +11701,7 @@ export const StockCountList = ({ items, onCountChange }) => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\JobDetailsModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\tracking\JobDetailsModal.jsx
 ==================================================
 // src/components/features/tracking/JobDetailsModal.jsx
 
@@ -11402,7 +11980,7 @@ export default JobDetailsModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\KaizenSuggestionModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\tracking\KaizenSuggestionModal.jsx
 ==================================================
 // src/components/features/tracking/KaizenSuggestionModal.jsx (NEW FILE)
 
@@ -11479,7 +12057,7 @@ export default KaizenSuggestionModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\LiveTrackingTable.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\tracking\LiveTrackingTable.jsx
 ==================================================
 // src/components/features/tracking/LiveTrackingTable.jsx
 
@@ -11814,7 +12392,7 @@ export default LiveTrackingTable;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\TrainingModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\features\tracking\TrainingModal.jsx
 ==================================================
 // src/components/features/tracking/TrainingModal.jsx (NEW FILE)
 
@@ -11908,7 +12486,7 @@ export default TrainingModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\AssetPerformanceWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\AssetPerformanceWidget.jsx
 ==================================================
 import React from 'react';
 import { Clock, DollarSign, ShieldCheck, Zap } from 'lucide-react';
@@ -11964,7 +12542,7 @@ export default AssetPerformanceWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BottleneckWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\BottleneckWidget.jsx
 ==================================================
 import React from 'react';
 import { Gauge, AlertTriangle } from 'lucide-react';
@@ -12036,7 +12614,7 @@ export default BottleneckWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BreakEvenCalculator.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\BreakEvenCalculator.jsx
 ==================================================
 // src/components/intelligence/BreakEvenCalculator.jsx (FIXED)
 import React, { useMemo } from 'react'; // useMemo is now correctly imported
@@ -12075,7 +12653,7 @@ export default BreakEvenCalculator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\CapacityGauge.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\CapacityGauge.jsx
 ==================================================
 // src/components/intelligence/CapacityGauge.jsx
 import React from 'react';
@@ -12128,7 +12706,7 @@ export default CapacityGauge;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\DepartmentPerformanceChart.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\DepartmentPerformanceChart.jsx
 ==================================================
 // src/components/intelligence/DepartmentPerformanceChart.jsx (NEW FILE)
 
@@ -12176,7 +12754,7 @@ export default DepartmentPerformanceChart;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyAnalysisModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\EfficiencyAnalysisModal.jsx
 ==================================================
 // src/components/intelligence/EfficiencyAnalysisModal.jsx
 
@@ -12285,7 +12863,7 @@ export default EfficiencyAnalysisModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyChart.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\EfficiencyChart.jsx
 ==================================================
 // src/components/intelligence/EfficiencyChart.jsx
 
@@ -12362,7 +12940,7 @@ export default EfficiencyChart;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\GrowthSimulator.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\GrowthSimulator.jsx
 ==================================================
 // src/components/intelligence/GrowthSimulator.jsx (UPDATED & FIXED)
 
@@ -12501,7 +13079,7 @@ export default GrowthSimulator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\JobCompletionAnalysisWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\JobCompletionAnalysisWidget.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getCompletedJobsForEmployee } from '../../api/firestore';
@@ -12603,7 +13181,7 @@ export default JobCompletionAnalysisWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MonthlySalesTrend.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\MonthlySalesTrend.jsx
 ==================================================
 // src/components/intelligence/MonthlySalesTrend.jsx
 import React from 'react';
@@ -12655,7 +13233,7 @@ export default MonthlySalesTrend;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MultiYearSalesGraph.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\MultiYearSalesGraph.jsx
 ==================================================
 // src/components/intelligence/MultiYearSalesGraph.jsx
 import React from 'react';
@@ -12718,7 +13296,7 @@ export default MultiYearSalesGraph;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceLeaderboard.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\PerformanceLeaderboard.jsx
 ==================================================
 // src/components/intelligence/PerformanceLeaderboard.jsx
 
@@ -12826,7 +13404,7 @@ export default PerformanceLeaderboard;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceSnapshot.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\PerformanceSnapshot.jsx
 ==================================================
 // src/components/intelligence/PerformanceSnapshot.jsx
 
@@ -12908,7 +13486,7 @@ export default PerformanceSnapshot;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PraiseModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\PraiseModal.jsx
 ==================================================
 // src/components/intelligence/PraiseModal.jsx
 
@@ -12991,7 +13569,7 @@ export default PraiseModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PraiseWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\PraiseWidget.jsx
 ==================================================
 // src/components/intelligence/PraiseWidget.jsx
 
@@ -13032,7 +13610,7 @@ export default PraiseWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ProfitTargetMatrix.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\ProfitTargetMatrix.jsx
 ==================================================
 // src/components/intelligence/ProfitTargetMatrix.jsx (NEW FILE)
 import React, { useMemo } from 'react';
@@ -13126,7 +13704,7 @@ export default ProfitTargetMatrix;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\RealTimeValueWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\RealTimeValueWidget.jsx
 ==================================================
 // src/components/intelligence/RealTimeValueWidget.jsx
 
@@ -13236,7 +13814,7 @@ export default RealTimeValueWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReliabilityReport.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\ReliabilityReport.jsx
 ==================================================
 // src/components/intelligence/ReliabilityReport.jsx
 import React, { useState, useEffect, useMemo } from 'react';
@@ -13400,7 +13978,7 @@ export default ReliabilityReport;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReworkAnalysisModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\ReworkAnalysisModal.jsx
 ==================================================
 // src/components/intelligence/ReworkAnalysisModal.jsx
 
@@ -13465,7 +14043,7 @@ export default ReworkAnalysisModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\RoiCalculator.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\RoiCalculator.jsx
 ==================================================
 import React, { useState, useMemo } from 'react';
 import Input from '../ui/Input';
@@ -13584,7 +14162,7 @@ export default RoiCalculator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SalesTargetCalculator.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\SalesTargetCalculator.jsx
 ==================================================
 // src/components/intelligence/SalesTargetCalculator.jsx (UPGRADED)
 import React, { useMemo } from 'react';
@@ -13659,7 +14237,7 @@ export default SalesTargetCalculator;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SalesTrendWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\SalesTrendWidget.jsx
 ==================================================
 // src/components/intelligence/SalesTrendWidget.jsx (NEW FILE)
 import React from 'react';
@@ -13710,7 +14288,7 @@ export default SalesTrendWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SkillProgressionWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\SkillProgressionWidget.jsx
 ==================================================
 // src/components/intelligence/SkillProgressionWidget.jsx (Upgraded with Toasts)
 import React, { useState, useEffect } from 'react';
@@ -13847,7 +14425,7 @@ export default SkillProgressionWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TopReworkCausesWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\TopReworkCausesWidget.jsx
 ==================================================
 // src/components/intelligence/TopReworkCausesWidget.jsx
 import React from 'react';
@@ -13901,7 +14479,7 @@ export default TopReworkCausesWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TrophyCase.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\TrophyCase.jsx
 ==================================================
 // src/components/intelligence/TrophyCase.jsx
 import React from 'react';
@@ -13941,7 +14519,7 @@ export default TrophyCase;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ValueWasteAnalysis.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\ValueWasteAnalysis.jsx
 ==================================================
 // src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
@@ -14036,7 +14614,7 @@ export default ValueWasteAnalysis;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\WorkforceCapacityPlanner.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\WorkforceCapacityPlanner.jsx
 ==================================================
 // src/components/intelligence/WorkforceCapacityPlanner.jsx (UPDATED with Gross Margin)
 import React, { useState, useEffect, useMemo } from 'react';
@@ -14236,7 +14814,7 @@ export default WorkforceCapacityPlanner;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\WorkshopThroughputGraph.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\WorkshopThroughputGraph.jsx
 ==================================================
 // src/components/intelligence/WorkshopThroughputGraph.jsx
 
@@ -14281,7 +14859,7 @@ export default WorkshopThroughputGraph;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YearToDateComparison.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\YearToDateComparison.jsx
 ==================================================
 // src/components/intelligence/YearToDateComparison.jsx
 import React from 'react';
@@ -14333,7 +14911,7 @@ export default YearToDateComparison;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYProfitWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYProfitWidget.jsx
 ==================================================
 // src/components/intelligence/YoYProfitWidget.jsx
 
@@ -14404,7 +14982,7 @@ export default YoYProfitWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesComparison.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesComparison.jsx
 ==================================================
 // src/components/intelligence/YoYSalesComparison.jsx
 
@@ -14468,7 +15046,7 @@ export default YoYSalesComparison;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesGraph.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesGraph.jsx
 ==================================================
 // src/components/intelligence/YoYSalesGraph.jsx (UPDATED to Line Chart)
 import React from 'react';
@@ -14519,7 +15097,7 @@ export default YoYSalesGraph;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesWidget.jsx
+FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesWidget.jsx
 ==================================================
 // src/components/intelligence/YoYSalesWidget.jsx (NEW FILE)
 import React from 'react';
@@ -14581,7 +15159,7 @@ export default YoYSalesWidget;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\AppletSidebar.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\AppletSidebar.jsx
 ==================================================
 // src/components/layout/AppletSidebar.jsx
 
@@ -14668,7 +15246,7 @@ export default AppletSidebar;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\CustomerLayout.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\CustomerLayout.jsx
 ==================================================
 // src/components/layout/CustomerLayout.jsx
 
@@ -14716,7 +15294,7 @@ export default CustomerLayout;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\MainLayout.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\MainLayout.jsx
 ==================================================
 // src/components/layout/MainLayout.jsx
 
@@ -14787,7 +15365,7 @@ export default MainLayout;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\NotificationBell.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\NotificationBell.jsx
 ==================================================
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, XCircle, Mail, Clock } from 'lucide-react';
@@ -14941,7 +15519,7 @@ export default NotificationBell;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\ProtectedRoute.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\ProtectedRoute.jsx
 ==================================================
 import React from 'react';
 import { Navigate } from 'react-router-dom';
@@ -14973,7 +15551,7 @@ export default ProtectedRoute;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\RoleBasedRoute.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\RoleBasedRoute.jsx
 ==================================================
 // src/components/layout/RoleBasedRoute.jsx (ENHANCED)
 // This component has been upgraded to handle more complex, fine-grained permissions.
@@ -15022,7 +15600,7 @@ export default RoleBasedRoute;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\Sidebar.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\Sidebar.jsx
 ==================================================
 // src/components/layout/Sidebar.jsx (UPDATED)
 // Added a new link for the Time & Attendance report under the Business Intelligence NavGroup.
@@ -15180,7 +15758,7 @@ export default Sidebar;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\TopNavBar.jsx
+FILE: C:\Development\tojem-os-app\src\components\layout\TopNavBar.jsx
 ==================================================
 // src/components/layout/TopNavBar.jsx
 
@@ -15318,7 +15896,7 @@ export default TopNavBar;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Button.jsx
+FILE: C:\Development\tojem-os-app\src\components\ui\Button.jsx
 ==================================================
 import React from 'react';
 
@@ -15350,7 +15928,7 @@ export default Button;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\ConfirmationModal.jsx
+FILE: C:\Development\tojem-os-app\src\components\ui\ConfirmationModal.jsx
 ==================================================
 // src/components/ui/ConfirmationModal.jsx
 
@@ -15398,7 +15976,7 @@ export default ConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Dropdown.jsx
+FILE: C:\Development\tojem-os-app\src\components\ui\Dropdown.jsx
 ==================================================
 import React from 'react';
 
@@ -15438,7 +16016,7 @@ export default Dropdown;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Input.jsx
+FILE: C:\Development\tojem-os-app\src\components\ui\Input.jsx
 ==================================================
 import React from 'react';
 
@@ -15468,7 +16046,7 @@ export default Input;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Textarea.jsx
+FILE: C:\Development\tojem-os-app\src\components\ui\Textarea.jsx
 ==================================================
 import React from 'react';
 
@@ -15497,7 +16075,7 @@ export default Textarea;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\contexts\AuthContext.jsx
+FILE: C:\Development\tojem-os-app\src\contexts\AuthContext.jsx
 ==================================================
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -15587,7 +16165,7 @@ export const useAuth = () => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useInventoryManager.js
+FILE: C:\Development\tojem-os-app\src\hooks\useInventoryManager.js
 ==================================================
 // src/hooks/useInventoryManager.js (Upgraded with Toasts & Location Fields)
 
@@ -15861,7 +16439,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useStockTakeData.js
+FILE: C:\Development\tojem-os-app\src\hooks\useStockTakeData.js
 ==================================================
 // src/hooks/useStockTakeData.js (REFACTORED)
 // This hook now filters for uncounted items by checking if their last counted session ID
@@ -16016,7 +16594,7 @@ export const useStockTakeData = (inventoryTypeFilter) => { // Accept the filter
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\AndonDisplayPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\AndonDisplayPage.jsx
 ==================================================
 // src/pages/AndonDisplayPage.jsx (NEW FILE)
 // This component serves as a large-format, real-time display for any job
@@ -16119,7 +16697,7 @@ export default AndonDisplayPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\AssetIntelligencePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\AssetIntelligencePage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getTools, listenToJobCards, getJobStepDetails } from '../api/firestore';
@@ -16232,7 +16810,7 @@ export default AssetIntelligencePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CalendarPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\CalendarPage.jsx
 ==================================================
 // src/pages/CalendarPage.jsx
 
@@ -16433,7 +17011,7 @@ export default CalendarPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ClientScannerPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ClientScannerPage.jsx
 ==================================================
 // src/pages/ClientScannerPage.jsx
 
@@ -16510,7 +17088,7 @@ export default ClientScannerPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ConsumablesCatalogPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ConsumablesCatalogPage.jsx
 ==================================================
 // src/pages/ConsumablesCatalogPage.jsx
 
@@ -16632,7 +17210,7 @@ export default ConsumablesCatalogPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerDashboardPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\CustomerDashboardPage.jsx
 ==================================================
 // src/pages/CustomerDashboardPage.jsx
 
@@ -16762,7 +17340,7 @@ export default CustomerDashboardPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerOrderDetailPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\CustomerOrderDetailPage.jsx
 ==================================================
 // src/pages/CustomerOrderDetailPage.jsx (NEW FILE)
 
@@ -16833,7 +17411,7 @@ export default CustomerOrderDetailPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerPortalHomePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\CustomerPortalHomePage.jsx
 ==================================================
 // src/pages/CustomerPortalHomePage.jsx (NEW FILE)
 
@@ -16854,7 +17432,7 @@ export default CustomerPortalHomePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\DashboardPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\DashboardPage.jsx
 ==================================================
 // src/pages/DashboardPage.jsx
 
@@ -17077,7 +17655,7 @@ export default DashboardPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\EmployeeIntelligencePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\EmployeeIntelligencePage.jsx
 ==================================================
 // src/pages/EmployeeIntelligencePage.jsx
 
@@ -17482,7 +18060,7 @@ export default EmployeeIntelligencePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\FloorPlanPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\FloorPlanPage.jsx
 ==================================================
 // src/pages/FloorPlanPage.jsx (NEW FILE)
 
@@ -17542,7 +18120,7 @@ export default FloorPlanPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\IssuesPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\IssuesPage.jsx
 ==================================================
 // src/pages/IssuesPage.jsx (Upgraded with Toasts)
 
@@ -17770,7 +18348,7 @@ export default IssuesPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCardAdjustmentPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\JobCardAdjustmentPage.jsx
 ==================================================
 // src/pages/JobCardAdjustmentPage.jsx (Upgraded with Toasts)
 
@@ -17972,7 +18550,7 @@ export default JobCardAdjustmentPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCreatorPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\JobCreatorPage.jsx
 ==================================================
 // FILE: src/pages/JobCreatorPage.jsx (UPDATED)
 
@@ -18067,7 +18645,7 @@ export default JobCreatorPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobHistoryPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\JobHistoryPage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, getDepartments } from '../api/firestore';
@@ -18195,7 +18773,7 @@ export default JobHistoryPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobReprintPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\JobReprintPage.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { listenToJobCards } from '../api/firestore';
@@ -18266,7 +18844,7 @@ export default JobReprintPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\KanbanPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\KanbanPage.jsx
 ==================================================
 // src/pages/KanbanPage.jsx (UPDATED with layout fix)
 // The component's structure has been simplified to work within the updated MainLayout,
@@ -18369,7 +18947,7 @@ export default KanbanPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\KpiDashboardPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\KpiDashboardPage.jsx
 ==================================================
 // src/pages/KpiDashboardPage.jsx
 
@@ -18501,7 +19079,7 @@ export default KpiDashboardPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\LiveTrackingPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\LiveTrackingPage.jsx
 ==================================================
 // src/pages/LiveTrackingPage.jsx (Upgraded for Burdened Cost)
 
@@ -18565,7 +19143,7 @@ export default LiveTrackingPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\Login.jsx
+FILE: C:\Development\tojem-os-app\src\pages\Login.jsx
 ==================================================
 // src/pages/Login.jsx
 
@@ -18636,7 +19214,7 @@ export default LoginPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MarketingPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\MarketingPage.jsx
 ==================================================
 // FILE: src/pages/MarketingPage.jsx (Upgraded with Toasts)
 
@@ -18844,7 +19422,7 @@ export default MarketingPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MultiStageWizard.jsx
+FILE: C:\Development\tojem-os-app\src\pages\MultiStageWizard.jsx
 ==================================================
 // src/pages/MultiStageWizard.jsx
 
@@ -19001,7 +19579,7 @@ export default MultiStageWizard;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PayrollPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\PayrollPage.jsx
 ==================================================
 // src/pages/PayrollPage.jsx (Decommissioned)
 
@@ -19025,7 +19603,7 @@ export default PayrollPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PerformancePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\PerformancePage.jsx
 ==================================================
 // src/pages/PerformancePage.jsx (UPDATED)
 
@@ -19246,7 +19824,7 @@ export default PerformancePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PickingQueuePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\PickingQueuePage.jsx
 ==================================================
 // src/pages/PickingQueuePage.jsx (NEW FILE)
 
@@ -19274,7 +19852,7 @@ export default PickingQueuePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductBrowserPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ProductBrowserPage.jsx
 ==================================================
 // src/pages/ProductBrowserPage.jsx
 
@@ -19560,7 +20138,7 @@ export default ProductBrowserPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductCatalogPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ProductCatalogPage.jsx
 ==================================================
 // src/pages/ProductCatalogPage.jsx
 
@@ -19573,7 +20151,9 @@ import { Search, PlusCircle, Factory, QrCode, Edit, Trash2, Upload } from 'lucid
 import toast from 'react-hot-toast';
 import ProductModal from '../components/features/catalog/ProductModal';
 import QrCodePrintModal from '../components/features/catalog/QrCodePrintModal';
-import ProductImportModal from '../components/features/catalog/ProductImportModal'; // <-- NEW IMPORT
+import ProductImportModal from '../components/features/catalog/ProductImportModal';
+import { writeBatch, doc } from 'firebase/firestore';
+import { db } from '../api/firebase';
 
 const ProductCatalogPage = () => {
     const [products, setProducts] = useState([]);
@@ -19585,14 +20165,14 @@ const ProductCatalogPage = () => {
     });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false); // <-- NEW STATE
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
     const fetchProducts = async () => {
         setLoading(true);
         try {
             const allItems = await getAllInventoryItems();
-            // Filter for only manufactured products
             setProducts(allItems.filter(item => item.category === 'Product'));
         } catch (error) {
             toast.error("Failed to load product catalog.");
@@ -19604,6 +20184,71 @@ const ProductCatalogPage = () => {
     useEffect(() => {
         fetchProducts();
     }, []);
+    
+    const filteredProducts = useMemo(() => {
+        return products.filter(product => {
+            const searchMatch = (
+                 product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+            const makeMatch = !filters.make || product.make === filters.make;
+            const modelMatch = !filters.model || product.model === filters.model;
+            return searchMatch && makeMatch && modelMatch;
+        });
+    }, [products, searchTerm, filters]);
+
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            const allVisibleIds = new Set(filteredProducts.map(p => p.id));
+            setSelectedIds(allVisibleIds);
+        } else {
+            setSelectedIds(new Set());
+        }
+    };
+
+    const handleSelectSingle = (productId, isChecked) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (isChecked) {
+                newSet.add(productId);
+            } else {
+                newSet.delete(productId);
+            }
+            return newSet;
+        });
+    };
+    
+    const isAllSelected = filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
+
+    const handleDeleteSelected = () => {
+        if (selectedIds.size === 0) return;
+        toast((t) => (
+            <span>
+                Delete {selectedIds.size} selected products?
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    toast.dismiss(t.id);
+                    const batch = writeBatch(db);
+                    selectedIds.forEach(id => {
+                        const docRef = doc(db, 'inventoryItems', id);
+                        batch.delete(docRef);
+                    });
+                    try {
+                        await batch.commit();
+                        toast.success(`${selectedIds.size} products deleted successfully.`);
+                        setSelectedIds(new Set());
+                        fetchProducts();
+                    } catch (err) {
+                        toast.error("Failed to delete selected products.");
+                    }
+                }}>
+                    Confirm Delete
+                </Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: 'âš ï¸' });
+    };
 
     const handleOpenModal = (product = null) => {
         setSelectedProduct(product);
@@ -19618,7 +20263,7 @@ const ProductCatalogPage = () => {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
-        fetchProducts(); // Refresh data after modal closes
+        fetchProducts();
     };
 
     const handleDelete = (productId) => {
@@ -19643,7 +20288,6 @@ const ProductCatalogPage = () => {
         ), { icon: 'âš ï¸' });
     };
 
-    // Deriving filter options from the product list
     const makes = useMemo(() => [...new Set(products.map(p => p.make).filter(Boolean))].map(m => ({ id: m, name: m })), [products]);
     const models = useMemo(() => {
         if (!filters.make) return [];
@@ -19655,31 +20299,24 @@ const ProductCatalogPage = () => {
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
             if (name === 'make') {
-                newFilters.model = ''; // Reset model if make changes
+                newFilters.model = '';
             }
             return newFilters;
         });
     };
 
-    const filteredProducts = useMemo(() => {
-        return products.filter(product => {
-            const searchMatch = (
-                product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
-            );
-            const makeMatch = !filters.make || product.make === filters.make;
-            const modelMatch = !filters.model || product.model === filters.model;
-            return searchMatch && makeMatch && modelMatch;
-        });
-    }, [products, searchTerm, filters]);
-
     return (
         <>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Catalog</h2>
+                     <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Command Center</h2>
                     <div className="flex gap-2">
-                        {/* NEW IMPORT BUTTON */}
+                        {selectedIds.size > 0 && (
+                            <Button onClick={handleDeleteSelected} variant="danger">
+                                <Trash2 size={18} className="mr-2" />
+                                Delete Selected ({selectedIds.size})
+                            </Button>
+                        )}
                         <Button onClick={() => setIsImportModalOpen(true)} variant="secondary">
                             <Upload size={18} className="mr-2" />
                             Import from CSV
@@ -19701,7 +20338,7 @@ const ProductCatalogPage = () => {
                                 onChange={e => setSearchTerm(e.target.value)}
                                 className="pl-10"
                             />
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
                         <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" />
                         <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
@@ -19713,36 +20350,62 @@ const ProductCatalogPage = () => {
                         <table className="w-full text-left">
                             <thead className="bg-gray-900/50">
                                 <tr>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
+                                     <th className="p-3 w-4">
+                                        <input 
+                                            type="checkbox"
+                                            checked={isAllSelected}
+                                            onChange={handleSelectAll}
+                                            className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                        />
+                                     </th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Model</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {loading ? (
-                                    <tr><td colSpan="6" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                 {loading ? (
+                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">Loading products...</td></tr>
                                 ) : filteredProducts.length === 0 ? (
-                                    <tr><td colSpan="6" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
-                                ) : (
+                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
+                                 ) : (
                                     filteredProducts.map(product => (
-                                        <tr key={product.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                        <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
+                                            <td className="p-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(product.id)}
+                                                    onChange={(e) => handleSelectSingle(product.id, e.target.checked)}
+                                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
+                                                />
+                                            </td>
+                                            <td className="p-2">
+                                                <img 
+                                                    src={product.photoUrl || `https://placehold.co/100x75/1f2937/9ca3af?text=No+Image`} 
+                                                    alt={product.name}
+                                                    className="w-20 h-14 object-cover rounded-md"
+                                                />
+                                            </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
                                             <td className="p-3 text-gray-400">{product.make || 'N/A'}</td>
                                             <td className="p-3 text-gray-400">{product.model || 'N/A'}</td>
+                                            <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
                                                 <div className="flex justify-center gap-2">
-                                                    <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
+                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))
+                                     ))
                                 )}
                             </tbody>
                         </table>
@@ -19764,7 +20427,6 @@ const ProductCatalogPage = () => {
                 />
             )}
 
-            {/* NEW: Render the import modal */}
             {isImportModalOpen && (
                 <ProductImportModal
                     onClose={() => setIsImportModalOpen(false)}
@@ -19780,7 +20442,7 @@ export default ProductCatalogPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductViabilityPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ProductViabilityPage.jsx
 ==================================================
 // src/pages/ProductViabilityPage.jsx
 
@@ -19970,7 +20632,7 @@ export default ProductViabilityPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PurchasingPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\PurchasingPage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -20347,7 +21009,7 @@ export default PurchasingPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QcPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\QcPage.jsx
 ==================================================
 // src/pages/QcPage.jsx (Upgraded with Toasts & Rejection Modal)
 
@@ -20562,7 +21224,7 @@ export default QcPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QuotingPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\QuotingPage.jsx
 ==================================================
 // src/pages/QuotingPage.jsx (Corrected and Final Version)
 
@@ -20737,7 +21399,7 @@ export default QuotingPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ReworkLoopPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ReworkLoopPage.jsx
 ==================================================
 // src/pages/ReworkLoopPage.jsx
 
@@ -20835,7 +21497,7 @@ export default ReworkLoopPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ReworkQueuePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ReworkQueuePage.jsx
 ==================================================
 import React, { useEffect, useState } from 'react';
 import { listenToReworkQueue, resolveReworkJob } from '../api/firestore';
@@ -20901,7 +21563,7 @@ export default ReworkQueuePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SalesOrderPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\SalesOrderPage.jsx
 ==================================================
 // src/pages/SalesOrderPage.jsx (Upgraded with Toasts)
 
@@ -21090,7 +21752,7 @@ export default SalesOrderPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ScannerPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ScannerPage.jsx
 ==================================================
 // src/pages/ScannerPage.jsx (Reworked as a Hub)
 
@@ -21156,13 +21818,11 @@ export default ScannerPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\SettingsPage.jsx
 ==================================================
-// src/pages/SettingsPage.jsx (UPDATED)
-// A new "Kaizen" tab has been added to the settings page,
-// which renders the new KaizenManager component for a complete workflow.
+// src/pages/SettingsPage.jsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
@@ -21178,7 +21838,9 @@ import ReworkReasonsManager from '../components/features/settings/ReworkReasonsM
 import RoleManager from '../components/features/settings/RoleManager';
 import RoutineTasksManager from '../components/features/settings/RoutineTasksManager';
 import LearningPathManager from '../components/features/settings/LearningPathManager';
-import KaizenManager from '../components/features/settings/KaizenManager'; // <-- NEW IMPORT
+import KaizenManager from '../components/features/settings/KaizenManager';
+import { ProductCategoryManager, MakeManager, ModelManager, UnitManager } from '../components/features/settings/ProductCategoryManager';
+import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -21193,11 +21855,45 @@ const TabButton = ({ label, isActive, onClick }) => {
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('inventory');
+  
+  // State for catalog data is now managed here to ensure components refresh
+  const [catalogData, setCatalogData] = useState({
+    categories: [],
+    makes: [],
+    models: [],
+    units: []
+  });
+
+  // This function will be passed down to child components to trigger a data refresh
+  const fetchCatalogData = async () => {
+    const [cats, mks, mdls, uts] = await Promise.all([
+        getProductCategories(),
+        getMakes(),
+        getModels(),
+        getUnits()
+    ]);
+    setCatalogData({ categories: cats, makes: mks, models: mdls, units: uts });
+  };
+
+  useEffect(() => {
+    // Fetch data when the component mounts and when the relevant tab is selected
+    fetchCatalogData();
+  }, []);
+
 
   const tabs = useMemo(() => ({
     inventory: {
       label: 'Inventory & Products',
       components: [<InventoryManager key="inventory" />]
+    },
+    catalog_data: {
+        label: 'Catalog Data',
+        components: [
+            <ProductCategoryManager key="prod-cats" items={catalogData.categories} onDataChange={fetchCatalogData} />,
+            <MakeManager key="makes" items={catalogData.makes} categories={catalogData.categories} onDataChange={fetchCatalogData} />,
+            <ModelManager key="models" items={catalogData.models} makes={catalogData.makes} onDataChange={fetchCatalogData} />,
+            <UnitManager key="units" items={catalogData.units} onDataChange={fetchCatalogData} />,
+        ]
     },
     assets: {
       label: 'Tools & Assets',
@@ -21217,7 +21913,6 @@ const SettingsPage = () => {
         label: 'Training',
         components: [<LearningPathManager key="learning-paths" />, <TrainingManager key="training" />]
     },
-    // --- NEW KAIZEN TAB ---
     kaizen: {
         label: 'Kaizen (Improvement)',
         components: [<KaizenManager key="kaizen" />]
@@ -21238,7 +21933,7 @@ const SettingsPage = () => {
         label: 'Roles & Permissions',
         components: [<RoleManager key="role-manager" />]
     }
-  }), []);
+  }), [catalogData]); // Re-render tabs when catalog data changes
 
   return (
     <div className="space-y-8">
@@ -21267,7 +21962,7 @@ export default SettingsPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockAdjustmentPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\StockAdjustmentPage.jsx
 ==================================================
 import React, { useEffect, useState } from 'react';
 import { getAllInventoryItems, updateStockCount } from '../api/firestore';
@@ -21329,7 +22024,7 @@ export default StockAdjustmentPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockControlPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\StockControlPage.jsx
 ==================================================
 // src/pages/StockControlPage.jsx (UPDATED)
 
@@ -21425,7 +22120,7 @@ export default StockControlPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockHubPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\StockHubPage.jsx
 ==================================================
 // src/pages/StockHubPage.jsx
 
@@ -21654,7 +22349,7 @@ export default StockHubPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\StockTakePage.jsx
 ==================================================
 // src/pages/StockTakePage.jsx
 
@@ -21897,7 +22592,7 @@ export default StockTakePage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\TimeAttendanceReport.jsx
+FILE: C:\Development\tojem-os-app\src\pages\TimeAttendanceReport.jsx
 ==================================================
 // src/pages/TimeAttendanceReport.jsx (CORRECTED & ENHANCED)
 // 1. Fixed a bug where date filtering was not being applied correctly.
@@ -22066,7 +22761,7 @@ export default TimeAttendanceReport;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\TrackingPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\TrackingPage.jsx
 ==================================================
 import React from 'react';
 import MainLayout from '../components/layout/MainLayout';
@@ -22087,7 +22782,7 @@ export default TrackingPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\UserManagementPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\UserManagementPage.jsx
 ==================================================
 // src/pages/UserManagementPage.jsx (UPDATED with Audit Logging)
 // This component now calls the `logAuditEvent` function whenever a new user is
@@ -22365,7 +23060,7 @@ export default UserManagementPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ValuationPage.jsx
+FILE: C:\Development\tojem-os-app\src\pages\ValuationPage.jsx
 ==================================================
 // src/pages/ValuationPage.jsx (UPDATED)
 
@@ -22592,7 +23287,7 @@ export default ValuationPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.js
+FILE: C:\Development\tojem-os-app\src\utils\jobUtils.js
 ==================================================
 // src/utils/jobUtils.js
 
@@ -22681,7 +23376,7 @@ export const calculateJobDuration = (job, currentTime) => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.test.js
+FILE: C:\Development\tojem-os-app\src\utils\jobUtils.test.js
 ==================================================
 import { calculateJobDuration } from './jobUtils';
 
@@ -22755,7 +23450,7 @@ describe('calculateJobDuration', () => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
+FILE: C:\Development\tojem-os-app\src\App.css
 ==================================================
 #root {
   max-width: 1280px;
@@ -22803,7 +23498,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
+FILE: C:\Development\tojem-os-app\src\App.jsx
 ==================================================
 // src/App.jsx
 
@@ -22945,7 +23640,7 @@ export default App;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\config.js
+FILE: C:\Development\tojem-os-app\src\config.js
 ==================================================
 // src/config.js
 
@@ -22961,7 +23656,7 @@ export const CATALYST_RULES = [
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\index.css
+FILE: C:\Development\tojem-os-app\src\index.css
 ==================================================
 @tailwind base;
 @tailwind components;
@@ -23107,7 +23802,7 @@ input[type=number] {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\main.jsx
+FILE: C:\Development\tojem-os-app\src\main.jsx
 ==================================================
 import React from 'react';
 import ReactDOM from 'react-dom/client';

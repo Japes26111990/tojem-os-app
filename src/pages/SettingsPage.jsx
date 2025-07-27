@@ -1,8 +1,6 @@
-// src/pages/SettingsPage.jsx (UPDATED)
-// A new "Kaizen" tab has been added to the settings page,
-// which renders the new KaizenManager component for a complete workflow.
+// src/pages/SettingsPage.jsx
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import InventoryManager from '../components/features/settings/InventoryManager';
 import DepartmentsManager from '../components/features/settings/DepartmentsManager';
 import ToolsManager from '../components/features/settings/ToolsManager';
@@ -18,7 +16,9 @@ import ReworkReasonsManager from '../components/features/settings/ReworkReasonsM
 import RoleManager from '../components/features/settings/RoleManager';
 import RoutineTasksManager from '../components/features/settings/RoutineTasksManager';
 import LearningPathManager from '../components/features/settings/LearningPathManager';
-import KaizenManager from '../components/features/settings/KaizenManager'; // <-- NEW IMPORT
+import KaizenManager from '../components/features/settings/KaizenManager';
+import { ProductCategoryManager, MakeManager, ModelManager, UnitManager } from '../components/features/settings/ProductCategoryManager';
+import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
 const TabButton = ({ label, isActive, onClick }) => {
   const baseClasses = "px-4 py-2 text-sm font-medium rounded-md focus:outline-none transition-colors";
@@ -33,11 +33,45 @@ const TabButton = ({ label, isActive, onClick }) => {
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('inventory');
+  
+  // State for catalog data is now managed here to ensure components refresh
+  const [catalogData, setCatalogData] = useState({
+    categories: [],
+    makes: [],
+    models: [],
+    units: []
+  });
+
+  // This function will be passed down to child components to trigger a data refresh
+  const fetchCatalogData = async () => {
+    const [cats, mks, mdls, uts] = await Promise.all([
+        getProductCategories(),
+        getMakes(),
+        getModels(),
+        getUnits()
+    ]);
+    setCatalogData({ categories: cats, makes: mks, models: mdls, units: uts });
+  };
+
+  useEffect(() => {
+    // Fetch data when the component mounts and when the relevant tab is selected
+    fetchCatalogData();
+  }, []);
+
 
   const tabs = useMemo(() => ({
     inventory: {
       label: 'Inventory & Products',
       components: [<InventoryManager key="inventory" />]
+    },
+    catalog_data: {
+        label: 'Catalog Data',
+        components: [
+            <ProductCategoryManager key="prod-cats" items={catalogData.categories} onDataChange={fetchCatalogData} />,
+            <MakeManager key="makes" items={catalogData.makes} categories={catalogData.categories} onDataChange={fetchCatalogData} />,
+            <ModelManager key="models" items={catalogData.models} makes={catalogData.makes} onDataChange={fetchCatalogData} />,
+            <UnitManager key="units" items={catalogData.units} onDataChange={fetchCatalogData} />,
+        ]
     },
     assets: {
       label: 'Tools & Assets',
@@ -57,7 +91,6 @@ const SettingsPage = () => {
         label: 'Training',
         components: [<LearningPathManager key="learning-paths" />, <TrainingManager key="training" />]
     },
-    // --- NEW KAIZEN TAB ---
     kaizen: {
         label: 'Kaizen (Improvement)',
         components: [<KaizenManager key="kaizen" />]
@@ -78,7 +111,7 @@ const SettingsPage = () => {
         label: 'Roles & Permissions',
         components: [<RoleManager key="role-manager" />]
     }
-  }), []);
+  }), [catalogData]); // Re-render tabs when catalog data changes
 
   return (
     <div className="space-y-8">
