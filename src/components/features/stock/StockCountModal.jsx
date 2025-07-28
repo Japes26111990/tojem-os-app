@@ -34,8 +34,13 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     <p className="text-sm text-gray-400">P/N: {item.partNumber}</p>
                     <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4">
-                    {/* UPDATED: Ensure Input component is used */}
+                <div className="p-6 space-y-4">
+                    {/* NEW: Display product image */}
+                    <img
+                        src={item.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`}
+                        alt={item.name}
+                        className="w-full h-48 object-cover rounded-lg mb-4"
+                    />
                     <Input 
                         ref={inputRef}
                         label="Enter Physical Quantity" 
@@ -44,7 +49,7 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                         onChange={e => setCount(e.target.value)}
                         placeholder="Enter count..."
                     />
-                </form>
+                </div>
                 <div className="p-4 flex justify-end gap-2 bg-gray-900/50">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button variant="primary" onClick={handleSubmit}>
