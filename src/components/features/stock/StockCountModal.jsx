@@ -35,6 +35,7 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4">
+                    {/* UPDATED: Ensure Input component is used */}
                     <Input 
                         ref={inputRef}
                         label="Enter Physical Quantity" 

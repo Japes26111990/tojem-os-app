@@ -55,10 +55,12 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
         setIsScannerOpen(false);
         try {
             const itemData = await findInventoryItemByItemCode(scannedPartNumber);
-            const itemInList = filteredItems.find(i => i.id === itemData.id);
-            
-            if (itemInList) {
-                setItemToCount(itemInList); // Open the modal with the found item
+            // Ensure the found item matches the current filter category
+            const isProductMatch = inventoryTypeFilter === 'products' && itemData.category === 'Product';
+            const isPurchasedMatch = inventoryTypeFilter === 'purchased' && itemData.category !== 'Product';
+
+            if (isProductMatch || isPurchasedMatch) {
+                setItemToCount(itemData); // Open the modal with the found item
             } else {
                 toast.error("Scanned item not found in the current stock-take category.");
             }
@@ -69,8 +71,10 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
 
     // NEW: Function to update the count from the modal
     const handleUpdateCountFromModal = (itemId, newCount) => {
-        handleCountChange(itemId, 'quantity', newCount);
+        // This will update the local state in useStockTakeData hook
+        handleCountChange(itemId, 'quantity', newCount); 
         toast.success("Count captured.");
+        setItemToCount(null); // Close the modal
     };
 
     const handleReconcile = () => {
@@ -113,7 +117,7 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                 }}>Confirm</Button>
                 <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: '⚠️', duration: 6000 });
     }
 
     if (error) {
@@ -155,6 +159,7 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                             Scan to Count
                         </Button>
                         <div className="relative w-full sm:w-64">
+                            {/* UPDATED: Ensure Input component is used */}
                             <Input
                                 type="text"
                                 placeholder="Search items..."

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Button from '../../ui/Button';
-import Input from '../../ui/Input';
+import Input from '../../ui/Input'; // Ensure this is imported
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -104,13 +104,14 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
                     <p className="text-sm text-gray-400">{product.partNumber}</p>
                     <div className="mt-4 w-full max-w-xs">
+                        {/* UPDATED: Using the Input component */}
                         <Input
                             label="Quantity to Print"
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(Number(e.target.value))}
                             min="1"
-                            className="text-center"
+                            // Removed the specific className here as Input component handles styling
                         />
                     </div>
                 </div>
