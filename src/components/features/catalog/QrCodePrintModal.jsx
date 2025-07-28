@@ -33,12 +33,12 @@ const QrCodePrintModal = ({ product, onClose }) => {
                         .sticker {
                             width: 23mm;
                             height: 23mm;
-                            padding: 3mm 1mm 1mm 1mm; 
+                            padding: 3mm 1mm 1mm 1mm; /* Adjusted padding top to shift content up by 1mm (from 4mm to 3mm) */
                             display: flex;
                             flex-direction: column;
-                            align-items: center;
+                            align-items: center; /* Center horizontally */
                             justify-content: flex-start; 
-                            gap: 1mm;
+                            gap: 0.5mm; /* Reduced gap */
                             page-break-after: always;
                             position: relative;
                             overflow: hidden;
@@ -49,17 +49,30 @@ const QrCodePrintModal = ({ product, onClose }) => {
                         }
                         img { 
                             max-width: 100%; 
-                            max-height: 14mm;
+                            max-height: 13mm; /* Increased max-height for QR code */
                             height: auto; 
+                            display: block; /* Ensures margin auto works for centering */
+                            margin: 0 auto; /* Center QR code horizontally */
                         }
                         p {
-                            font-size: 7pt;
+                            font-size: 6.5pt; /* Slightly smaller font for part number */
                             font-weight: bold;
                             margin: 0;
                             padding: 0;
-                            text-align: center;
+                            text-align: center; /* Center text */
                             word-break: break-all;
                             line-height: 1;
+                        }
+                        /* NEW: Style for the part name */
+                        .part-name {
+                            font-size: 5.5pt; /* Slightly smaller font for part name */
+                            font-weight: normal;
+                            margin: 0; /* Removed margin-bottom */
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            width: 100%;
+                            text-align: center; /* Center text */
                         }
                         @media print {
                             @page {
@@ -76,6 +89,7 @@ const QrCodePrintModal = ({ product, onClose }) => {
             printWindow.document.write(`
                 <div class="sticker">
                     <div class="content">
+                        <p class="part-name">${product.name}</p>
                         <img src="${canvas.toDataURL()}" />
                         <p>${product.partNumber}</p>
                     </div>
@@ -104,14 +118,12 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
                     <p className="text-sm text-gray-400">{product.partNumber}</p>
                     <div className="mt-4 w-full max-w-xs">
-                        {/* UPDATED: Using the Input component */}
                         <Input
                             label="Quantity to Print"
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(Number(e.target.value))}
                             min="1"
-                            // Removed the specific className here as Input component handles styling
                         />
                     </div>
                 </div>
