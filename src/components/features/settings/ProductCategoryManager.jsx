@@ -6,7 +6,7 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
-import { addMake, addModel } from '../../../api/firestore';
+// Removed specific imports for addMake, addModel as they are now in their own files
 
 const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName }) => {
     const [newItemName, setNewItemName] = useState('');
@@ -36,15 +36,9 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                 setEditingItemName('');
                 setEditingParentId('');
             } else {
-                let addPromise;
-                if (collectionName === 'makes') {
-                    addPromise = addMake(name, selectedParentId);
-                } else if (collectionName === 'models') {
-                    addPromise = addModel(name, selectedParentId);
-                } else {
-                    addPromise = addDoc(collection(db, collectionName), { name });
-                }
-                await addPromise;
+                // GenericManager now only handles simple addDoc for categories and units
+                // Make and Model additions are handled by their specific managers
+                await addDoc(collection(db, collectionName), { name });
                 toast.success(`${title.slice(7)} added!`);
                 setNewItemName('');
                 setSelectedParentId('');
@@ -161,6 +155,6 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
 };
 
 export const ProductCategoryManager = ({ items, onDataChange }) => <GenericManager title="Manage Product Categories" collectionName="productCategories" items={items} onDataChange={onDataChange} />;
-export const MakeManager = ({ items, categories, onDataChange }) => <GenericManager title="Manage Makes" collectionName="makes" items={items} onDataChange={onDataChange} parentCollection={categories} parentName="Category" />;
-export const ModelManager = ({ items, makes, onDataChange }) => <GenericManager title="Manage Models/Years" collectionName="models" items={items} onDataChange={onDataChange} parentCollection={makes} parentName="Make" />;
-export const UnitManager = ({ items, onDataChange }) => <GenericManager title="Manage Units of Measure" collectionName="units" items={items} onDataChange={onDataChange} />;
+
+// Removed exports for MakeManager, ModelManager, UnitManager from here
+// They will now be in their own files

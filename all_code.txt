@@ -1,9 +1,9 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/27/2025 20:29:04
+Generated on: 07/28/2025 06:20:34
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\api\firebase.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firebase.js
 ==================================================
 // src/api/firebase.js
 
@@ -33,8 +33,9 @@ export const functions = getFunctions(app);
 export default app;
 
 
+
 ==================================================
-FILE: C:\Development\tojem-os-app\src\api\firestore.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firestore.js
 ==================================================
 // src/api/firestore.js
 
@@ -702,7 +703,7 @@ export { collection, query, where, getDocs, onSnapshot };
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\api\firestore.test.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firestore.test.js
 ==================================================
 // src/api/firestore.test.js
 
@@ -807,7 +808,7 @@ describe('Firestore API Tests', () => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\api\jobUtils.test.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobUtils.test.js
 ==================================================
 // src/utils/jobUtils.test.js
 
@@ -894,7 +895,7 @@ describe('calculateJobDuration', () => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\calendar\SchedulingAssistantModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\calendar\SchedulingAssistantModal.jsx
 ==================================================
 // src/components/features/calendar/SchedulingAssistantModal.jsx
 
@@ -1178,7 +1179,7 @@ export default SchedulingAssistantModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\catalog\ProductImportModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\ProductImportModal.jsx
 ==================================================
 // src/components/features/catalog/ProductModal.jsx
 
@@ -1331,7 +1332,7 @@ export default ProductModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\catalog\ProductModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\ProductModal.jsx
 ==================================================
 // src/components/features/catalog/ProductModal.jsx
 
@@ -1355,6 +1356,7 @@ const ProductModal = ({ product, onClose }) => {
         name: '', partNumber: '', make: '', model: '', categoryId: '', sellingPrice: '',
         price: '', photoUrl: '', currentStock: '', reorderLevel: '',
         standardStockLevel: '', unit: '', category: 'Product',
+        itemCode: '', // Initialize itemCode
     });
 
     const [dropdownData, setDropdownData] = useState({
@@ -1384,6 +1386,7 @@ const ProductModal = ({ product, onClose }) => {
                 currentStock: product.currentStock || '',
                 reorderLevel: product.reorderLevel || '', standardStockLevel: product.standardStockLevel || '',
                 unit: product.unit || '', category: 'Product',
+                itemCode: product.itemCode || product.partNumber || '', // Ensure itemCode is set from existing data or partNumber
             });
         }
     }, [product]);
@@ -1398,6 +1401,10 @@ const ProductModal = ({ product, onClose }) => {
             }
             if (name === 'make') {
                 updated.model = '';
+            }
+            // If partNumber changes, update itemCode to match for products
+            if (name === 'partNumber' && prev.category === 'Product') {
+                updated.itemCode = value;
             }
             return updated;
         });
@@ -1416,6 +1423,8 @@ const ProductModal = ({ product, onClose }) => {
                 currentStock: Number(formData.currentStock) || 0,
                 reorderLevel: Number(formData.reorderLevel) || 0,
                 standardStockLevel: Number(formData.standardStockLevel) || 0,
+                // Ensure itemCode is explicitly set to partNumber for products
+                itemCode: formData.category === 'Product' ? formData.partNumber : formData.itemCode,
             };
 
             if (product) {
@@ -1494,13 +1503,13 @@ export default ProductModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\catalog\QrCodePrintModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\catalog\QrCodePrintModal.jsx
 ==================================================
 // src/components/features/catalog/QrCodePrintModal.jsx
 
 import React, { useEffect, useRef, useState } from 'react';
 import Button from '../../ui/Button';
-import Input from '../../ui/Input';
+import Input from '../../ui/Input'; // Ensure this is imported
 import { X, Printer } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -1602,13 +1611,14 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
                     <p className="text-sm text-gray-400">{product.partNumber}</p>
                     <div className="mt-4 w-full max-w-xs">
+                        {/* UPDATED: Using the Input component */}
                         <Input
                             label="Quantity to Print"
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(Number(e.target.value))}
                             min="1"
-                            className="text-center"
+                            // Removed the specific className here as Input component handles styling
                         />
                     </div>
                 </div>
@@ -1626,8 +1636,9 @@ const QrCodePrintModal = ({ product, onClose }) => {
 export default QrCodePrintModal;
 
 
+
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\dashboard\ManagerFocusWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dashboard\ManagerFocusWidget.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { listenToJobCards, listenToPurchaseQueue, collection, onSnapshot, query, where } from '../../../api/firestore';
@@ -1772,7 +1783,7 @@ export default ManagerFocusWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\dashboard\RoutineTasksWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dashboard\RoutineTasksWidget.jsx
 ==================================================
 // src/components/features/dashboard/RoutineTasksWidget.jsx
 
@@ -1890,7 +1901,7 @@ export default RoutineTasksWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\dispatch\DispatchQueue.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\dispatch\DispatchQueue.jsx
 ==================================================
 // src/components/features/dispatch/DispatchQueue.jsx (NEW FILE)
 
@@ -2060,7 +2071,7 @@ export default DispatchQueue;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\floorplan\FloorPlan.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\floorplan\FloorPlan.jsx
 ==================================================
 // src/components/features/floorplan/FloorPlan.jsx (NEW FILE)
 
@@ -2129,7 +2140,7 @@ export default FloorPlan;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\CustomJobCreator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\CustomJobCreator.jsx
 ==================================================
 // src/components/features/job_cards/CustomJobCreator.jsx (Upgraded with Category, VIN, and Standardized Printing)
 
@@ -2613,7 +2624,7 @@ export default CustomJobCreator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\JobCardCreator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobCardCreator.jsx
 ==================================================
 // src/components/features/job_cards/JobCardCreator.jsx
 
@@ -3022,7 +3033,7 @@ export default JobCardCreator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\JobDetailsPanel.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobDetailsPanel.jsx
 ==================================================
 // src/components/features/job_cards/JobDetailsPanel.jsx
 
@@ -3102,7 +3113,7 @@ export default JobDetailsPanel;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\MultiStageJobWizard.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\MultiStageJobWizard.jsx
 ==================================================
 // src/components/features/job_cards/MultiStageJobWizard.jsx
 
@@ -3250,7 +3261,7 @@ export default MultiStageJobWizard;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\PrintConfirmationModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\PrintConfirmationModal.jsx
 ==================================================
 // src/components/features/job_cards/PrintConfirmationModal.jsx (NEW FILE)
 
@@ -3318,7 +3329,7 @@ export default PrintConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\job_cards\StandardJobCreatorModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\StandardJobCreatorModal.jsx
 ==================================================
 // src/components/features/job_cards/StandardJobCreatorModal.jsx (Upgraded with Toasts)
 
@@ -3545,7 +3556,7 @@ export default StandardJobCreatorModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\kanban\KanbanBoard.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\kanban\KanbanBoard.jsx
 ==================================================
 // src/components/features/kanban/KanbanBoard.jsx (UPDATED with Optimistic UI)
 // The onDragEnd handler has been significantly improved to provide a smooth,
@@ -3713,7 +3724,7 @@ export default KanbanBoard;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\payroll\LivePayrollSummary.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\LivePayrollSummary.jsx
 ==================================================
 // src/components/features/payroll/LivePayrollSummary.jsx (FIXED)
 
@@ -3821,7 +3832,7 @@ export default LivePayrollSummary;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\payroll\PermanentPayroll.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\PermanentPayroll.jsx
 ==================================================
 // src/components/features/payroll/PermanentPayroll.jsx (REFACTORED)
 // This component is now highly efficient as it queries the pre-calculated `employeeDailyLogs` collection
@@ -3990,7 +4001,7 @@ export default PermanentPayroll;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\payroll\SubcontractorLedger.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\SubcontractorLedger.jsx
 ==================================================
 // src/components/features/payroll/SubcontractorLedger.jsx (Upgraded with Toasts)
 
@@ -4186,7 +4197,7 @@ export default SubcontractorLedger;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\picking\PickingQueue.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\picking\PickingQueue.jsx
 ==================================================
 // src/components/features/picking/PickingQueue.jsx
 
@@ -4344,7 +4355,7 @@ export default PickingQueue;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\portal\CustomerKanban.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\CustomerKanban.jsx
 ==================================================
 // src/components/features/portal/CustomerKanban.jsx (NEW FILE)
 
@@ -4397,7 +4408,7 @@ export default CustomerKanban;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\portal\FeedbackModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\FeedbackModal.jsx
 ==================================================
 // src/components/features/portal/FeedbackModal.jsx (NEW FILE)
 
@@ -4486,7 +4497,7 @@ export default FeedbackModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\portal\LiveQuoteSidebar.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\LiveQuoteSidebar.jsx
 ==================================================
 // src/components/features/portal/LiveQuoteSidebar.jsx
 
@@ -4595,7 +4606,7 @@ export default LiveQuoteSidebar;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\portal\OrderConfirmationModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\OrderConfirmationModal.jsx
 ==================================================
 // src/components/features/portal/OrderConfirmationModal.jsx
 
@@ -4670,7 +4681,7 @@ export default OrderConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\portal\ScannedProductDisplay.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\ScannedProductDisplay.jsx
 ==================================================
 // src/components/features/portal/ScannedProductDisplay.jsx
 
@@ -4794,7 +4805,7 @@ export default ScannedProductDisplay;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\qc\QcQueue.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\qc\QcQueue.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, processQcDecision } from '../../../api/firestore'; // Use the new function
@@ -4880,7 +4891,7 @@ export default QcQueue;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\quotes\AddCustomWorkModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddCustomWorkModal.jsx
 ==================================================
 // src/components/features/quotes/AddCustomWorkModal.jsx (Updated for minutes)
 
@@ -5013,7 +5024,7 @@ export default AddCustomWorkModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\quotes\AddPurchasedItemModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\AddPurchasedItemModal.jsx
 ==================================================
 // src/components/features/quotes/AddPurchasedItemModal.jsx (New File)
 
@@ -5098,7 +5109,7 @@ export default AddPurchasedItemModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\quotes\QuoteCreator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\quotes\QuoteCreator.jsx
 ==================================================
 // src/components/features/quotes/QuoteCreator.jsx (FIXED: Missing export)
 
@@ -5279,7 +5290,7 @@ export default QuoteCreator; // --- THIS LINE WAS MISSING ---
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\recipes\ConsumableEditor.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\recipes\ConsumableEditor.jsx
 ==================================================
 // src/components/features/recipes/ConsumableEditor.jsx (New Reusable Component)
 
@@ -5471,7 +5482,7 @@ export default ConsumableEditor;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\scanner\JobCardScanner.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\JobCardScanner.jsx
 ==================================================
 // src/components/features/scanner/JobCardScanner.jsx
 
@@ -5704,7 +5715,7 @@ export default JobCardScanner;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\scanner\QrScannerModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\QrScannerModal.jsx
 ==================================================
 // src/components/features/scanner/QrScannerModal.jsx (New File)
 
@@ -5803,7 +5814,7 @@ export default QrScannerModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\scanner\Scanner.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\Scanner.jsx
 ==================================================
 // src/components/features/scanner/Scanner.jsx (Upgraded with Camera Scanning)
 
@@ -5964,7 +5975,7 @@ export default Scanner;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\scanner\StockTakeScanner.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\StockTakeScanner.jsx
 ==================================================
 // src/components/features/scanner/StockTakeScanner.jsx (Upgraded with Camera Scanning)
 
@@ -6168,7 +6179,7 @@ export default StockTakeScanner;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\CampaignManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\CampaignManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../../../api/firestore';
@@ -6356,7 +6367,7 @@ export default CampaignManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\DepartmentsManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\DepartmentsManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore';
@@ -6488,7 +6499,7 @@ export default DepartmentsManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\EmployeeSkillsModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeeSkillsModal.jsx
 ==================================================
 // src/components/features/settings/EmployeeSkillsModal.jsx (Upgraded with Toasts)
 
@@ -6653,7 +6664,7 @@ export default EmployeeSkillsModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\EmployeesManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeesManager.jsx
 ==================================================
 // src/components/features/settings/EmployeesManager.jsx (Upgraded with Toasts)
 
@@ -6851,7 +6862,7 @@ export default EmployeesManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\FinancialSettings.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\FinancialSettings.jsx
 ==================================================
 // src/components/features/settings/FinancialSettings.jsx (Upgraded with Toasts)
 
@@ -7008,7 +7019,7 @@ export default FinancialSettings;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\InventoryManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\InventoryManager.jsx
 ==================================================
 // src/components/features/settings/InventoryManager.jsx (UNIFIED)
 // This single component now manages all inventory categories (Products, Components, etc.)
@@ -7258,7 +7269,7 @@ export default InventoryManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\KaizenManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\KaizenManager.jsx
 ==================================================
 // src/components/features/settings/KaizenManager.jsx (NEW FILE)
 // This component provides a management interface for reviewing and actioning
@@ -7393,7 +7404,7 @@ export default KaizenManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\LearningPathManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\LearningPathManager.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -7571,7 +7582,7 @@ export default LearningPathManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\MakeManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MakeManager.jsx
 ==================================================
 // src/components/features/settings/MakeManager.jsx
 import React, { useState, useEffect } from 'react';
@@ -7760,7 +7771,7 @@ export default MakeManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\MasterProductManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MasterProductManager.jsx
 ==================================================
 // src/components/features/settings/MasterProductManager.jsx (New File)
 
@@ -7966,7 +7977,7 @@ export default MasterProductManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\ModelManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ModelManager.jsx
 ==================================================
 // src/components/features/settings/ModelManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8098,7 +8109,7 @@ export default ModelManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\OverheadsManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\OverheadsManager.jsx
 ==================================================
 // src/components/features/settings/OverheadsManager.jsx (Upgraded with Toasts)
 
@@ -8383,7 +8394,7 @@ export default OverheadsManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\ProductCategoryManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ProductCategoryManager.jsx
 ==================================================
 // src/components/features/settings/ProductCategoryManager.jsx
 import React, { useState, useMemo } from 'react';
@@ -8555,7 +8566,7 @@ export const UnitManager = ({ items, onDataChange }) => <GenericManager title="M
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\ReworkReasonsManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ReworkReasonsManager.jsx
 ==================================================
 // src/components/features/settings/ReworkReasonsManager.jsx (Upgraded with Toasts)
 
@@ -8676,7 +8687,7 @@ export default ReworkReasonsManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\RoleManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RoleManager.jsx
 ==================================================
 // src/components/features/settings/RoleManager.jsx
 
@@ -8915,7 +8926,7 @@ export default RoleManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\RoutineTasksManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\RoutineTasksManager.jsx
 ==================================================
 // src/components/features/settings/RoutineTasksManager.jsx
 
@@ -9104,7 +9115,7 @@ export default RoutineTasksManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\SkillsManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\SkillsManager.jsx
 ==================================================
 // src/components/features/settings/SkillsManager.jsx (Upgraded with Toasts)
 
@@ -9266,7 +9277,7 @@ export default SkillsManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\SuppliersManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\SuppliersManager.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getSuppliers, addSupplier, deleteSupplier, updateSupplier } from '../../../api/firestore';
@@ -9414,7 +9425,7 @@ export default SuppliersManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\ToolAccessoriesManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolAccessoriesManager.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getTools, getToolAccessories, addToolAccessory, deleteToolAccessory, updateDocument } from '../../../api/firestore';
@@ -9582,7 +9593,7 @@ export default ToolAccessoriesManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\ToolsManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolsManager.jsx
 ==================================================
 // src/components/features/settings/ToolsManager.jsx
 
@@ -9893,7 +9904,7 @@ export default ToolsManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\TrainingManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\TrainingManager.jsx
 ==================================================
 // src/components/features/settings/TrainingManager.jsx (Upgraded with Toasts)
 
@@ -10067,7 +10078,7 @@ export default TrainingManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\settings\UnitManager.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\UnitManager.jsx
 ==================================================
 // src/components/features/settings/UnitManager.jsx
 import GenericManager from './ProductCategoryManager';
@@ -10078,7 +10089,7 @@ export default UnitManager;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\sidebar\CalculatorApplet.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\CalculatorApplet.jsx
 ==================================================
 import React, { useState } from 'react';
 
@@ -10189,7 +10200,7 @@ export default CalculatorApplet;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\sidebar\CalendarApplet.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\CalendarApplet.jsx
 ==================================================
 import React, { useState } from 'react';
 import Calendar from 'react-calendar';
@@ -10221,7 +10232,7 @@ export default CalendarApplet;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\sidebar\NotesApplet.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\NotesApplet.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 
@@ -10254,7 +10265,7 @@ export default NotesApplet;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\sidebar\WeatherApplet.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\sidebar\WeatherApplet.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { Sun, Cloud, CloudRain, Wind, Thermometer, ArrowDown, ArrowUp } from 'lucide-react';
@@ -10337,7 +10348,7 @@ export default WeatherApplet;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\ConsignmentStockTake.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\ConsignmentStockTake.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -10518,7 +10529,7 @@ export default ConsignmentStockTake;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\FutureDemandAnalyzer.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\FutureDemandAnalyzer.jsx
 ==================================================
 import React, { useState, useMemo } from 'react';
 import { listenToJobCards, getAllInventoryItems } from '../../../api/firestore';
@@ -10665,7 +10676,7 @@ export default FutureDemandAnalyzer;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\InTransitOrders.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\InTransitOrders.jsx
 ==================================================
 // src/components/features/stock/InTransitOrders.jsx
 
@@ -10809,7 +10820,7 @@ export default InTransitOrders;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\PurchaseQueue.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\PurchaseQueue.jsx
 ==================================================
 // src/components/features/stock/PurchaseQueue.jsx (Upgraded for Dynamic Supplier Quoting)
 
@@ -11017,7 +11028,7 @@ export default PurchaseQueue;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\StockControlDashboard.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockControlDashboard.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueue } from '../../../api/firestore';
@@ -11227,7 +11238,7 @@ export default StockControlDashboard;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\StockCountModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockCountModal.jsx
 ==================================================
 // src/components/features/stock/StockCountModal.jsx
 
@@ -11266,6 +11277,7 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4">
+                    {/* UPDATED: Ensure Input component is used */}
                     <Input 
                         ref={inputRef}
                         label="Enter Physical Quantity" 
@@ -11292,7 +11304,7 @@ export default StockCountModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\StockTakeApp.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeApp.jsx
 ==================================================
 // src/components/features/stock/StockTakeApp.jsx (REFACTORED)
 // The `handleStartNewSession` function no longer performs a batch write,
@@ -11604,7 +11616,7 @@ export default StockTakeApp;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\stock\StockTakeComponents.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeComponents.jsx
 ==================================================
 // src/components/features/stock/StockTakeComponents.jsx (Whitespace Fixed)
 
@@ -11701,7 +11713,7 @@ export const StockCountList = ({ items, onCountChange }) => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\tracking\JobDetailsModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\JobDetailsModal.jsx
 ==================================================
 // src/components/features/tracking/JobDetailsModal.jsx
 
@@ -11980,7 +11992,7 @@ export default JobDetailsModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\tracking\KaizenSuggestionModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\KaizenSuggestionModal.jsx
 ==================================================
 // src/components/features/tracking/KaizenSuggestionModal.jsx (NEW FILE)
 
@@ -12057,7 +12069,7 @@ export default KaizenSuggestionModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\tracking\LiveTrackingTable.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\LiveTrackingTable.jsx
 ==================================================
 // src/components/features/tracking/LiveTrackingTable.jsx
 
@@ -12392,7 +12404,7 @@ export default LiveTrackingTable;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\features\tracking\TrainingModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\TrainingModal.jsx
 ==================================================
 // src/components/features/tracking/TrainingModal.jsx (NEW FILE)
 
@@ -12486,7 +12498,7 @@ export default TrainingModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\AssetPerformanceWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\AssetPerformanceWidget.jsx
 ==================================================
 import React from 'react';
 import { Clock, DollarSign, ShieldCheck, Zap } from 'lucide-react';
@@ -12542,7 +12554,7 @@ export default AssetPerformanceWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\BottleneckWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BottleneckWidget.jsx
 ==================================================
 import React from 'react';
 import { Gauge, AlertTriangle } from 'lucide-react';
@@ -12614,7 +12626,7 @@ export default BottleneckWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\BreakEvenCalculator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\BreakEvenCalculator.jsx
 ==================================================
 // src/components/intelligence/BreakEvenCalculator.jsx (FIXED)
 import React, { useMemo } from 'react'; // useMemo is now correctly imported
@@ -12653,7 +12665,7 @@ export default BreakEvenCalculator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\CapacityGauge.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\CapacityGauge.jsx
 ==================================================
 // src/components/intelligence/CapacityGauge.jsx
 import React from 'react';
@@ -12706,7 +12718,7 @@ export default CapacityGauge;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\DepartmentPerformanceChart.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\DepartmentPerformanceChart.jsx
 ==================================================
 // src/components/intelligence/DepartmentPerformanceChart.jsx (NEW FILE)
 
@@ -12754,7 +12766,7 @@ export default DepartmentPerformanceChart;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\EfficiencyAnalysisModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyAnalysisModal.jsx
 ==================================================
 // src/components/intelligence/EfficiencyAnalysisModal.jsx
 
@@ -12863,7 +12875,7 @@ export default EfficiencyAnalysisModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\EfficiencyChart.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\EfficiencyChart.jsx
 ==================================================
 // src/components/intelligence/EfficiencyChart.jsx
 
@@ -12940,7 +12952,7 @@ export default EfficiencyChart;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\GrowthSimulator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\GrowthSimulator.jsx
 ==================================================
 // src/components/intelligence/GrowthSimulator.jsx (UPDATED & FIXED)
 
@@ -13079,7 +13091,7 @@ export default GrowthSimulator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\JobCompletionAnalysisWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\JobCompletionAnalysisWidget.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { getCompletedJobsForEmployee } from '../../api/firestore';
@@ -13181,7 +13193,7 @@ export default JobCompletionAnalysisWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\MonthlySalesTrend.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MonthlySalesTrend.jsx
 ==================================================
 // src/components/intelligence/MonthlySalesTrend.jsx
 import React from 'react';
@@ -13233,7 +13245,7 @@ export default MonthlySalesTrend;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\MultiYearSalesGraph.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\MultiYearSalesGraph.jsx
 ==================================================
 // src/components/intelligence/MultiYearSalesGraph.jsx
 import React from 'react';
@@ -13296,7 +13308,7 @@ export default MultiYearSalesGraph;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\PerformanceLeaderboard.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceLeaderboard.jsx
 ==================================================
 // src/components/intelligence/PerformanceLeaderboard.jsx
 
@@ -13404,7 +13416,7 @@ export default PerformanceLeaderboard;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\PerformanceSnapshot.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PerformanceSnapshot.jsx
 ==================================================
 // src/components/intelligence/PerformanceSnapshot.jsx
 
@@ -13486,7 +13498,7 @@ export default PerformanceSnapshot;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\PraiseModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PraiseModal.jsx
 ==================================================
 // src/components/intelligence/PraiseModal.jsx
 
@@ -13569,7 +13581,7 @@ export default PraiseModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\PraiseWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\PraiseWidget.jsx
 ==================================================
 // src/components/intelligence/PraiseWidget.jsx
 
@@ -13610,7 +13622,7 @@ export default PraiseWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\ProfitTargetMatrix.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ProfitTargetMatrix.jsx
 ==================================================
 // src/components/intelligence/ProfitTargetMatrix.jsx (NEW FILE)
 import React, { useMemo } from 'react';
@@ -13704,7 +13716,7 @@ export default ProfitTargetMatrix;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\RealTimeValueWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\RealTimeValueWidget.jsx
 ==================================================
 // src/components/intelligence/RealTimeValueWidget.jsx
 
@@ -13814,7 +13826,7 @@ export default RealTimeValueWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\ReliabilityReport.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReliabilityReport.jsx
 ==================================================
 // src/components/intelligence/ReliabilityReport.jsx
 import React, { useState, useEffect, useMemo } from 'react';
@@ -13978,7 +13990,7 @@ export default ReliabilityReport;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\ReworkAnalysisModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ReworkAnalysisModal.jsx
 ==================================================
 // src/components/intelligence/ReworkAnalysisModal.jsx
 
@@ -14043,7 +14055,7 @@ export default ReworkAnalysisModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\RoiCalculator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\RoiCalculator.jsx
 ==================================================
 import React, { useState, useMemo } from 'react';
 import Input from '../ui/Input';
@@ -14162,7 +14174,7 @@ export default RoiCalculator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\SalesTargetCalculator.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SalesTargetCalculator.jsx
 ==================================================
 // src/components/intelligence/SalesTargetCalculator.jsx (UPGRADED)
 import React, { useMemo } from 'react';
@@ -14237,7 +14249,7 @@ export default SalesTargetCalculator;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\SalesTrendWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SalesTrendWidget.jsx
 ==================================================
 // src/components/intelligence/SalesTrendWidget.jsx (NEW FILE)
 import React from 'react';
@@ -14288,7 +14300,7 @@ export default SalesTrendWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\SkillProgressionWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\SkillProgressionWidget.jsx
 ==================================================
 // src/components/intelligence/SkillProgressionWidget.jsx (Upgraded with Toasts)
 import React, { useState, useEffect } from 'react';
@@ -14425,7 +14437,7 @@ export default SkillProgressionWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\TopReworkCausesWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TopReworkCausesWidget.jsx
 ==================================================
 // src/components/intelligence/TopReworkCausesWidget.jsx
 import React from 'react';
@@ -14479,7 +14491,7 @@ export default TopReworkCausesWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\TrophyCase.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\TrophyCase.jsx
 ==================================================
 // src/components/intelligence/TrophyCase.jsx
 import React from 'react';
@@ -14519,7 +14531,7 @@ export default TrophyCase;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\ValueWasteAnalysis.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ValueWasteAnalysis.jsx
 ==================================================
 // src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
@@ -14614,7 +14626,7 @@ export default ValueWasteAnalysis;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\WorkforceCapacityPlanner.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\WorkforceCapacityPlanner.jsx
 ==================================================
 // src/components/intelligence/WorkforceCapacityPlanner.jsx (UPDATED with Gross Margin)
 import React, { useState, useEffect, useMemo } from 'react';
@@ -14814,7 +14826,7 @@ export default WorkforceCapacityPlanner;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\WorkshopThroughputGraph.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\WorkshopThroughputGraph.jsx
 ==================================================
 // src/components/intelligence/WorkshopThroughputGraph.jsx
 
@@ -14859,7 +14871,7 @@ export default WorkshopThroughputGraph;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\YearToDateComparison.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YearToDateComparison.jsx
 ==================================================
 // src/components/intelligence/YearToDateComparison.jsx
 import React from 'react';
@@ -14911,7 +14923,7 @@ export default YearToDateComparison;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYProfitWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYProfitWidget.jsx
 ==================================================
 // src/components/intelligence/YoYProfitWidget.jsx
 
@@ -14982,7 +14994,7 @@ export default YoYProfitWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesComparison.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesComparison.jsx
 ==================================================
 // src/components/intelligence/YoYSalesComparison.jsx
 
@@ -15046,7 +15058,7 @@ export default YoYSalesComparison;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesGraph.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesGraph.jsx
 ==================================================
 // src/components/intelligence/YoYSalesGraph.jsx (UPDATED to Line Chart)
 import React from 'react';
@@ -15097,7 +15109,7 @@ export default YoYSalesGraph;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\intelligence\YoYSalesWidget.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesWidget.jsx
 ==================================================
 // src/components/intelligence/YoYSalesWidget.jsx (NEW FILE)
 import React from 'react';
@@ -15159,7 +15171,7 @@ export default YoYSalesWidget;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\AppletSidebar.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\AppletSidebar.jsx
 ==================================================
 // src/components/layout/AppletSidebar.jsx
 
@@ -15246,7 +15258,7 @@ export default AppletSidebar;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\CustomerLayout.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\CustomerLayout.jsx
 ==================================================
 // src/components/layout/CustomerLayout.jsx
 
@@ -15294,7 +15306,7 @@ export default CustomerLayout;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\MainLayout.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\MainLayout.jsx
 ==================================================
 // src/components/layout/MainLayout.jsx
 
@@ -15365,7 +15377,7 @@ export default MainLayout;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\NotificationBell.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\NotificationBell.jsx
 ==================================================
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, XCircle, Mail, Clock } from 'lucide-react';
@@ -15519,7 +15531,7 @@ export default NotificationBell;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\ProtectedRoute.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\ProtectedRoute.jsx
 ==================================================
 import React from 'react';
 import { Navigate } from 'react-router-dom';
@@ -15551,7 +15563,7 @@ export default ProtectedRoute;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\RoleBasedRoute.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\RoleBasedRoute.jsx
 ==================================================
 // src/components/layout/RoleBasedRoute.jsx (ENHANCED)
 // This component has been upgraded to handle more complex, fine-grained permissions.
@@ -15600,7 +15612,7 @@ export default RoleBasedRoute;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\Sidebar.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\Sidebar.jsx
 ==================================================
 // src/components/layout/Sidebar.jsx (UPDATED)
 // Added a new link for the Time & Attendance report under the Business Intelligence NavGroup.
@@ -15758,7 +15770,7 @@ export default Sidebar;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\layout\TopNavBar.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\TopNavBar.jsx
 ==================================================
 // src/components/layout/TopNavBar.jsx
 
@@ -15896,7 +15908,7 @@ export default TopNavBar;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\ui\Button.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Button.jsx
 ==================================================
 import React from 'react';
 
@@ -15927,8 +15939,9 @@ const Button = ({ children, onClick, variant = 'primary', className = '', type =
 export default Button;
 
 
+
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\ui\ConfirmationModal.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\ConfirmationModal.jsx
 ==================================================
 // src/components/ui/ConfirmationModal.jsx
 
@@ -15976,7 +15989,7 @@ export default ConfirmationModal;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\ui\Dropdown.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Dropdown.jsx
 ==================================================
 import React from 'react';
 
@@ -16016,11 +16029,11 @@ export default Dropdown;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\ui\Input.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Input.jsx
 ==================================================
 import React from 'react';
 
-const Input = ({ label, name, type = "text", value, onChange, placeholder, ...props }) => {
+const Input = React.forwardRef(({ label, name, type = "text", value, onChange, placeholder, ...props }, ref) => {
   return (
     <div className="w-full">
       {label && (
@@ -16036,17 +16049,19 @@ const Input = ({ label, name, type = "text", value, onChange, placeholder, ...pr
         onChange={onChange}
         placeholder={placeholder}
         className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        ref={ref} // Forward the ref to the input element
         {...props}
       />
     </div>
   );
-};
+});
 
 export default Input;
 
 
+
 ==================================================
-FILE: C:\Development\tojem-os-app\src\components\ui\Textarea.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Textarea.jsx
 ==================================================
 import React from 'react';
 
@@ -16075,7 +16090,7 @@ export default Textarea;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\contexts\AuthContext.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\contexts\AuthContext.jsx
 ==================================================
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -16165,7 +16180,7 @@ export const useAuth = () => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\hooks\useInventoryManager.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useInventoryManager.js
 ==================================================
 // src/hooks/useInventoryManager.js (Upgraded with Toasts & Location Fields)
 
@@ -16439,7 +16454,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\hooks\useStockTakeData.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useStockTakeData.js
 ==================================================
 // src/hooks/useStockTakeData.js (REFACTORED)
 // This hook now filters for uncounted items by checking if their last counted session ID
@@ -16594,7 +16609,7 @@ export const useStockTakeData = (inventoryTypeFilter) => { // Accept the filter
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\AndonDisplayPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\AndonDisplayPage.jsx
 ==================================================
 // src/pages/AndonDisplayPage.jsx (NEW FILE)
 // This component serves as a large-format, real-time display for any job
@@ -16697,7 +16712,7 @@ export default AndonDisplayPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\AssetIntelligencePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\AssetIntelligencePage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { getTools, listenToJobCards, getJobStepDetails } from '../api/firestore';
@@ -16810,7 +16825,7 @@ export default AssetIntelligencePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\CalendarPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CalendarPage.jsx
 ==================================================
 // src/pages/CalendarPage.jsx
 
@@ -17011,7 +17026,7 @@ export default CalendarPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ClientScannerPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ClientScannerPage.jsx
 ==================================================
 // src/pages/ClientScannerPage.jsx
 
@@ -17088,7 +17103,7 @@ export default ClientScannerPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ConsumablesCatalogPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ConsumablesCatalogPage.jsx
 ==================================================
 // src/pages/ConsumablesCatalogPage.jsx
 
@@ -17210,7 +17225,7 @@ export default ConsumablesCatalogPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\CustomerDashboardPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerDashboardPage.jsx
 ==================================================
 // src/pages/CustomerDashboardPage.jsx
 
@@ -17340,7 +17355,7 @@ export default CustomerDashboardPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\CustomerOrderDetailPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerOrderDetailPage.jsx
 ==================================================
 // src/pages/CustomerOrderDetailPage.jsx (NEW FILE)
 
@@ -17411,7 +17426,7 @@ export default CustomerOrderDetailPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\CustomerPortalHomePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CustomerPortalHomePage.jsx
 ==================================================
 // src/pages/CustomerPortalHomePage.jsx (NEW FILE)
 
@@ -17432,7 +17447,7 @@ export default CustomerPortalHomePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\DashboardPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\DashboardPage.jsx
 ==================================================
 // src/pages/DashboardPage.jsx
 
@@ -17655,7 +17670,7 @@ export default DashboardPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\EmployeeIntelligencePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\EmployeeIntelligencePage.jsx
 ==================================================
 // src/pages/EmployeeIntelligencePage.jsx
 
@@ -18060,7 +18075,7 @@ export default EmployeeIntelligencePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\FloorPlanPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\FloorPlanPage.jsx
 ==================================================
 // src/pages/FloorPlanPage.jsx (NEW FILE)
 
@@ -18120,7 +18135,7 @@ export default FloorPlanPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\IssuesPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\IssuesPage.jsx
 ==================================================
 // src/pages/IssuesPage.jsx (Upgraded with Toasts)
 
@@ -18348,7 +18363,7 @@ export default IssuesPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\JobCardAdjustmentPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCardAdjustmentPage.jsx
 ==================================================
 // src/pages/JobCardAdjustmentPage.jsx (Upgraded with Toasts)
 
@@ -18550,7 +18565,7 @@ export default JobCardAdjustmentPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\JobCreatorPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCreatorPage.jsx
 ==================================================
 // FILE: src/pages/JobCreatorPage.jsx (UPDATED)
 
@@ -18645,7 +18660,7 @@ export default JobCreatorPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\JobHistoryPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobHistoryPage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, getDepartments } from '../api/firestore';
@@ -18773,7 +18788,7 @@ export default JobHistoryPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\JobReprintPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobReprintPage.jsx
 ==================================================
 import React, { useState, useEffect } from 'react';
 import { listenToJobCards } from '../api/firestore';
@@ -18844,7 +18859,7 @@ export default JobReprintPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\KanbanPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\KanbanPage.jsx
 ==================================================
 // src/pages/KanbanPage.jsx (UPDATED with layout fix)
 // The component's structure has been simplified to work within the updated MainLayout,
@@ -18947,7 +18962,7 @@ export default KanbanPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\KpiDashboardPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\KpiDashboardPage.jsx
 ==================================================
 // src/pages/KpiDashboardPage.jsx
 
@@ -19079,7 +19094,7 @@ export default KpiDashboardPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\LiveTrackingPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\LiveTrackingPage.jsx
 ==================================================
 // src/pages/LiveTrackingPage.jsx (Upgraded for Burdened Cost)
 
@@ -19143,7 +19158,7 @@ export default LiveTrackingPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\Login.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\Login.jsx
 ==================================================
 // src/pages/Login.jsx
 
@@ -19214,7 +19229,7 @@ export default LoginPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\MarketingPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MarketingPage.jsx
 ==================================================
 // FILE: src/pages/MarketingPage.jsx (Upgraded with Toasts)
 
@@ -19422,7 +19437,7 @@ export default MarketingPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\MultiStageWizard.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MultiStageWizard.jsx
 ==================================================
 // src/pages/MultiStageWizard.jsx
 
@@ -19579,7 +19594,7 @@ export default MultiStageWizard;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\PayrollPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PayrollPage.jsx
 ==================================================
 // src/pages/PayrollPage.jsx (Decommissioned)
 
@@ -19603,7 +19618,7 @@ export default PayrollPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\PerformancePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PerformancePage.jsx
 ==================================================
 // src/pages/PerformancePage.jsx (UPDATED)
 
@@ -19824,7 +19839,7 @@ export default PerformancePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\PickingQueuePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PickingQueuePage.jsx
 ==================================================
 // src/pages/PickingQueuePage.jsx (NEW FILE)
 
@@ -19852,7 +19867,7 @@ export default PickingQueuePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ProductBrowserPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductBrowserPage.jsx
 ==================================================
 // src/pages/ProductBrowserPage.jsx
 
@@ -20138,12 +20153,12 @@ export default ProductBrowserPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ProductCatalogPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductCatalogPage.jsx
 ==================================================
 // src/pages/ProductCatalogPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, deleteInventoryItem } from '../api/firestore';
+import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels } from '../api/firestore'; // Import getMakes and getModels
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
@@ -20152,7 +20167,8 @@ import toast from 'react-hot-toast';
 import ProductModal from '../components/features/catalog/ProductModal';
 import QrCodePrintModal from '../components/features/catalog/QrCodePrintModal';
 import ProductImportModal from '../components/features/catalog/ProductImportModal';
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc, // Corrected: Removed '=>' and added 'from'
+         collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'; // Added missing imports for firestore methods
 import { db } from '../api/firebase';
 
 const ProductCatalogPage = () => {
@@ -20167,7 +20183,11 @@ const ProductCatalogPage = () => {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
-    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [selectedIds, setSelectedIds] = useState(new Set()); // Corrected line
+
+    // New states for dropdown options
+    const [makes, setMakes] = useState([]);
+    const [models, setModels] = useState([]);
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -20181,8 +20201,21 @@ const ProductCatalogPage = () => {
         }
     };
 
+    const fetchDropdownData = async () => {
+        try {
+            const fetchedMakes = await getMakes();
+            const fetchedModels = await getModels();
+            setMakes(fetchedMakes);
+            setModels(fetchedModels);
+        } catch (error) {
+            console.error("Error fetching make/model data:", error);
+            toast.error("Failed to load make/model filters.");
+        }
+    };
+
     useEffect(() => {
         fetchProducts();
+        fetchDropdownData(); // Fetch dropdown data on component mount
     }, []);
     
     const filteredProducts = useMemo(() => {
@@ -20191,8 +20224,11 @@ const ProductCatalogPage = () => {
                  product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
             );
+            // Apply make filter
             const makeMatch = !filters.make || product.make === filters.make;
+            // Apply model filter
             const modelMatch = !filters.model || product.model === filters.model;
+            
             return searchMatch && makeMatch && modelMatch;
         });
     }, [products, searchTerm, filters]);
@@ -20263,7 +20299,8 @@ const ProductCatalogPage = () => {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
-        fetchProducts();
+        fetchProducts(); // Refresh products after modal close
+        fetchDropdownData(); // Also refresh dropdown data in case makes/models were added/edited
     };
 
     const handleDelete = (productId) => {
@@ -20288,22 +20325,25 @@ const ProductCatalogPage = () => {
         ), { icon: 'âš ï¸' });
     };
 
-    const makes = useMemo(() => [...new Set(products.map(p => p.make).filter(Boolean))].map(m => ({ id: m, name: m })), [products]);
-    const models = useMemo(() => {
-        if (!filters.make) return [];
-        return [...new Set(products.filter(p => p.make === filters.make).map(p => p.model).filter(Boolean))].map(m => ({ id: m, name: m }));
-    }, [products, filters.make]);
-
+    // Handle filter changes for make and model dropdowns
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
+            // Reset model filter if make changes
             if (name === 'make') {
                 newFilters.model = '';
             }
             return newFilters;
         });
     };
+
+    // Filter models based on selected make for the dropdown options
+    const filteredModelsForDropdown = useMemo(() => {
+        if (!filters.make) return models; // Show all models if no make is selected
+        return models.filter(model => model.makeId === filters.make);
+    }, [models, filters.make]);
+
 
     return (
         <>
@@ -20340,8 +20380,9 @@ const ProductCatalogPage = () => {
                             />
                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
+                        {/* Filter Dropdowns */}
                         <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" />
-                        <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
+                        <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={filteredModelsForDropdown} placeholder="All Models" disabled={!filters.make} />
                     </div>
                 </div>
 
@@ -20361,8 +20402,8 @@ const ProductCatalogPage = () => {
                                      <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th> {/* New column header */}
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th> {/* New column header */}
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
@@ -20370,9 +20411,9 @@ const ProductCatalogPage = () => {
                             </thead>
                             <tbody>
                                  {loading ? (
-                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr> {/* Adjusted colspan */}
                                 ) : filteredProducts.length === 0 ? (
-                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
+                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr> {/* Adjusted colspan */}
                                  ) : (
                                     filteredProducts.map(product => (
                                         <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
@@ -20393,8 +20434,8 @@ const ProductCatalogPage = () => {
                                             </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                            <td className="p-3 text-gray-400">{product.make || 'N/A'}</td>
-                                            <td className="p-3 text-gray-400">{product.model || 'N/A'}</td>
+                                            <td className="p-3 text-gray-400">{product.make || 'N/A'}</td> {/* Display Make */}
+                                            <td className="p-3 text-gray-400">{product.model || 'N/A'}</td> {/* Display Model */}
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
@@ -20442,7 +20483,7 @@ export default ProductCatalogPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ProductViabilityPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductViabilityPage.jsx
 ==================================================
 // src/pages/ProductViabilityPage.jsx
 
@@ -20632,7 +20673,7 @@ export default ProductViabilityPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\PurchasingPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\PurchasingPage.jsx
 ==================================================
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
@@ -21009,7 +21050,7 @@ export default PurchasingPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\QcPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QcPage.jsx
 ==================================================
 // src/pages/QcPage.jsx (Upgraded with Toasts & Rejection Modal)
 
@@ -21224,7 +21265,7 @@ export default QcPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\QuotingPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QuotingPage.jsx
 ==================================================
 // src/pages/QuotingPage.jsx (Corrected and Final Version)
 
@@ -21399,7 +21440,7 @@ export default QuotingPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ReworkLoopPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ReworkLoopPage.jsx
 ==================================================
 // src/pages/ReworkLoopPage.jsx
 
@@ -21497,7 +21538,7 @@ export default ReworkLoopPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ReworkQueuePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ReworkQueuePage.jsx
 ==================================================
 import React, { useEffect, useState } from 'react';
 import { listenToReworkQueue, resolveReworkJob } from '../api/firestore';
@@ -21563,7 +21604,7 @@ export default ReworkQueuePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\SalesOrderPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SalesOrderPage.jsx
 ==================================================
 // src/pages/SalesOrderPage.jsx (Upgraded with Toasts)
 
@@ -21752,7 +21793,7 @@ export default SalesOrderPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ScannerPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ScannerPage.jsx
 ==================================================
 // src/pages/ScannerPage.jsx (Reworked as a Hub)
 
@@ -21818,7 +21859,7 @@ export default ScannerPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\SettingsPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsPage.jsx
 ==================================================
 // src/pages/SettingsPage.jsx
 
@@ -21962,7 +22003,7 @@ export default SettingsPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\StockAdjustmentPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockAdjustmentPage.jsx
 ==================================================
 import React, { useEffect, useState } from 'react';
 import { getAllInventoryItems, updateStockCount } from '../api/firestore';
@@ -22024,7 +22065,7 @@ export default StockAdjustmentPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\StockControlPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockControlPage.jsx
 ==================================================
 // src/pages/StockControlPage.jsx (UPDATED)
 
@@ -22120,7 +22161,7 @@ export default StockControlPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\StockHubPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockHubPage.jsx
 ==================================================
 // src/pages/StockHubPage.jsx
 
@@ -22349,7 +22390,7 @@ export default StockHubPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\StockTakePage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
 ==================================================
 // src/pages/StockTakePage.jsx
 
@@ -22408,10 +22449,12 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
         setIsScannerOpen(false);
         try {
             const itemData = await findInventoryItemByItemCode(scannedPartNumber);
-            const itemInList = filteredItems.find(i => i.id === itemData.id);
-            
-            if (itemInList) {
-                setItemToCount(itemInList); // Open the modal with the found item
+            // Ensure the found item matches the current filter category
+            const isProductMatch = inventoryTypeFilter === 'products' && itemData.category === 'Product';
+            const isPurchasedMatch = inventoryTypeFilter === 'purchased' && itemData.category !== 'Product';
+
+            if (isProductMatch || isPurchasedMatch) {
+                setItemToCount(itemData); // Open the modal with the found item
             } else {
                 toast.error("Scanned item not found in the current stock-take category.");
             }
@@ -22422,8 +22465,10 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
 
     // NEW: Function to update the count from the modal
     const handleUpdateCountFromModal = (itemId, newCount) => {
-        handleCountChange(itemId, 'quantity', newCount);
+        // This will update the local state in useStockTakeData hook
+        handleCountChange(itemId, 'quantity', newCount); 
         toast.success("Count captured.");
+        setItemToCount(null); // Close the modal
     };
 
     const handleReconcile = () => {
@@ -22466,7 +22511,7 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                 }}>Confirm</Button>
                 <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'âš ï¸', duration: 6000 });
     }
 
     if (error) {
@@ -22508,6 +22553,7 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                             Scan to Count
                         </Button>
                         <div className="relative w-full sm:w-64">
+                            {/* UPDATED: Ensure Input component is used */}
                             <Input
                                 type="text"
                                 placeholder="Search items..."
@@ -22592,7 +22638,7 @@ export default StockTakePage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\TimeAttendanceReport.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\TimeAttendanceReport.jsx
 ==================================================
 // src/pages/TimeAttendanceReport.jsx (CORRECTED & ENHANCED)
 // 1. Fixed a bug where date filtering was not being applied correctly.
@@ -22761,7 +22807,7 @@ export default TimeAttendanceReport;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\TrackingPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\TrackingPage.jsx
 ==================================================
 import React from 'react';
 import MainLayout from '../components/layout/MainLayout';
@@ -22782,7 +22828,7 @@ export default TrackingPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\UserManagementPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\UserManagementPage.jsx
 ==================================================
 // src/pages/UserManagementPage.jsx (UPDATED with Audit Logging)
 // This component now calls the `logAuditEvent` function whenever a new user is
@@ -23060,7 +23106,7 @@ export default UserManagementPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\pages\ValuationPage.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ValuationPage.jsx
 ==================================================
 // src/pages/ValuationPage.jsx (UPDATED)
 
@@ -23287,7 +23333,7 @@ export default ValuationPage;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\utils\jobUtils.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.js
 ==================================================
 // src/utils/jobUtils.js
 
@@ -23376,7 +23422,7 @@ export const calculateJobDuration = (job, currentTime) => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\utils\jobUtils.test.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.test.js
 ==================================================
 import { calculateJobDuration } from './jobUtils';
 
@@ -23450,7 +23496,7 @@ describe('calculateJobDuration', () => {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\App.css
+FILE: C:\Development\TOJEM-OS\tojem-os\src\App.css
 ==================================================
 #root {
   max-width: 1280px;
@@ -23498,7 +23544,7 @@ FILE: C:\Development\tojem-os-app\src\App.css
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\App.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\App.jsx
 ==================================================
 // src/App.jsx
 
@@ -23640,7 +23686,7 @@ export default App;
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\config.js
+FILE: C:\Development\TOJEM-OS\tojem-os\src\config.js
 ==================================================
 // src/config.js
 
@@ -23656,7 +23702,7 @@ export const CATALYST_RULES = [
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\index.css
+FILE: C:\Development\TOJEM-OS\tojem-os\src\index.css
 ==================================================
 @tailwind base;
 @tailwind components;
@@ -23802,7 +23848,7 @@ input[type=number] {
 
 
 ==================================================
-FILE: C:\Development\tojem-os-app\src\main.jsx
+FILE: C:\Development\TOJEM-OS\tojem-os\src\main.jsx
 ==================================================
 import React from 'react';
 import ReactDOM from 'react-dom/client';

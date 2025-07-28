@@ -1,7 +1,7 @@
 // src/pages/ProductCatalogPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, deleteInventoryItem } from '../api/firestore';
+import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore'; // Import getUnits
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
@@ -10,7 +10,8 @@ import toast from 'react-hot-toast';
 import ProductModal from '../components/features/catalog/ProductModal';
 import QrCodePrintModal from '../components/features/catalog/QrCodePrintModal';
 import ProductImportModal from '../components/features/catalog/ProductImportModal';
-import { writeBatch, doc } from 'firebase/firestore';
+import { writeBatch, doc,
+         collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
 
 const ProductCatalogPage = () => {
@@ -18,6 +19,7 @@ const ProductCatalogPage = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({
+        categoryId: '',
         make: '',
         model: ''
     });
@@ -26,6 +28,15 @@ const ProductCatalogPage = () => {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
+
+    const [productCategories, setProductCategories] = useState([]);
+    const [makes, setMakes] = useState([]);
+    const [models, setModels] = useState([]);
+    const [units, setUnits] = useState([]); // Add units to state
+
+    // Maps to store ID-to-Name mappings
+    const [makeMap, setMakeMap] = useState(new Map());
+    const [modelMap, setModelMap] = useState(new Map());
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -39,8 +50,32 @@ const ProductCatalogPage = () => {
         }
     };
 
+    const fetchDropdownData = async () => {
+        try {
+            const [fetchedCategories, fetchedMakes, fetchedModels, fetchedUnits] = await Promise.all([ // Fetch units too
+                getProductCategories(),
+                getMakes(),
+                getModels(),
+                getUnits() // Fetch units
+            ]);
+            setProductCategories(fetchedCategories);
+            setMakes(fetchedMakes);
+            setModels(fetchedModels);
+            setUnits(fetchedUnits); // Set units state
+
+            // Populate the maps
+            setMakeMap(new Map(fetchedMakes.map(m => [m.id, m.name])));
+            setModelMap(new Map(fetchedModels.map(m => [m.id, m.name])));
+
+        } catch (error) {
+            console.error("Error fetching make/model/category/unit data:", error);
+            toast.error("Failed to load filter data.");
+        }
+    };
+
     useEffect(() => {
         fetchProducts();
+        fetchDropdownData();
     }, []);
     
     const filteredProducts = useMemo(() => {
@@ -49,9 +84,11 @@ const ProductCatalogPage = () => {
                  product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
             );
+            const categoryMatch = !filters.categoryId || product.categoryId === filters.categoryId;
             const makeMatch = !filters.make || product.make === filters.make;
             const modelMatch = !filters.model || product.model === filters.model;
-            return searchMatch && makeMatch && modelMatch;
+            
+            return searchMatch && categoryMatch && makeMatch && modelMatch;
         });
     }, [products, searchTerm, filters]);
 
@@ -122,6 +159,7 @@ const ProductCatalogPage = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
         fetchProducts();
+        fetchDropdownData();
     };
 
     const handleDelete = (productId) => {
@@ -146,22 +184,33 @@ const ProductCatalogPage = () => {
         ), { icon: '⚠️' });
     };
 
-    const makes = useMemo(() => [...new Set(products.map(p => p.make).filter(Boolean))].map(m => ({ id: m, name: m })), [products]);
-    const models = useMemo(() => {
-        if (!filters.make) return [];
-        return [...new Set(products.filter(p => p.make === filters.make).map(p => p.model).filter(Boolean))].map(m => ({ id: m, name: m }));
-    }, [products, filters.make]);
-
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
+            if (name === 'categoryId') {
+                newFilters.make = '';
+                newFilters.model = '';
+            }
             if (name === 'make') {
                 newFilters.model = '';
             }
             return newFilters;
         });
     };
+
+    const filteredMakesForDropdown = useMemo(() => {
+        if (!filters.categoryId) return makes;
+        return makes.filter(make =>
+            Array.isArray(make.categoryIds) && make.categoryIds.includes(filters.categoryId)
+        );
+    }, [makes, filters.categoryId]);
+
+    const filteredModelsForDropdown = useMemo(() => {
+        if (!filters.make) return models;
+        return models.filter(model => model.makeId === filters.make);
+    }, [models, filters.make]);
+
 
     return (
         <>
@@ -187,7 +236,7 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="relative">
                             <Input
                                 type="text"
@@ -198,8 +247,9 @@ const ProductCatalogPage = () => {
                             />
                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
-                        <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" />
-                        <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={models} placeholder="All Models" disabled={!filters.make} />
+                        <Dropdown label="Filter by Category" name="categoryId" value={filters.categoryId} onChange={handleFilterChange} options={productCategories} placeholder="All Categories" />
+                        <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={filteredMakesForDropdown} placeholder="All Makes" disabled={!filters.categoryId} />
+                        <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={filteredModelsForDropdown} placeholder="All Models" disabled={!filters.make} />
                     </div>
                 </div>
 
@@ -228,9 +278,9 @@ const ProductCatalogPage = () => {
                             </thead>
                             <tbody>
                                  {loading ? (
-                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">Loading products...</td></tr>
-                                ) : filteredProducts.length === 0 ? (
-                                    <tr><td colSpan="9" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
+                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                 ) : filteredProducts.length === 0 ? (
+                                     <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
                                  ) : (
                                     filteredProducts.map(product => (
                                         <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
@@ -251,19 +301,21 @@ const ProductCatalogPage = () => {
                                             </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                            <td className="p-3 text-gray-400">{product.make || 'N/A'}</td>
-                                            <td className="p-3 text-gray-400">{product.model || 'N/A'}</td>
+                                            {/* Display actual make name using makeMap */}
+                                            <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
+                                            {/* Display actual model name using modelMap */}
+                                            <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
                                                 <div className="flex justify-center gap-2">
-                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
+                                                    <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
                                         </tr>
-                                     ))
+                                    ))
                                 )}
                             </tbody>
                         </table>

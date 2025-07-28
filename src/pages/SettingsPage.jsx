@@ -17,7 +17,13 @@ import RoleManager from '../components/features/settings/RoleManager';
 import RoutineTasksManager from '../components/features/settings/RoutineTasksManager';
 import LearningPathManager from '../components/features/settings/LearningPathManager';
 import KaizenManager from '../components/features/settings/KaizenManager';
-import { ProductCategoryManager, MakeManager, ModelManager, UnitManager } from '../components/features/settings/ProductCategoryManager';
+
+// Import individual components from their new files
+import { ProductCategoryManager } from '../components/features/settings/ProductCategoryManager'; // Still imports GenericManager helper
+import MakeManager from '../components/features/settings/MakeManager'; // Now from its own file
+import ModelManager from '../components/features/settings/ModelManager'; // Now from its own file
+import UnitManager from '../components/features/settings/UnitManager'; // Now from its own file
+
 import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
 const TabButton = ({ label, isActive, onClick }) => {

@@ -1,28 +1,20 @@
 // src/components/features/settings/MakeManager.jsx
 import React, { useState, useEffect } from 'react';
-import { getMakes, addMake, deleteMake, updateDocument, getProductCategories } from '../../../api/firestore';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
+import { db } from '../../../api/firebase'; // Import db
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import toast from 'react-hot-toast';
+import { getMakes, getProductCategories } from '../../../api/firestore'; // Import getMakes, getProductCategories
 
-const MakeManager = () => {
-    const [makes, setMakes] = useState([]);
-    const [categories, setCategories] = useState([]);
+const MakeManager = ({ items, categories, onDataChange }) => {
     const [newMakeName, setNewMakeName] = useState('');
     const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
     const [editingMakeId, setEditingMakeId] = useState(null);
     const [editingMakeName, setEditingMakeName] = useState('');
     const [editingCategoryIds, setEditingCategoryIds] = useState(new Set());
 
-    const fetchData = async () => {
-        const [fetchedMakes, fetchedCategories] = await Promise.all([getMakes(), getProductCategories()]);
-        setMakes(fetchedMakes);
-        setCategories(fetchedCategories);
-    };
-
-    useEffect(() => { fetchData(); }, []);
-
-    const handleAddOrUpdate = async (e) => {
+    const handleAddOrUpdateMake = async (e) => {
         e.preventDefault();
         const name = (editingMakeId ? editingMakeName : newMakeName).trim();
         const categoryIds = Array.from(editingMakeId ? editingCategoryIds : selectedCategoryIds);
@@ -32,29 +24,31 @@ const MakeManager = () => {
 
         try {
             if (editingMakeId) {
-                await updateDocument('makes', editingMakeId, { name, categoryIds });
+                await updateDoc(doc(db, 'makes', editingMakeId), { name, categoryIds });
                 toast.success("Make updated!");
                 setEditingMakeId(null);
+                setEditingMakeName('');
+                setEditingCategoryIds(new Set());
             } else {
-                await addMake(name, categoryIds);
+                await addDoc(collection(db, 'makes'), { name, categoryIds });
                 toast.success("Make added!");
                 setNewMakeName('');
                 setSelectedCategoryIds(new Set());
             }
-            fetchData();
+            onDataChange(); // Refresh data in parent (SettingsPage)
         } catch (error) {
             toast.error("Failed to save make.");
         }
     };
     
-    const handleDelete = (id) => {
+    const handleDeleteMake = (id) => {
         toast((t) => (
             <span>
                 Delete this make?
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteMake(id).then(() => {
+                    deleteDoc(doc(db, 'makes', id)).then(() => {
                         toast.success("Make deleted.");
-                        fetchData();
+                        onDataChange();
                     }).catch(() => toast.error("Failed to delete."));
                     toast.dismiss(t.id);
                 }}>Delete</Button>
@@ -63,13 +57,13 @@ const MakeManager = () => {
         ));
     };
 
-    const handleEditClick = (make) => {
+    const handleEditClickMake = (make) => {
         setEditingMakeId(make.id);
         setEditingMakeName(make.name);
         setEditingCategoryIds(new Set(make.categoryIds || []));
     };
 
-    const handleCancelEdit = () => {
+    const handleCancelEditMake = () => {
         setEditingMakeId(null);
         setEditingMakeName('');
         setEditingCategoryIds(new Set());
@@ -102,7 +96,7 @@ const MakeManager = () => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-4">Manage Makes</h3>
-            <form onSubmit={handleAddOrUpdate} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
+            <form onSubmit={handleAddOrUpdateMake} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
                 <Input
                     label="New Make Name"
                     type="text"
@@ -129,7 +123,7 @@ const MakeManager = () => {
                 <Button type="submit" variant="primary" className="w-full">Add Make</Button>
             </form>
             <div className="space-y-3">
-                {makes.map(make => (
+                {items.map(make => (
                     <div key={make.id} className="bg-gray-700 p-3 rounded-lg">
                         {editingMakeId === make.id ? (
                             <div className="space-y-3">
@@ -155,8 +149,8 @@ const MakeManager = () => {
                                     </div>
                                 </div>
                                 <div className="flex gap-2 justify-end">
-                                    <Button onClick={handleCancelEdit} variant="secondary" size="sm">Cancel</Button>
-                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                    <Button onClick={handleCancelEditMake} variant="secondary" size="sm">Cancel</Button>
+                                    <Button onClick={handleAddOrUpdateMake} variant="success" size="sm">Save</Button>
                                 </div>
                             </div>
                         ) : (
@@ -168,8 +162,8 @@ const MakeManager = () => {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Button onClick={() => handleEditClick(make)} variant="secondary" size="sm">Edit</Button>
-                                    <Button onClick={() => handleDelete(make.id)} variant="danger" size="sm">Delete</Button>
+                                    <Button onClick={() => handleEditClickMake(make)} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDeleteMake(make.id)} variant="danger" size="sm">Delete</Button>
                                 </div>
                             </div>
                         )}

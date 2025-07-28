@@ -1,26 +1,18 @@
 // src/components/features/settings/ModelManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { getModels, addModel, deleteModel, updateDocument, getMakes } from '../../../api/firestore';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
+import { db } from '../../../api/firebase'; // Import db
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
+import { getModels, getMakes } from '../../../api/firestore'; // Import getModels, getMakes
 
-const ModelManager = () => {
-    const [models, setModels] = useState([]);
-    const [makes, setMakes] = useState([]);
+const ModelManager = ({ items, makes, onDataChange }) => {
     const [newModelName, setNewModelName] = useState('');
     const [selectedMakeId, setSelectedMakeId] = useState('');
     const [editingModelId, setEditingModelId] = useState(null);
     const [editingModelName, setEditingModelName] = useState('');
-
-    const fetchData = async () => {
-        const [fetchedModels, fetchedMakes] = await Promise.all([getModels(), getMakes()]);
-        setModels(fetchedModels);
-        setMakes(fetchedMakes);
-    };
-
-    useEffect(() => { fetchData(); }, []);
 
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
@@ -32,16 +24,16 @@ const ModelManager = () => {
         try {
             if (editingModelId) {
                 // Note: Updating the parent 'make' is not supported via this simple UI to prevent data integrity issues.
-                await updateDocument('models', editingModelId, { name });
+                await updateDoc(doc(db, 'models', editingModelId), { name });
                 toast.success("Model updated!");
                 setEditingModelId(null);
                 setEditingModelName('');
             } else {
-                await addModel(name, selectedMakeId);
+                await addDoc(collection(db, 'models'), { name, makeId: selectedMakeId }); // Changed to addDoc
                 toast.success("Model added!");
                 setNewModelName('');
             }
-            fetchData();
+            onDataChange(); // Refresh data in parent (SettingsPage)
         } catch (error) {
             toast.error("Failed to save model.");
         }
@@ -52,9 +44,9 @@ const ModelManager = () => {
             <span>
                 Delete this model?
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteModel(id).then(() => {
+                    deleteDoc(doc(db, 'models', id)).then(() => {
                         toast.success("Model deleted.");
-                        fetchData();
+                        onDataChange();
                     }).catch(() => toast.error("Failed to delete."));
                     toast.dismiss(t.id);
                 }}>Delete</Button>
@@ -87,7 +79,7 @@ const ModelManager = () => {
                 <Button type="submit" variant="primary">Add Model</Button>
             </form>
             <div className="space-y-3">
-                {models.map(model => (
+                {items.map(model => (
                     <div key={model.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                         {editingModelId === model.id ? (
                             <Input
