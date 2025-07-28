@@ -20,6 +20,7 @@ const ProductModal = ({ product, onClose }) => {
         name: '', partNumber: '', make: '', model: '', categoryId: '', sellingPrice: '',
         price: '', photoUrl: '', currentStock: '', reorderLevel: '',
         standardStockLevel: '', unit: '', category: 'Product',
+        itemCode: '', // Initialize itemCode
     });
 
     const [dropdownData, setDropdownData] = useState({
@@ -49,6 +50,7 @@ const ProductModal = ({ product, onClose }) => {
                 currentStock: product.currentStock || '',
                 reorderLevel: product.reorderLevel || '', standardStockLevel: product.standardStockLevel || '',
                 unit: product.unit || '', category: 'Product',
+                itemCode: product.itemCode || product.partNumber || '', // Ensure itemCode is set from existing data or partNumber
             });
         }
     }, [product]);
@@ -63,6 +65,10 @@ const ProductModal = ({ product, onClose }) => {
             }
             if (name === 'make') {
                 updated.model = '';
+            }
+            // If partNumber changes, update itemCode to match for products
+            if (name === 'partNumber' && prev.category === 'Product') {
+                updated.itemCode = value;
             }
             return updated;
         });
@@ -81,6 +87,8 @@ const ProductModal = ({ product, onClose }) => {
                 currentStock: Number(formData.currentStock) || 0,
                 reorderLevel: Number(formData.reorderLevel) || 0,
                 standardStockLevel: Number(formData.standardStockLevel) || 0,
+                // Ensure itemCode is explicitly set to partNumber for products
+                itemCode: formData.category === 'Product' ? formData.partNumber : formData.itemCode,
             };
 
             if (product) {
