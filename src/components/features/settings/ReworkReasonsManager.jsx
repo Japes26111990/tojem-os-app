@@ -30,7 +30,7 @@ const ReworkReasonsManager = () => {
 
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
-        if (!reasonName.trim()) return;
+        if (!reasonName.trim()) return toast.error("Reason name is required.");
 
         try {
             if (editingId) {
@@ -88,7 +88,7 @@ const ReworkReasonsManager = () => {
                 <Input
                     name="reasonName"
                     value={reasonName}
-                    onChange={(e) => setReasonName(e.target.value)}
+                    onChange={(e) => setNewReasonName(e.target.value)}
                     placeholder={editingId ? "Edit reason..." : "New reason (e.g., Poor Surface Finish)"}
                     className="flex-grow"
                 />

@@ -70,11 +70,11 @@ const ConsumableEditor = ({ allConsumables, selectedConsumables, onAdd, onRemove
         let itemToAddDetails;
 
         if (consumableType === 'fixed') {
-            if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return alert("Please select an item and enter a valid quantity.");
+            if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return toast.error("Please select an item and enter a valid quantity.");
             itemToAddDetails = selectedFixedItemDetails;
             newConsumable = { type: 'fixed', itemId: itemToAddDetails.id, quantity: Number(fixedQty) };
         } else if (consumableType === 'dimensional') {
-            if (!selectedDimItemDetails || cuts.length === 0) return alert("Please select a material and add at least one cutting instruction.");
+            if (!selectedDimItemDetails || cuts.length === 0) return toast.error("Please select a material and add at least one cutting instruction.");
             itemToAddDetails = selectedDimItemDetails;
             newConsumable = { type: 'dimensional', itemId: itemToAddDetails.id, cuts };
         } else {
@@ -103,7 +103,7 @@ const ConsumableEditor = ({ allConsumables, selectedConsumables, onAdd, onRemove
             setCutRule({ dimensions: '', notes: '' });
             setSelectedDimItemDetails(null);
         } else {
-            alert("This consumable has already been added.");
+            toast.error("This consumable has already been added.");
         }
     };
 

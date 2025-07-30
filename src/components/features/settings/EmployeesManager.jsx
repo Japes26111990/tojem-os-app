@@ -8,6 +8,7 @@ import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { SYSTEM_ROLES } from '../../../config'; // Import SYSTEM_ROLES
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);

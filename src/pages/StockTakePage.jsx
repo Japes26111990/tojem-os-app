@@ -11,7 +11,7 @@ import ConsignmentStockTake from '../components/features/stock/ConsignmentStockT
 import toast from 'react-hot-toast';
 import QrScannerModal from '../components/features/scanner/QrScannerModal'; // <-- NEW IMPORT
 import { findInventoryItemByItemCode } from '../api/firestore'; // <-- NEW IMPORT
-import StockCountModal from '../components/features/stock/StockCountModal'; // <-- NEW IMPORT
+import StockCountModal from '../components/features/stock/StockCountModal'; // <-- CORRECTED IMPORT PATH
 
 const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;

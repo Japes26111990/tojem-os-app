@@ -36,8 +36,11 @@ const MarketingPage = () => {
                 const fetchedCampaigns = await getCampaigns();
                 setCampaigns(fetchedCampaigns);
                 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
-                    setJobs(fetchedJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
                 });
 
             } catch (error) {

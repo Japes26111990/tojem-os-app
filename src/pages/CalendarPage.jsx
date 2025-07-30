@@ -66,7 +66,13 @@ const CalendarPage = () => {
         }, {});
         setEmployeeHourlyRates(rates);
 
-        unsubscribeJobs = listenToJobCards((fetchedJobs) => {
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+          if (!Array.isArray(fetchedJobs)) {
+              console.error("Received non-array data for jobs:", fetchedJobs);
+              setEvents([]); // Set to empty array to prevent crash
+              return;
+          }
           const calendarEvents = fetchedJobs
             .filter(job => job.scheduledDate)
             .map(job => ({

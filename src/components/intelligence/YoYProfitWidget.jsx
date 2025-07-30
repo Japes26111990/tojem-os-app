@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Percent } from 'lucide-react';
+import { SALES_REPORT_TITLES } from '../../config'; // Import SALES_REPORT_TITLES
 
 const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
     
@@ -22,17 +23,17 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,
             textColor: 'text-red-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
         return {
             icon: <Minus size={20} />,
             textColor: 'text-gray-400',
-            text: 'No Change vs. Last Year'
+            text: `No Change ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
     };
     
@@ -46,7 +47,7 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
             <div>
                 <p className="text-gray-400 text-sm font-medium flex items-center gap-2">
                     <Percent size={16} />
-                    This Month's Profit (from Accounting)
+                    {SALES_REPORT_TITLES.CURRENT_MONTH_PROFIT_ACCOUNTING} {/* Use SALES_REPORT_TITLES.CURRENT_MONTH_PROFIT_ACCOUNTING */}
                 </p>
                 <p className={`text-4xl font-bold mt-2 ${profitColor}`}>
                     R {currentMonthProfit.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

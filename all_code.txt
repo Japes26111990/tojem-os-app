@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/28/2025 06:20:34
+Generated on: 07/29/2025 16:54:53
 
 
 ==================================================
@@ -61,6 +61,7 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
+import { JOB_STATUSES, SYSTEM_ROLES } from '../config'; // Import JOB_STATUSES and SYSTEM_ROLES
 
 // =================================================================================================
 // ROUTINE TASK COMPLETION API
@@ -318,7 +319,7 @@ export const listenToPurchaseQueue = (callback) => {
     const q = query(purchaseQueueCollection, orderBy('queuedAt', 'desc'));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 };
-export const addToPurchaseQueue = (itemData) => addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
+export const addToPurchaseQueue = (itemData) => addDoc(purchaseQueueCollection, { ...itemData, status: JOB_STATUSES.PENDING, queuedAt: serverTimestamp() });
 export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities) => {
     const batch = writeBatch(db);
     itemsToOrder.forEach(item => {
@@ -326,7 +327,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
         const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
         const orderQty = orderQuantities[item.id] || recommendedQty;
         batch.update(docRef, {
-            status: 'ordered',
+            status: JOB_STATUSES.ORDERED,
             orderDate: serverTimestamp(),
             orderedQty: Number(orderQty),
             orderedFromSupplierId: supplier.id,
@@ -343,7 +344,7 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
         const inventoryDoc = await transaction.get(inventoryDocRef);
         if (!inventoryDoc.exists()) throw new Error("Original inventory item not found.");
         transaction.update(inventoryDocRef, { currentStock: increment(Number(quantityReceived)) });
-        transaction.update(purchaseQueueDocRef, { status: 'completed' });
+        transaction.update(purchaseQueueDocRef, { status: JOB_STATUSES.COMPLETE });
     });
 };
 export const requeueOrDeleteItem = async (queuedItem) => {
@@ -353,7 +354,7 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     if (!inventoryDoc.exists()) return deleteDoc(purchaseQueueDocRef);
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
-        return updateDoc(purchaseQueueDocRef, { status: 'pending' });
+        return updateDoc(purchaseQueueDocRef, { status: JOB_STATUSES.PENDING });
     } else {
         return deleteDoc(purchaseQueueDocRef);
     }
@@ -388,30 +389,52 @@ export const updateStandardRecipe = async (jobData) => {
 };
 
 const jobCardsCollection = collection(db, 'createdJobCards');
-export const addJobCard = (jobCardData) => addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
+
+/**
+ * Adds a new job card to the createdJobCards collection with input validation and error handling.
+ * @param {Object} jobCardData - The job card data, including jobId, partName, and status.
+ * @returns {Promise<DocumentReference>} A promise that resolves to the DocumentReference of the created document.
+ * @throws {Error} If required fields are missing or the Firestore write fails.
+ */
+export const addJobCard = async (jobCardData) => {
+    // Input validation: Ensure critical fields are present
+    if (!jobCardData.jobId || !jobCardData.partName || !jobCardData.status) {
+        throw new Error('Job card must include jobId, partName, and status.');
+    }
+    try {
+        const docRef = await addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
+        return docRef;
+    } catch (error) {
+        console.error('Error adding job card:', error);
+        throw new Error(`Failed to create job card: ${error.message}`);
+    }
+};
+
 
 export const listenToJobCards = (callback, options = {}) => {
     const jobsCollectionRef = collection(db, 'createdJobCards');
     let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
     if (options.limit) {
-        if (options.startAfter) {
+        if (options.startAfter && options.startAfter.exists?.()) { // Added .exists?.() for robustness
             q = query(q, startAfter(options.startAfter));
         }
         q = query(q, limit(options.limit));
         
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+            const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null; // Ensure lastVisible is null if no docs
             callback({ jobs, lastVisible }); 
         }, (error) => {
             console.error("Error listening to paginated job cards:", error);
+            callback({ jobs: [], lastVisible: null, error }); // Pass error to callback
         });
     } else {
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            callback(jobs);
+            callback({ jobs, lastVisible: null }); // Consistently return object with lastVisible: null
         }, (error) => {
             console.error("Error listening to all job cards:", error);
+            callback({ jobs: [], lastVisible: null, error }); // Pass error to callback
         });
     }
 };
@@ -433,7 +456,7 @@ export const updateJobPriorities = async (orderedJobs) => {
 };
 
 export const getJobsAwaitingQC = async () => {
-    const q = query(jobCardsCollection, where('status', '==', 'Awaiting QC'));
+    const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.AWAITING_QC));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
@@ -450,7 +473,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         const currentJobData = jobDoc.data();
         const dataToUpdate = {};
         if (isApproved) {
-            dataToUpdate.status = 'Complete';
+            dataToUpdate.status = JOB_STATUSES.COMPLETE;
             if (!currentJobData.completedAt) dataToUpdate.completedAt = serverTimestamp();
             if (job.partId) {
                 const productRef = doc(db, 'inventoryItems', job.partId);
@@ -458,13 +481,13 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
             }
         } else {
             if (reworkDetails && reworkDetails.requeue) {
-                dataToUpdate.status = 'Pending';
+                dataToUpdate.status = JOB_STATUSES.PENDING;
                 dataToUpdate.issueReason = `REWORK: ${rejectionReason}`;
                 dataToUpdate.employeeId = reworkDetails.newEmployeeId || job.employeeId;
                 dataToUpdate.employeeName = reworkDetails.newEmployeeName || job.employeeName;
                 dataToUpdate.completedAt = null;
             } else {
-                dataToUpdate.status = 'Issue';
+                dataToUpdate.status = JOB_STATUSES.ISSUE;
                 dataToUpdate.issueReason = rejectionReason;
             }
         }
@@ -489,12 +512,12 @@ export const deleteDocument = async (collectionName, docId) => {
     return deleteDoc(docRef);
 };
 
-export const getProducts = async () => getAllInventoryItems('Product');
+export const getProducts = async () => getAllInventoryItems(JOB_STATUSES.PRODUCT);
 export const addProduct = async (productData) => {
-    const q = query(inventoryCollection, where("partNumber", "==", productData.partNumber), where("category", "==", "Product"));
+    const q = query(inventoryCollection, where("partNumber", "==", productData.partNumber), where("category", "==", JOB_STATUSES.PRODUCT));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) throw new Error(`A product with Part Number "${productData.partNumber}" already exists.`);
-    return addInventoryItem({ ...productData, category: 'Product' });
+    return addInventoryItem({ ...productData, category: JOB_STATUSES.PRODUCT });
 };
 export const updateProduct = (productId, updatedData) => updateInventoryItem(productId, updatedData);
 export const deleteProduct = (productId) => deleteInventoryItem(productId);
@@ -533,12 +556,12 @@ export const linkRecipeToProduct = (linkData) => addDoc(productRecipeLinksCollec
 export const unlinkRecipeFromProduct = (linkId) => deleteDoc(doc(db, 'productRecipeLinks', linkId));
 
 export const getCompletedJobsInRange = async (startDate, endDate) => {
-    const q = query(jobCardsCollection, where('status', '==', 'Complete'), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
+    const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.COMPLETE), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 export const getCompletedJobsForEmployee = async (employeeId) => {
     if (!employeeId) return [];
-    const q = query(jobCardsCollection, where('employeeId', '==', employeeId), where('status', 'in', ['Complete', 'Issue', 'Archived - Issue']));
+    const q = query(jobCardsCollection, where('employeeId', '==', employeeId), where('status', 'in', [JOB_STATUSES.COMPLETE, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE]));
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 
@@ -559,7 +582,7 @@ export const addCampaign = (campaignData) => addDoc(collection(db, 'marketingCam
 export const updateCampaign = (campaignId, updatedData) => updateDoc(doc(db, 'marketingCampaigns', campaignId), updatedData);
 export const deleteCampaign = (campaignId) => deleteDoc(doc(db, 'marketingCampaigns', campaignId));
 
-export const getTrainingResources = async () => getDocs(collection(db, 'trainingResources')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+export const getTrainingResources = async () => getDocs(query(collection(db, 'trainingResources'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addTrainingResource = (data) => addDoc(collection(db, 'trainingResources'), data);
 export const updateTrainingResource = (id, data) => updateDoc(doc(db, 'trainingResources', id), data);
 export const deleteTrainingResource = (id) => deleteDoc(doc(db, 'trainingResources', id));
@@ -567,7 +590,7 @@ export const deleteTrainingResource = (id) => deleteDoc(doc(db, 'trainingResourc
 export const addSubcontractorAdHocLog = (logData) => addDoc(collection(db, 'subcontractorAdHocLogs'), { ...logData, createdAt: serverTimestamp() });
 export const addSubcontractorTeamLog = (logData) => addDoc(collection(db, 'subcontractorTeamLogs'), { ...logData, createdAt: serverTimestamp() });
 
-export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quoteData, status: 'draft', createdAt: serverTimestamp() });
+export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quoteData, status: JOB_STATUSES.DRAFT, createdAt: serverTimestamp() });
 export const createSalesOrderFromQuote = async (quote) => {
     const batch = writeBatch(db);
     const salesOrderRef = doc(collection(db, 'salesOrders'));
@@ -576,11 +599,11 @@ export const createSalesOrderFromQuote = async (quote) => {
         customerName: quote.customerName,
         customerEmail: quote.customerEmail,
         total: quote.total,
-        status: 'Pending Production',
+        status: JOB_STATUSES.PENDING_PRODUCTION,
         createdAt: serverTimestamp(),
-        lineItems: quote.lineItems.map(item => ({ ...item, id: doc(collection(db, '_')).id, status: 'Pending' }))
+        lineItems: quote.lineItems.map(item => ({ ...item, id: doc(collection(db, '_')).id, status: JOB_STATUSES.PENDING }))
     });
-    batch.update(doc(db, 'quotes', quote.id), { status: 'Accepted' });
+    batch.update(doc(db, 'quotes', quote.id), { status: JOB_STATUSES.ACCEPTED });
     return batch.commit();
 };
 export const listenToSalesOrders = (callback) => onSnapshot(query(collection(db, 'salesOrders'), orderBy('createdAt', 'desc')), s => callback(s.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -591,12 +614,12 @@ export const addPurchasedItemToQueue = (lineItem, salesOrder) => addDoc(collecti
     estimatedCost: lineItem.unitCost,
     salesOrderId: salesOrder.salesOrderId,
     customerName: salesOrder.customerName,
-    status: 'Pending Purchase',
+    status: JOB_STATUSES.PENDING_PURCHASE,
     createdAt: serverTimestamp()
 });
 export const markOneOffItemsAsOrdered = async (itemIds) => {
     const batch = writeBatch(db);
-    itemIds.forEach(id => batch.update(doc(db, 'oneOffPurchases', id), { status: 'Ordered' }));
+    itemIds.forEach(id => batch.update(doc(db, 'oneOffPurchases', id), { status: JOB_STATUSES.ORDERED }));
     return batch.commit();
 };
 export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newStatus) => {
@@ -653,10 +676,10 @@ export const addCustomerFeedback = (feedbackData) => addDoc(collection(db, 'cust
 export const getReworkReasons = async () => getDocs(query(collection(db, 'reworkReasons'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const giveKudosToJob = (jobId) => updateDoc(doc(db, 'createdJobCards', jobId), { kudos: true });
 export const listenToReworkQueue = (callback) => {
-    const q = query(collection(db, 'createdJobCards'), where('status', 'in', ['Issue', 'Halted - Issue']));
+    const q = query(collection(db, 'createdJobCards'), where('status', 'in', [JOB_STATUSES.ISSUE, JOB_STATUSES.HALTED_ISSUE]));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-export const resolveReworkJob = (jobDocId) => updateDoc(doc(db, 'createdJobCards', jobDocId), { status: 'Pending', issueReason: 'Rework Resolved - Re-queued' });
+export const resolveReworkJob = (jobDocId) => updateDoc(doc(db, 'createdJobCards', jobDocId), { status: JOB_STATUSES.PENDING, issueReason: 'Rework Resolved - Re-queued' });
 
 export const getRoutineTasks = async () => getDocs(query(collection(db, 'routineTasks'), orderBy('timeOfDay'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addRoutineTask = (taskData) => addDoc(collection(db, 'routineTasks'), taskData);
@@ -664,16 +687,16 @@ export const updateRoutineTask = (taskId, updatedData) => updateDoc(doc(db, 'rou
 export const deleteRoutineTask = (taskId) => deleteDoc(doc(db, 'routineTasks', taskId));
 
 export const listenToPickingLists = (callback) => {
-    const q = query(collection(db, 'pickingLists'), where('status', '==', 'pending'));
+    const q = query(collection(db, 'pickingLists'), where('status', '==', JOB_STATUSES.PENDING));
     return onSnapshot(q, (snapshot) => {
         const lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         lists.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
         callback(lists);
     });
 };
-export const markPickingListAsCompleted = (listId) => updateDoc(doc(db, 'pickingLists', listId), { status: 'completed' });
+export const markPickingListAsCompleted = (listId) => updateDoc(doc(db, 'pickingLists', listId), { status: JOB_STATUSES.COMPLETE });
 
-export const getClientUsers = async () => getDocs(query(collection(db, 'users'), where('role', '==', 'Client'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+export const getClientUsers = async () => getDocs(query(collection(db, 'users'), where('role', '==', SYSTEM_ROLES.CLIENT))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const listenToConsignmentStockForClient = (clientId, callback) => {
     if (!clientId) return () => {};
     const q = query(collection(db, 'consignmentStock'), where('clientId', '==', clientId), orderBy('productName'));
@@ -699,6 +722,7 @@ export const deleteLearningPath = (pathId) => deleteDoc(doc(db, 'learningPaths',
 
 // Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs, onSnapshot };
+
 
 
 
@@ -1540,12 +1564,12 @@ const QrCodePrintModal = ({ product, onClose }) => {
                         .sticker {
                             width: 23mm;
                             height: 23mm;
-                            padding: 3mm 1mm 1mm 1mm; 
+                            padding: 3mm 1mm 1mm 1mm; /* Adjusted padding top to shift content up by 1mm (from 4mm to 3mm) */
                             display: flex;
                             flex-direction: column;
-                            align-items: center;
+                            align-items: center; /* Center horizontally */
                             justify-content: flex-start; 
-                            gap: 1mm;
+                            gap: 0.5mm; /* Reduced gap */
                             page-break-after: always;
                             position: relative;
                             overflow: hidden;
@@ -1556,17 +1580,30 @@ const QrCodePrintModal = ({ product, onClose }) => {
                         }
                         img { 
                             max-width: 100%; 
-                            max-height: 14mm;
+                            max-height: 13mm; /* Increased max-height for QR code */
                             height: auto; 
+                            display: block; /* Ensures margin auto works for centering */
+                            margin: 0 auto; /* Center QR code horizontally */
                         }
                         p {
-                            font-size: 7pt;
+                            font-size: 6.5pt; /* Slightly smaller font for part number */
                             font-weight: bold;
                             margin: 0;
                             padding: 0;
-                            text-align: center;
+                            text-align: center; /* Center text */
                             word-break: break-all;
                             line-height: 1;
+                        }
+                        /* NEW: Style for the part name */
+                        .part-name {
+                            font-size: 5.5pt; /* Slightly smaller font for part name */
+                            font-weight: normal;
+                            margin: 0; /* Removed margin-bottom */
+                            white-space: nowrap;
+                            overflow: hidden;
+                            text-overflow: ellipsis;
+                            width: 100%;
+                            text-align: center; /* Center text */
                         }
                         @media print {
                             @page {
@@ -1583,6 +1620,7 @@ const QrCodePrintModal = ({ product, onClose }) => {
             printWindow.document.write(`
                 <div class="sticker">
                     <div class="content">
+                        <p class="part-name">${product.name}</p>
                         <img src="${canvas.toDataURL()}" />
                         <p>${product.partNumber}</p>
                     </div>
@@ -1611,14 +1649,12 @@ const QrCodePrintModal = ({ product, onClose }) => {
                     <h3 className="text-lg font-semibold text-white mt-4">{product.name}</h3>
                     <p className="text-sm text-gray-400">{product.partNumber}</p>
                     <div className="mt-4 w-full max-w-xs">
-                        {/* UPDATED: Using the Input component */}
                         <Input
                             label="Quantity to Print"
                             type="number"
                             value={quantity}
                             onChange={(e) => setQuantity(Number(e.target.value))}
                             min="1"
-                            // Removed the specific className here as Input component handles styling
                         />
                     </div>
                 </div>
@@ -1681,8 +1717,8 @@ const ManagerFocusWidget = () => {
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
         // Listener for Halted Jobs and long-waiting QC jobs (Urgent & Important)
-        const unsubscribeJobs = listenToJobCards(allJobs => {
-            const halted = allJobs
+        const unsubscribeJobs = listenToJobCards(({ jobs }) => { // Updated to destructure jobs from the object
+            const halted = jobs
                 .filter(j => j.status === 'Halted - Issue')
                 .map(j => ({
                     id: j.id,
@@ -1690,7 +1726,7 @@ const ManagerFocusWidget = () => {
                     secondaryText: `Halted: ${j.issueReason || 'No reason given'}`
                 }));
             
-            const oldQc = allJobs
+            const oldQc = jobs
                 .filter(j => j.status === 'Awaiting QC' && j.completedAt?.toDate() < twoHoursAgo)
                 .map(j => ({
                     id: j.id,
@@ -1748,7 +1784,7 @@ const ManagerFocusWidget = () => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-4">Manager's Focus</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <FocusQuadrant
                     title="Urgent & Important"
                     items={urgentImportant}
@@ -2163,6 +2199,7 @@ import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PrintConfirmationModal from './PrintConfirmationModal';
 import QRCode from 'qrcode';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -2367,7 +2404,7 @@ const CustomJobCreator = ({ campaignId }) => {
             employeeId: jobData.employeeId || 'unassigned',
             employeeName: allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned',
             quantity: Number(jobData.quantity) || 1,
-            status: 'Pending',
+            status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
             description: jobData.description.trim(),
             estimatedTime: parseFloat(jobData.estimatedTime) || 0,
             steps: jobData.steps.split('\n').filter(s => s.trim() !== ''),
@@ -2444,7 +2481,7 @@ const CustomJobCreator = ({ campaignId }) => {
             if (printWindow) {
                 printWindow.document.write(`<html><head><title>Custom Job Card ${jobToConfirm.jobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
-                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+                printWindow.onload = () => { setTimeout(() => printWindow.print(), 1000); }; // Changed from 500ms to 1000ms
             } else {
                 toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸' });
             }
@@ -2561,14 +2598,14 @@ const CustomJobCreator = ({ campaignId }) => {
                                     />
                                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                                     {consumableSearchTerm.length > 0 && filteredConsumableOptions.length > 0 && (
-                                        <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                                        <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-md mt-1 max-h-48 overflow-y-auto shadow-lg">
                                             {filteredConsumableOptions.map(item => (
                                                 <li
                                                     key={item.id}
                                                     className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                                     onClick={() => selectConsumableFromSearch(item)}
-                                                    >
-                                                    {item.name} ({item.itemCode || 'N/A'}) - {item.unit} (R{item.price.toFixed(2)})
+                                                >
+                                                    {item.name} (ID: {item.itemCode || 'N/A'}) - {item.unit} (R{item.price.toFixed(2)})
                                                 </li>
                                             ))}
                                         </ul>
@@ -2595,7 +2632,7 @@ const CustomJobCreator = ({ campaignId }) => {
                                             <Button type="button" onClick={() => removeConsumable(index)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
                                         </li>
                                     ))
-                                    ) : (
+                                ) : (
                                     <li className="text-gray-400 text-sm">No consumables added yet.</li>
                                 )}
                             </ul>
@@ -2623,6 +2660,7 @@ export default CustomJobCreator;
 
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobCardCreator.jsx
 ==================================================
@@ -2645,6 +2683,7 @@ import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.
 import PrintConfirmationModal from './PrintConfirmationModal';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -2759,7 +2798,7 @@ const JobCardCreator = ({ campaignId }) => {
                      departmentName: department.name,
                     employeeId: employee ? employee.id : 'unassigned',
                     employeeName: employee ? employee.name : 'Unassigned',
-                    status: 'Pending',
+                    status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
                     description: finalRecipeDetails.description,
                     quantity: Number(quantity) || 1,
                     vinNumber: recipeRequiresVin ? vinNumber : null,
@@ -2897,7 +2936,7 @@ const JobCardCreator = ({ campaignId }) => {
                             <div style="margin-top: 20px;">
                                 <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
                                 <ul style="list-style: disc; padding-left: 20px; margin: 0;">
-                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity} ${c.unit}</li>`).join('') : '<li>No consumables specified.</li>'}
+                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity.toFixed(2)} ${c.unit}</li>`).join('') : '<li>No consumables required.</li>'}
                                 </ul>
                             </div>
                         </div>
@@ -3129,6 +3168,8 @@ import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import toast from 'react-hot-toast';
+import { Trash2 } from 'lucide-react'; // <-- ADD THIS IMPORT
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const MultiStageJobWizard = () => {
   const [products, setProducts] = useState([]);
@@ -3137,121 +3178,138 @@ const MultiStageJobWizard = () => {
   const [jobStepMap, setJobStepMap] = useState({});
   const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [workflow, setWorkflow] = useState([]);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [prods, depts, emps, steps] = await Promise.all([
-          getProducts(),
-          getDepartments(),
-          getEmployees(),
-          getJobStepDetails()
-        ]);
-        setProducts(prods);
-        setDepartments(depts);
-        setEmployees(emps);
-
-        const stepMap = {};
-        steps.forEach(step => {
-          if (!step.productId || !step.departmentId) return;
-          const key = `${step.productId}_${step.departmentId}`;
-          stepMap[key] = step;
-        });
-        setJobStepMap(stepMap);
-      } catch (err) {
-        console.error(err);
-        toast.error("Error loading data.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+    getProducts().then(setProducts);
+    getDepartments().then(setDepartments);
   }, []);
 
-  const createMultiStageJobs = async () => {
-    if (!selectedProductId || quantity <= 0) {
-      toast.error("Please select a product and enter a valid quantity.");
-      return;
+  const addStage = () => {
+    // Add a department to the workflow
+    setWorkflow([...workflow, { departmentId: '' }]);
+  };
+
+  const updateStage = (index, departmentId) => {
+    const updated = [...workflow];
+    updated[index] = { departmentId };
+    setWorkflow(updated);
+  };
+
+  const removeStage = (index) => {
+    const updated = workflow.filter((_, i) => i !== index);
+    setWorkflow(updated);
+  };
+
+  const submitMultiJob = async () => {
+    if (!selectedProductId || workflow.length === 0) {
+      return toast.error('Please select a product and add at least one stage.');
     }
 
-    const jobIdPrefix = `ROUTED-${Date.now()}`;
     const selectedProduct = products.find(p => p.id === selectedProductId);
-    const relevantSteps = Object.entries(jobStepMap)
-      .filter(([key, step]) => key.startsWith(selectedProductId))
-      .map(([_, step]) => step)
-      .sort((a, b) => (a.order || 0) - (b.order || 0));
-
-    if (relevantSteps.length === 0) {
-      toast.error("No job steps found for this product.");
-      return;
+    if (!selectedProduct) {
+      return toast.error('Selected product could not be found.');
     }
 
     setCreating(true);
+    const parentJobId = `ROUTED-${Date.now()}`;
 
     try {
-      for (let i = 0; i < relevantSteps.length; i++) {
-        const step = relevantSteps[i];
-        const dept = departments.find(d => d.id === step.departmentId);
-        const employee = employees.find(e => e.skills?.[step.requiredSkillId] > 0) || { id: 'unassigned', name: 'Unassigned' };
+      for (let i = 0; i < workflow.length; i++) {
+        const stage = workflow[i];
+        if (!stage.departmentId) {
+          toast.error(`Stage ${i + 1} is missing a department.`);
+          continue; // Skip this stage if no department is selected
+        }
+        const department = departments.find(d => d.id === stage.departmentId);
 
         await addJobCard({
-          jobId: `${jobIdPrefix}-${i + 1}`,
+          jobId: `${parentJobId}-${i + 1}`,
           partId: selectedProduct.id,
           partName: selectedProduct.name,
-          quantity,
-          departmentId: step.departmentId,
-          departmentName: dept?.name || 'Unknown',
-          employeeId: employee.id,
-          employeeName: employee.name,
-          status: 'Pending',
-          description: step.description || '',
-          estimatedTime: step.estimatedTime || 60,
-          steps: step.steps || [],
-          tools: step.tools || [],
-          accessories: step.accessories || [],
-          processedConsumables: step.consumables || [],
+          quantity: Number(quantity),
+          departmentId: stage.departmentId,
+          departmentName: department?.name || 'Unknown',
+          employeeId: 'unassigned',
+          employeeName: 'Unassigned',
+          status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
+          description: `Stage ${i + 1} of ${workflow.length} for ${selectedProduct.name}`,
           isCustomJob: false,
-          parentJobId: jobIdPrefix,
-          requiredSkills: dept?.requiredSkills || []
+          parentJobId: parentJobId,
         });
       }
 
-      toast.success(`Created ${relevantSteps.length} staged jobs successfully.`);
+      toast.success(`Successfully created ${workflow.length} staged jobs for ${selectedProduct.name}.`);
+      setWorkflow([]);
+      setSelectedProductId('');
+      setQuantity(1);
+
     } catch (err) {
       console.error(err);
-      toast.error("Failed to create staged jobs.");
+      toast.error('Failed to create multi-stage job.');
     } finally {
       setCreating(false);
     }
   };
 
-  if (loading) return <p className="text-gray-400 text-center">Loading product and routing data...</p>;
-
   return (
-    <div className="p-6 bg-gray-900 border border-gray-700 rounded-xl shadow-lg max-w-3xl mx-auto">
-      <h2 className="text-xl font-bold text-white mb-4">Multi-Stage Job Creator</h2>
-      <div className="mb-4">
-        <Dropdown
-          label="Select Product"
-          options={products.map(p => ({ label: p.name, value: p.id }))}
-          value={selectedProductId}
-          onChange={setSelectedProductId}
-        />
+    <div className="p-6 text-white max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Multi-Stage Job Wizard</h1>
+      <p className="text-gray-400 mb-6">Create a sequence of jobs for a single product that must pass through multiple departments.</p>
+
+      <div className="space-y-6 bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <Dropdown
+              label="Product"
+              options={products}
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              placeholder="Select a product..."
+            />
+          </div>
+          <Input
+            label="Quantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
+        </div>
+
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="font-semibold text-lg text-white mb-2">Production Workflow (in order)</h3>
+          <div className="space-y-4">
+            {workflow.map((stage, index) => (
+              <div key={index} className="flex items-end gap-3 bg-gray-900/50 p-3 rounded-lg">
+                <span className="font-bold text-gray-500">{index + 1}.</span>
+                <div className="flex-grow">
+                  <Dropdown
+                    label={`Stage ${index + 1} Department`}
+                    options={departments}
+                    value={stage.departmentId}
+                    onChange={(e) => updateStage(index, e.target.value)}
+                    placeholder="Select department..."
+                  />
+                </div>
+                <Button onClick={() => removeStage(index)} variant="danger" className="p-2 h-12 w-12">
+                  <Trash2 size={18}/>
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button onClick={addStage} variant="secondary" className="mt-4">
+            Add Stage
+          </Button>
+        </div>
+
+        <div className="text-right border-t border-gray-700 pt-4">
+          <Button onClick={submitMultiJob} disabled={creating || workflow.length === 0} variant="primary">
+            {creating ? 'Creating Jobs...' : `Create ${workflow.length}-Stage Job`}
+          </Button>
+        </div>
       </div>
-      <div className="mb-4">
-        <Input
-          label="Quantity"
-          type="number"
-          value={quantity}
-          onChange={(e) => setQuantity(Number(e.target.value))}
-        />
-      </div>
-      <Button onClick={createMultiStageJobs} disabled={creating}>
-        {creating ? "Creating..." : "Create Multi-Stage Jobs"}
-      </Button>
     </div>
   );
 };
@@ -3341,6 +3399,7 @@ import Button from '../../ui/Button';
 import { X, Package } from 'lucide-react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
     const [departments, setDepartments] = useState([]);
@@ -3415,7 +3474,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             departmentName: department?.name || 'Unknown',
             employeeId: selection.employeeId || 'unassigned',
             employeeName: employee?.name || 'Unassigned',
-            status: 'Pending',
+            status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
             description: recipe.description,
             estimatedTime: recipe.estimatedTime,
             steps: recipe.steps.map(s => s.text || s),
@@ -3490,6 +3549,8 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
                 printWindow.document.write(`<html><head><title>Job Card ${newJobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
                 printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+            } else {
+                toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸' });
             }
 
             onClose();
@@ -3555,6 +3616,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 export default StandardJobCreatorModal;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\kanban\KanbanBoard.jsx
 ==================================================
@@ -3568,6 +3630,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { logScanEvent } from '../../../api/firestore';
 import toast from 'react-hot-toast';
 import { GripVertical, GraduationCap } from 'lucide-react';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const JobCard = ({ job, index }) => {
     const isTrainingRecommended = useMemo(() => {
@@ -3610,9 +3673,9 @@ const JobCard = ({ job, index }) => {
 
 const KanbanColumn = ({ status, jobs }) => {
     const statusConfig = {
-        'Pending': { title: 'Pending', color: 'border-t-yellow-400' },
-        'In Progress': { title: 'In Progress', color: 'border-t-blue-400' },
-        'Awaiting QC': { title: 'Awaiting QC', color: 'border-t-purple-400' },
+        [JOB_STATUSES.PENDING]: { title: 'Pending', color: 'border-t-yellow-400' },
+        [JOB_STATUSES.IN_PROGRESS]: { title: 'In Progress', color: 'border-t-blue-400' },
+        [JOB_STATUSES.AWAITING_QC]: { title: 'Awaiting QC', color: 'border-t-purple-400' },
     };
     const config = statusConfig[status];
 
@@ -3660,10 +3723,14 @@ const KanbanBoard = ({ jobs, employees }) => {
     }, [jobs, employees]);
 
     const columns = useMemo(() => {
-        const pending = localJobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
-        const inProgress = localJobs.filter(j => j.status === 'In Progress');
-        const awaitingQc = localJobs.filter(j => j.status === 'Awaiting QC');
-        return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
+        const pending = localJobs.filter(j => j.status === JOB_STATUSES.PENDING).sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+        const inProgress = localJobs.filter(j => j.status === JOB_STATUSES.IN_PROGRESS);
+        const awaitingQc = localJobs.filter(j => j.status === JOB_STATUSES.AWAITING_QC);
+        return { 
+            [JOB_STATUSES.PENDING]: pending, 
+            [JOB_STATUSES.IN_PROGRESS]: inProgress, 
+            [JOB_STATUSES.AWAITING_QC]: awaitingQc 
+        };
     }, [localJobs]);
 
     const onDragEnd = (result) => {
@@ -3676,8 +3743,8 @@ const KanbanBoard = ({ jobs, employees }) => {
         if (!jobToMove) return;
 
         // WIP Limit Check
-        if (destination.droppableId === 'In Progress') {
-            const employeeWip = localJobs.filter(j => j.employeeId === jobToMove.employeeId && j.status === 'In Progress');
+        if (destination.droppableId === JOB_STATUSES.IN_PROGRESS) {
+            const employeeWip = localJobs.filter(j => j.employeeId === jobToMove.employeeId && j.status === JOB_STATUSES.IN_PROGRESS);
             if (employeeWip.length > 0) {
                 toast.error(`${jobToMove.employeeName} is already working on another job.`);
                 return;
@@ -3711,9 +3778,9 @@ const KanbanBoard = ({ jobs, employees }) => {
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex flex-col md:flex-row gap-6 h-full overflow-x-auto">
-                <KanbanColumn status="Pending" jobs={columns['Pending']} />
-                <KanbanColumn status="In Progress" jobs={columns['In Progress']} />
-                <KanbanColumn status="Awaiting QC" jobs={columns['Awaiting QC']} />
+                <KanbanColumn status={JOB_STATUSES.PENDING} jobs={columns[JOB_STATUSES.PENDING]} />
+                <KanbanColumn status={JOB_STATUSES.IN_PROGRESS} jobs={columns[JOB_STATUSES.IN_PROGRESS]} />
+                <KanbanColumn status={JOB_STATUSES.AWAITING_QC} jobs={columns[JOB_STATUSES.AWAITING_QC]} />
             </div>
         </DragDropContext>
     );
@@ -3839,13 +3906,14 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\payroll\Permanent
 // instead of processing thousands of raw scan events on the client-side.
 
 import React, { useState, useEffect } from 'react';
-import Input from '../../ui/Input';
-import Button from '../../ui/Button';
-import { getDocs, collection, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../../../api/firebase';
+// --- CORRECTED IMPORTS ---
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { getEmployees } from '../../../api/firestore';
+import { db } from '../../../api/firebase';
+// -------------------------
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { WORK_CONSTANTS } from '../../config'; // Import WORK_CONSTANTS
 
 const PermanentPayroll = () => {
     const [employees, setEmployees] = useState([]);
@@ -4196,6 +4264,7 @@ const SubcontractorLedger = () => {
 export default SubcontractorLedger;
 
 
+
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\picking\PickingQueue.jsx
 ==================================================
@@ -4361,6 +4430,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\CustomerKa
 
 import React, { useMemo } from 'react';
 import { Package, HardHat, CheckSquare, CheckCircle } from 'lucide-react';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const KanbanColumn = ({ title, jobs, icon }) => (
     <div className="bg-gray-800/50 rounded-xl p-4 w-full">
@@ -4386,10 +4456,10 @@ const KanbanColumn = ({ title, jobs, icon }) => (
 
 const CustomerKanban = ({ jobs }) => {
     const columns = useMemo(() => {
-        const pending = jobs.filter(j => j.status === 'Pending');
-        const inProgress = jobs.filter(j => j.status === 'In Progress' || j.status === 'Paused');
-        const awaitingQc = jobs.filter(j => j.status === 'Awaiting QC');
-        const complete = jobs.filter(j => j.status === 'Complete');
+        const pending = jobs.filter(j => j.status === JOB_STATUSES.PENDING);
+        const inProgress = jobs.filter(j => j.status === JOB_STATUSES.IN_PROGRESS || j.status === JOB_STATUSES.PAUSED);
+        const awaitingQc = jobs.filter(j => j.status === JOB_STATUSES.AWAITing_QC);
+        const complete = jobs.filter(j => j.status === JOB_STATUSES.COMPLETE);
         return { pending, inProgress, awaitingQc, complete };
     }, [jobs]);
 
@@ -4953,8 +5023,8 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
     }, [consumables, estimatedMinutes, averageBurdenedRate]);
 
     const handleAddItemToQuote = () => {
-        if (!description) return alert("Please provide a description for this custom work.");
-        if (calculatedCost <= 0) return alert("The estimated cost must be greater than zero.");
+        if (!description) return toast.error("Please provide a description for this custom work.");
+        if (calculatedCost <= 0) return toast.error("The estimated cost must be greater than zero.");
         
         onAdd({
             description: description,
@@ -5364,11 +5434,11 @@ const ConsumableEditor = ({ allConsumables, selectedConsumables, onAdd, onRemove
         let itemToAddDetails;
 
         if (consumableType === 'fixed') {
-            if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return alert("Please select an item and enter a valid quantity.");
+            if (!selectedFixedItemDetails || !fixedQty || parseFloat(fixedQty) <= 0) return toast.error("Please select an item and enter a valid quantity.");
             itemToAddDetails = selectedFixedItemDetails;
             newConsumable = { type: 'fixed', itemId: itemToAddDetails.id, quantity: Number(fixedQty) };
         } else if (consumableType === 'dimensional') {
-            if (!selectedDimItemDetails || cuts.length === 0) return alert("Please select a material and add at least one cutting instruction.");
+            if (!selectedDimItemDetails || cuts.length === 0) return toast.error("Please select a material and add at least one cutting instruction.");
             itemToAddDetails = selectedDimItemDetails;
             newConsumable = { type: 'dimensional', itemId: itemToAddDetails.id, cuts };
         } else {
@@ -5397,7 +5467,7 @@ const ConsumableEditor = ({ allConsumables, selectedConsumables, onAdd, onRemove
             setCutRule({ dimensions: '', notes: '' });
             setSelectedDimItemDetails(null);
         } else {
-            alert("This consumable has already been added.");
+            toast.error("This consumable has already been added.");
         }
     };
 
@@ -6676,6 +6746,7 @@ import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { SYSTEM_ROLES } from '../../config'; // Import SYSTEM_ROLES
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
@@ -7586,29 +7657,21 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MakeMana
 ==================================================
 // src/components/features/settings/MakeManager.jsx
 import React, { useState, useEffect } from 'react';
-import { getMakes, addMake, deleteMake, updateDocument, getProductCategories } from '../../../api/firestore';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
+import { db } from '../../../api/firebase'; // Import db
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import toast from 'react-hot-toast';
+import { getMakes, getProductCategories } from '../../../api/firestore'; // Import getMakes, getProductCategories
 
-const MakeManager = () => {
-    const [makes, setMakes] = useState([]);
-    const [categories, setCategories] = useState([]);
+const MakeManager = ({ items, categories, onDataChange }) => {
     const [newMakeName, setNewMakeName] = useState('');
     const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
     const [editingMakeId, setEditingMakeId] = useState(null);
     const [editingMakeName, setEditingMakeName] = useState('');
     const [editingCategoryIds, setEditingCategoryIds] = useState(new Set());
 
-    const fetchData = async () => {
-        const [fetchedMakes, fetchedCategories] = await Promise.all([getMakes(), getProductCategories()]);
-        setMakes(fetchedMakes);
-        setCategories(fetchedCategories);
-    };
-
-    useEffect(() => { fetchData(); }, []);
-
-    const handleAddOrUpdate = async (e) => {
+    const handleAddOrUpdateMake = async (e) => {
         e.preventDefault();
         const name = (editingMakeId ? editingMakeName : newMakeName).trim();
         const categoryIds = Array.from(editingMakeId ? editingCategoryIds : selectedCategoryIds);
@@ -7618,29 +7681,31 @@ const MakeManager = () => {
 
         try {
             if (editingMakeId) {
-                await updateDocument('makes', editingMakeId, { name, categoryIds });
+                await updateDoc(doc(db, 'makes', editingMakeId), { name, categoryIds });
                 toast.success("Make updated!");
                 setEditingMakeId(null);
+                setEditingMakeName('');
+                setEditingCategoryIds(new Set());
             } else {
-                await addMake(name, categoryIds);
+                await addDoc(collection(db, 'makes'), { name, categoryIds });
                 toast.success("Make added!");
                 setNewMakeName('');
                 setSelectedCategoryIds(new Set());
             }
-            fetchData();
+            onDataChange(); // Refresh data in parent (SettingsPage)
         } catch (error) {
             toast.error("Failed to save make.");
         }
     };
     
-    const handleDelete = (id) => {
+    const handleDeleteMake = (id) => {
         toast((t) => (
             <span>
                 Delete this make?
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteMake(id).then(() => {
+                    deleteDoc(doc(db, 'makes', id)).then(() => {
                         toast.success("Make deleted.");
-                        fetchData();
+                        onDataChange();
                     }).catch(() => toast.error("Failed to delete."));
                     toast.dismiss(t.id);
                 }}>Delete</Button>
@@ -7649,13 +7714,13 @@ const MakeManager = () => {
         ));
     };
 
-    const handleEditClick = (make) => {
+    const handleEditClickMake = (make) => {
         setEditingMakeId(make.id);
         setEditingMakeName(make.name);
         setEditingCategoryIds(new Set(make.categoryIds || []));
     };
 
-    const handleCancelEdit = () => {
+    const handleCancelEditMake = () => {
         setEditingMakeId(null);
         setEditingMakeName('');
         setEditingCategoryIds(new Set());
@@ -7688,7 +7753,7 @@ const MakeManager = () => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-xl font-bold text-white mb-4">Manage Makes</h3>
-            <form onSubmit={handleAddOrUpdate} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
+            <form onSubmit={handleAddOrUpdateMake} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
                 <Input
                     label="New Make Name"
                     type="text"
@@ -7715,7 +7780,7 @@ const MakeManager = () => {
                 <Button type="submit" variant="primary" className="w-full">Add Make</Button>
             </form>
             <div className="space-y-3">
-                {makes.map(make => (
+                {items.map(make => (
                     <div key={make.id} className="bg-gray-700 p-3 rounded-lg">
                         {editingMakeId === make.id ? (
                             <div className="space-y-3">
@@ -7741,8 +7806,8 @@ const MakeManager = () => {
                                     </div>
                                 </div>
                                 <div className="flex gap-2 justify-end">
-                                    <Button onClick={handleCancelEdit} variant="secondary" size="sm">Cancel</Button>
-                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                    <Button onClick={handleCancelEditMake} variant="secondary" size="sm">Cancel</Button>
+                                    <Button onClick={handleAddOrUpdateMake} variant="success" size="sm">Save</Button>
                                 </div>
                             </div>
                         ) : (
@@ -7754,8 +7819,8 @@ const MakeManager = () => {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Button onClick={() => handleEditClick(make)} variant="secondary" size="sm">Edit</Button>
-                                    <Button onClick={() => handleDelete(make.id)} variant="danger" size="sm">Delete</Button>
+                                    <Button onClick={() => handleEditClickMake(make)} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDeleteMake(make.id)} variant="danger" size="sm">Delete</Button>
                                 </div>
                             </div>
                         )}
@@ -7841,7 +7906,7 @@ const MasterProductManager = () => {
     // Handlers
     const handleAddMasterProduct = async (e) => {
         e.preventDefault();
-        if (!newProductName.trim()) return alert('Product name is required.');
+        if (!newProductName.trim()) return toast.error('Product name is required.');
         await addMasterProduct({ name: newProductName, description: newProductDescription });
         setNewProductName('');
         setNewProductDescription('');
@@ -7858,7 +7923,7 @@ const MasterProductManager = () => {
 
     const handleLinkRecipe = async (e) => {
         e.preventDefault();
-        if (!partToLinkId || !departmentToLinkId) return alert('Please select a part and a department.');
+        if (!partToLinkId || !departmentToLinkId) return toast.error('Please select a part and a department.');
         
         const partName = parts.find(p => p.id === partToLinkId)?.name || 'Unknown Part';
         const departmentName = departments.find(d => d.id === departmentToLinkId)?.name || 'Unknown Dept';
@@ -7981,27 +8046,19 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ModelMan
 ==================================================
 // src/components/features/settings/ModelManager.jsx
 import React, { useState, useEffect, useMemo } from 'react';
-import { getModels, addModel, deleteModel, updateDocument, getMakes } from '../../../api/firestore';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
+import { db } from '../../../api/firebase'; // Import db
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
+import { getModels, getMakes } from '../../../api/firestore'; // Import getModels, getMakes
 
-const ModelManager = () => {
-    const [models, setModels] = useState([]);
-    const [makes, setMakes] = useState([]);
+const ModelManager = ({ items, makes, onDataChange }) => {
     const [newModelName, setNewModelName] = useState('');
     const [selectedMakeId, setSelectedMakeId] = useState('');
     const [editingModelId, setEditingModelId] = useState(null);
     const [editingModelName, setEditingModelName] = useState('');
-
-    const fetchData = async () => {
-        const [fetchedModels, fetchedMakes] = await Promise.all([getModels(), getMakes()]);
-        setModels(fetchedModels);
-        setMakes(fetchedMakes);
-    };
-
-    useEffect(() => { fetchData(); }, []);
 
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
@@ -8013,16 +8070,16 @@ const ModelManager = () => {
         try {
             if (editingModelId) {
                 // Note: Updating the parent 'make' is not supported via this simple UI to prevent data integrity issues.
-                await updateDocument('models', editingModelId, { name });
+                await updateDoc(doc(db, 'models', editingModelId), { name });
                 toast.success("Model updated!");
                 setEditingModelId(null);
                 setEditingModelName('');
             } else {
-                await addModel(name, selectedMakeId);
+                await addDoc(collection(db, 'models'), { name, makeId: selectedMakeId }); // Changed to addDoc
                 toast.success("Model added!");
                 setNewModelName('');
             }
-            fetchData();
+            onDataChange(); // Refresh data in parent (SettingsPage)
         } catch (error) {
             toast.error("Failed to save model.");
         }
@@ -8033,9 +8090,9 @@ const ModelManager = () => {
             <span>
                 Delete this model?
                 <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteModel(id).then(() => {
+                    deleteDoc(doc(db, 'models', id)).then(() => {
                         toast.success("Model deleted.");
-                        fetchData();
+                        onDataChange();
                     }).catch(() => toast.error("Failed to delete."));
                     toast.dismiss(t.id);
                 }}>Delete</Button>
@@ -8068,7 +8125,7 @@ const ModelManager = () => {
                 <Button type="submit" variant="primary">Add Model</Button>
             </form>
             <div className="space-y-3">
-                {models.map(model => (
+                {items.map(model => (
                     <div key={model.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                         {editingModelId === model.id ? (
                             <Input
@@ -8404,7 +8461,7 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
-import { addMake, addModel } from '../../../api/firestore';
+// Removed specific imports for addMake, addModel as they are now in their own files
 
 const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName }) => {
     const [newItemName, setNewItemName] = useState('');
@@ -8416,7 +8473,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         const name = (editingItemId ? editingItemName : newItemName).trim();
-        if (!name) return;
+        if (!name) return toast.error("Category name is required.");
         if (parentCollection && !selectedParentId && !editingItemId) {
             return toast.error(`Please select a ${parentName}.`);
         }
@@ -8434,15 +8491,9 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                 setEditingItemName('');
                 setEditingParentId('');
             } else {
-                let addPromise;
-                if (collectionName === 'makes') {
-                    addPromise = addMake(name, selectedParentId);
-                } else if (collectionName === 'models') {
-                    addPromise = addModel(name, selectedParentId);
-                } else {
-                    addPromise = addDoc(collection(db, collectionName), { name });
-                }
-                await addPromise;
+                // GenericManager now only handles simple addDoc for categories and units
+                // Make and Model additions are handled by their specific managers
+                await addDoc(collection(db, collectionName), { name });
                 toast.success(`${title.slice(7)} added!`);
                 setNewItemName('');
                 setSelectedParentId('');
@@ -8519,7 +8570,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                                     label="Name"
                                     type="text"
                                     value={editingItemName}
-                                    onChange={(e) => setEditingItemName(e.target.value)}
+                                    onChange={(e) => setNewItemName(e.target.value)}
                                     className="flex-grow"
                                     autoFocus
                                 />
@@ -8559,9 +8610,9 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
 };
 
 export const ProductCategoryManager = ({ items, onDataChange }) => <GenericManager title="Manage Product Categories" collectionName="productCategories" items={items} onDataChange={onDataChange} />;
-export const MakeManager = ({ items, categories, onDataChange }) => <GenericManager title="Manage Makes" collectionName="makes" items={items} onDataChange={onDataChange} parentCollection={categories} parentName="Category" />;
-export const ModelManager = ({ items, makes, onDataChange }) => <GenericManager title="Manage Models/Years" collectionName="models" items={items} onDataChange={onDataChange} parentCollection={makes} parentName="Make" />;
-export const UnitManager = ({ items, onDataChange }) => <GenericManager title="Manage Units of Measure" collectionName="units" items={items} onDataChange={onDataChange} />;
+
+// Removed exports for MakeManager, ModelManager, UnitManager from here
+// They will now be in their own files
 
 
 
@@ -8600,7 +8651,7 @@ const ReworkReasonsManager = () => {
 
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
-        if (!reasonName.trim()) return;
+        if (!reasonName.trim()) return toast.error("Reason name is required.");
 
         try {
             if (editingId) {
@@ -8658,7 +8709,7 @@ const ReworkReasonsManager = () => {
                 <Input
                     name="reasonName"
                     value={reasonName}
-                    onChange={(e) => setReasonName(e.target.value)}
+                    onChange={(e) => setNewReasonName(e.target.value)}
                     placeholder={editingId ? "Edit reason..." : "New reason (e.g., Poor Surface Finish)"}
                     className="flex-grow"
                 />
@@ -10081,11 +10132,111 @@ export default TrainingManager;
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\UnitManager.jsx
 ==================================================
 // src/components/features/settings/UnitManager.jsx
-import GenericManager from './ProductCategoryManager';
+import React, { useState, useEffect } from 'react';
+import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
+import { db } from '../../../api/firebase'; // Import db
+import Input from '../../ui/Input';
+import Button from '../../ui/Button';
+import toast from 'react-hot-toast';
+import { getUnits } from '../../../api/firestore'; // Import getUnits
 
-const UnitManager = () => <GenericManager title="Manage Units of Measure" collectionName="units" />;
+const UnitManager = ({ items, onDataChange }) => { // Removed makes from props
+    const [newUnitName, setNewUnitName] = useState('');
+    const [editingUnitId, setEditingUnitId] = useState(null);
+    const [editingUnitName, setEditingUnitName] = useState('');
+
+    const handleAddOrUpdate = async (e) => {
+        e.preventDefault();
+        const name = (editingUnitId ? editingUnitName : newUnitName).trim();
+        if (!name) {
+            return toast.error("Unit name is required.");
+        }
+
+        try {
+            if (editingUnitId) {
+                await updateDoc(doc(db, 'units', editingUnitId), { name });
+                toast.success("Unit updated!");
+                setEditingUnitId(null);
+                setEditingUnitName('');
+            } else {
+                await addDoc(collection(db, 'units'), { name }); // Changed to addDoc
+                toast.success("Unit added!");
+                setNewUnitName('');
+            }
+            onDataChange(); // Refresh data in parent (SettingsPage)
+        } catch (error) {
+            toast.error("Failed to save unit.");
+        }
+    };
+    
+    const handleDelete = (id) => {
+        toast((t) => (
+            <span>
+                Delete this unit?
+                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
+                    deleteDoc(doc(db, 'units', id)).then(() => {
+                        toast.success("Unit deleted.");
+                        onDataChange();
+                    }).catch(() => toast.error("Failed to delete."));
+                    toast.dismiss(t.id);
+                }}>Delete</Button>
+                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+            </span>
+        ));
+    };
+
+    return (
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <h3 className="text-xl font-bold text-white mb-4">Manage Units of Measure</h3>
+            <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
+                <Input
+                    label="New Unit Name"
+                    type="text"
+                    value={newUnitName}
+                    onChange={(e) => setNewUnitName(e.target.value)}
+                    placeholder="e.g., each, kg, box..."
+                    className="flex-grow"
+                />
+                <Button type="submit" variant="primary">Add Unit</Button>
+            </form>
+            <div className="space-y-3">
+                {items.map(unit => (
+                    <div key={unit.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
+                        {editingUnitId === unit.id ? (
+                            <Input
+                                type="text"
+                                value={editingUnitName}
+                                onChange={(e) => setEditingUnitName(e.target.value)}
+                                className="flex-grow mr-2"
+                                autoFocus
+                            />
+                        ) : (
+                            <div>
+                                <p className="text-gray-200">{unit.name}</p>
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                            {editingUnitId === unit.id ? (
+                                <>
+                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
+                                    <Button onClick={() => setEditingUnitId(null)} variant="secondary" size="sm">Cancel</Button>
+                                </>
+                            ) : (
+                                <>
+                                    <Button onClick={() => { setEditingUnitId(unit.id); setEditingUnitName(unit.name); }} variant="secondary" size="sm">Edit</Button>
+                                    <Button onClick={() => handleDelete(unit.id)} variant="danger" size="sm">Delete</Button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 export default UnitManager;
+
 
 
 ==================================================
@@ -10601,7 +10752,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
 
         } catch (error) {
             console.error("Error analyzing future demand:", error);
-            alert("Failed to analyze demand. See console for details.");
+            toast.error("Failed to analyze demand. See console for details.");
         }
         setLoading(false);
     };
@@ -10836,41 +10987,48 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
   const [allPricing, setAllPricing] = useState({});
   const [orderQuantities, setOrderQuantities] = useState({});
   const [selectedSuppliers, setSelectedSuppliers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loadingPricing, setLoadingPricing] = useState(true);
+  const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
+  const [sendToAdmin, setSendToAdmin] = useState({});
 
-  const fetchData = async () => {
-    setLoading(true);
-    const [queue, supplierList] = await Promise.all([getPurchaseQueue(), getSuppliers()]);
-    const pendingItems = queue.filter(item => item.status === 'pending');
-    setQueuedItems(pendingItems);
-    setSuppliers(supplierList);
+  const ADMIN_EMAIL = "admin@tojem.co.za";
 
-    // Fetch all pricing info for all queued items
-    const pricingMap = {};
-    const pricingPromises = pendingItems.map(async (item) => {
-      const prices = await getSupplierPricingForItem(item.itemId);
-      pricingMap[item.itemId] = prices;
-    });
-    await Promise.all(pricingPromises);
-    setAllPricing(pricingMap);
-
-    // Pre-select the cheapest supplier for each item
-    const initialSelections = {};
-    pendingItems.forEach(item => {
-        const prices = pricingMap[item.itemId] || [];
-        if (prices.length > 0) {
-            const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
-            initialSelections[item.itemId] = cheapest.supplierId;
-        }
-    });
-    setSelectedSuppliers(initialSelections);
-
-    setLoading(false);
-  };
+  const unifiedQueue = useMemo(() => [
+        ...stockItems.map(item => ({ ...item, type: 'Stock' })),
+        ...jobItems.map(item => ({ ...item, type: 'Job-Specific', itemId: item.id, itemName: item.itemName || item.description }))
+    ], [stockItems, jobItems]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const fetchAllPricing = async () => {
+      setLoadingPricing(true);
+      const pricingMap = {};
+      const pricingPromises = unifiedQueue.map(async (item) => {
+        if (!item.itemId) return;
+        const prices = await getSupplierPricingForItem(item.itemId);
+        pricingMap[item.itemId] = prices;
+      });
+      await Promise.all(pricingPromises);
+      setAllPricing(pricingMap);
+
+      const initialSelections = {};
+      unifiedQueue.forEach(item => {
+        if (!item.itemId) return;
+        const prices = allPricing[item.itemId] || []; // Use allPricing here
+        if (prices.length > 0) {
+          const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+          initialSelections[item.itemId] = cheapest.supplierId;
+        }
+      });
+      setSelectedSuppliers(initialSelections);
+      setLoadingPricing(false);
+    };
+
+    if (unifiedQueue.length > 0) {
+      fetchAllPricing();
+    } else {
+      setLoadingPricing(false);
+    }
+  }, [unifiedQueue, allPricing]); // Added allPricing to dependencies
 
   const handleQuantityChange = (itemId, qty) => {
     setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
@@ -10882,23 +11040,28 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
 
   // Group items by the *currently selected* supplier
   const groupedBySelectedSupplier = useMemo(() => {
-    const groups = {};
-    queuedItems.forEach(item => {
-      const selectedSupplierId = selectedSuppliers[item.itemId];
-      if (!selectedSupplierId) return; // Skip if no supplier is selected for this item
+    const groups = { admin: { supplierDetails: { name: 'Admin Purchase Request', email: ADMIN_EMAIL }, stockItems: [], jobItems: [] } };
+    
+    unifiedQueue.forEach(item => {
+      if (!item.itemId) return;
+      const isForAdmin = sendToAdmin[item.itemId];
+      const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
 
-      if (!groups[selectedSupplierId]) {
-        const supplierDetails = suppliers.find(s => s.id === selectedSupplierId);
+      if (!supplierId) return;
+
+      if (!groups[supplierId]) {
+        const supplierDetails = suppliers.find(s => s.id === supplierId);
         if(supplierDetails) {
-            groups[selectedSupplierId] = { supplierDetails: supplierDetails, items: [] };
+            groups[supplierId] = { supplierDetails: supplierDetails, items: [] };
         }
       }
-      if(groups[selectedSupplierId]) {
-        groups[selectedSupplierId].items.push(item);
+      if(groups[supplierId]) {
+        groups[supplierId].items.push(item);
       }
     });
+    
     return Object.values(groups).sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
-  }, [queuedItems, suppliers, selectedSuppliers]);
+  }, [unifiedQueue, suppliers, selectedSuppliers, sendToAdmin]);
 
   const handleGenerateEmail = (group) => {
     const supplierEmail = group.supplierDetails.email || '';
@@ -10918,7 +11081,7 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
     window.location.href = `mailto:${supplierEmail}?subject=${subject}&body=${encodedBody}`;
 
     markItemsAsOrdered(group.supplierDetails, group.items, orderQuantities).then(() => {
-        alert("Items have been marked as ordered and removed from the queue.");
+        toast.success("Items have been marked as ordered and removed from the queue.");
         fetchData();
         if(onOrderPlaced) onOrderPlaced();
     });
@@ -10928,7 +11091,8 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
       return allPricing[itemId] || [];
   };
 
-  if (loading) return <p className="text-center text-gray-400">Loading purchase queue...</p>;
+  if (loadingPricing) return <p className="text-center p-8 text-gray-400">Analyzing purchasing requirements...</p>;
+  if (unifiedQueue.length === 0) return <p className="text-center text-gray-400 p-8">The purchasing queue is empty.</p>;
 
   return (
     <div className="space-y-6">
@@ -11035,6 +11199,7 @@ import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueu
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Search, Package, Factory, DollarSign } from 'lucide-react'; // Import DollarSign icon
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 // NEW: KPI Card component for displaying the total value
 const KpiCard = ({ icon, title, value, color }) => (
@@ -11105,9 +11270,9 @@ const StockControlDashboard = () => {
     });
 
     if (inventoryTypeFilter === 'products') {
-        filtered = filtered.filter(item => item.category === 'Product');
+        filtered = filtered.filter(item => item.category === JOB_STATUSES.PRODUCT); // Use JOB_STATUSES.PRODUCT
     } else if (inventoryTypeFilter === 'purchased') {
-        filtered = filtered.filter(item => item.category !== 'Product');
+        filtered = filtered.filter(item => item.category !== JOB_STATUSES.PRODUCT); // Use JOB_STATUSES.PRODUCT
     }
 
     if (showLowStock) { filtered = filtered.filter(item => Number(item.currentStock) < Number(item.reorderLevel)); }
@@ -11203,7 +11368,7 @@ const StockControlDashboard = () => {
               return (
                 <tr key={`${item.id}-${item.category}`} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="p-3 text-gray-200 font-semibold flex items-center gap-2">
-                    {item.category === 'Product' ? <Factory size={16} className="text-teal-400"/> : <Package size={16} className="text-blue-400"/>}
+                    {item.category === JOB_STATUSES.PRODUCT ? <Factory size={16} className="text-teal-400"/> : <Package size={16} className="text-blue-400"/>}
                     {item.name}
                   </td>
                   <td className="p-3 text-gray-400">{item.category}</td>
@@ -11276,8 +11441,13 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     <p className="text-sm text-gray-400">P/N: {item.partNumber}</p>
                     <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
                 </div>
-                <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="p-6 space-y-4">
-                    {/* UPDATED: Ensure Input component is used */}
+                <div className="p-6 space-y-4">
+                    {/* NEW: Display product image */}
+                    <img
+                        src={item.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`}
+                        alt={item.name}
+                        className="w-full h-48 object-cover rounded-lg mb-4"
+                    />
                     <Input 
                         ref={inputRef}
                         label="Enter Physical Quantity" 
@@ -11286,7 +11456,7 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                         onChange={e => setCount(e.target.value)}
                         placeholder="Enter count..."
                     />
-                </form>
+                </div>
                 <div className="p-4 flex justify-end gap-2 bg-gray-900/50">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button variant="primary" onClick={handleSubmit}>
@@ -12383,15 +12553,15 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                     <JobDetailsModal
                         job={selectedJob}
                         onClose={handleCloseModal}
-                        currentTime={currentTime}
+                        currentTime={Date.now()}
                         employeeHourlyRates={employeeHourlyRates}
                         overheadCostPerHour={overheadCostPerHour}
-                        allEmployees={employees}
-                        onUpdateJob={handleUpdateJob}
-                        onDeleteJob={handleDeleteJob}
+                        allEmployees={allEmployees}
                         allInventoryItems={allInventoryItems}
                         allTools={allTools}
                         allToolAccessories={allToolAccessories}
+                        onUpdateJob={handleUpdateJob}
+                        onDeleteJob={handleDeleteJob}
                     />
                 )}
             </div>
@@ -13096,6 +13266,16 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\JobCompletion
 import React, { useState, useEffect } from 'react';
 import { getCompletedJobsForEmployee } from '../../api/firestore';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+
+const KpiCard = ({ icon, title, value, unit }) => (
+    <div className="bg-gray-900/50 p-4 rounded-lg text-center">
+        <p className="text-sm text-gray-400">{title}</p>
+        <p className="text-3xl font-bold text-white">
+            {value} <span className="text-xl text-gray-400">{unit}</span>
+        </p>
+    </div>
+);
 
 const JobCompletionAnalysisWidget = ({ employeeId }) => {
     const [stats, setStats] = useState({ onTime: 0, late: 0, total: 0 });
@@ -13190,6 +13370,7 @@ const JobCompletionAnalysisWidget = ({ employeeId }) => {
 };
 
 export default JobCompletionAnalysisWidget;
+
 
 
 ==================================================
@@ -14536,6 +14717,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\ValueWasteAna
 // src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const ValueWasteAnalysis = ({ jobs }) => {
     const timeAnalysisData = useMemo(() => {
@@ -14558,10 +14740,10 @@ const ValueWasteAnalysis = ({ jobs }) => {
 
             if (actualWorkSeconds < 0) return;
 
-            if (job.status === 'Complete') {
+            if (job.status === JOB_STATUSES.COMPLETE) { // Use JOB_STATUSES.COMPLETE
                 valueAddedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
-            } else if (job.status === 'Issue' || job.status === 'Archived - Issue') {
+            } else if (job.status === JOB_STATUSES.ISSUE || job.status === JOB_STATUSES.ARCHIVED_ISSUE) { // Use JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE
                 wastedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
             }
@@ -14929,6 +15111,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYProfitWidg
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, Percent } from 'lucide-react';
+import { SALES_REPORT_TITLES } from '../../config'; // Import SALES_REPORT_TITLES
 
 const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
     
@@ -14949,17 +15132,17 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,
             textColor: 'text-red-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
         return {
             icon: <Minus size={20} />,
             textColor: 'text-gray-400',
-            text: 'No Change vs. Last Year'
+            text: `No Change ${SALES_REPORT_TITLES.VS_LAST_YEAR}`
         };
     };
     
@@ -14973,7 +15156,7 @@ const YoYProfitWidget = ({ currentMonthProfit, lastYearProfit }) => {
             <div>
                 <p className="text-gray-400 text-sm font-medium flex items-center gap-2">
                     <Percent size={16} />
-                    This Month's Profit (from Accounting)
+                    {SALES_REPORT_TITLES.CURRENT_MONTH_PROFIT_ACCOUNTING} {/* Use SALES_REPORT_TITLES.CURRENT_MONTH_PROFIT_ACCOUNTING */}
                 </p>
                 <p className={`text-4xl font-bold mt-2 ${profitColor}`}>
                     R {currentMonthProfit.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -15000,6 +15183,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesCompa
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, DollarSign } from 'lucide-react';
+import { SALES_REPORT_TITLES } from '../../config'; // Import SALES_REPORT_TITLES
 
 const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
     
@@ -15016,17 +15200,17 @@ const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,
             textColor: 'text-red-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         return {
             icon: <Minus size={20} />,
             textColor: 'text-gray-400',
-            text: 'No Change vs. Last Year'
+            text: `No Change ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
     };
     
@@ -15037,7 +15221,7 @@ const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
             <div>
                 <p className="text-gray-400 text-sm font-medium flex items-center gap-2">
                     <DollarSign size={16} />
-                    This Month's Sales (from Accounting)
+                    {SALES_REPORT_TITLES.CURRENT_MONTH_SALES_ACCOUNTING} {/* Use SALES_REPORT_TITLES.CURRENT_MONTH_SALES_ACCOUNTING */}
                 </p>
                 <p className="text-4xl font-bold text-white mt-2">
                     R {currentMonthSales.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -15114,6 +15298,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\intelligence\YoYSalesWidge
 // src/components/intelligence/YoYSalesWidget.jsx (NEW FILE)
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { SALES_REPORT_TITLES } from '../../config'; // Import SALES_REPORT_TITLES
 
 const YoYSalesWidget = ({ currentMonthSales, lastYearSales }) => {
     // This component is UI-only for now, logic will be added in DashboardPage.jsx
@@ -15132,17 +15317,17 @@ const YoYSalesWidget = ({ currentMonthSales, lastYearSales }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} className="text-green-400" />,
             textColor: 'text-green-400',
-            text: `${percentageChange.toFixed(1)}% vs. last year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} className="text-red-400" />,
             textColor: 'text-red-400',
-            text: `${percentageChange.toFixed(1)}% vs. last year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         return {
             icon: <Minus size={20} className="text-gray-400" />,
             textColor: 'text-gray-400',
-            text: 'No change vs. last year'
+            text: `No Change ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
     };
     
@@ -15151,7 +15336,9 @@ const YoYSalesWidget = ({ currentMonthSales, lastYearSales }) => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 h-full flex flex-col justify-between">
             <div>
-                <p className="text-gray-400 text-sm font-medium">This Month's Sales (Live)</p>
+                <p className="text-gray-400 text-sm font-medium">
+                    {SALES_REPORT_TITLES.CURRENT_MONTH_SALES_LIVE} {/* Use SALES_REPORT_TITLES.CURRENT_MONTH_SALES_LIVE */}
+                </p>
                 <p className="text-4xl font-bold text-white mt-2">
                     R {currentMonthSales.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
@@ -16097,6 +16284,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { auth, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { SYSTEM_ROLES } from '../config'; // Import SYSTEM_ROLES
 
 export const AuthContext = createContext();
 
@@ -16107,7 +16295,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
       if (userAuth) {
-        let userRole = 'Workshop Employee'; // Default role
+        let userRole = SYSTEM_ROLES.WORKSHOP_EMPLOYEE; // Use SYSTEM_ROLES constant
         let landingPage = '/'; // Default landing page
         let hideSidebar = false; // Default sidebar visibility
 
@@ -18885,8 +19073,8 @@ const KanbanPage = () => {
                 const fetchedEmployees = await getEmployees();
                 setEmployees(fetchedEmployees);
                 
-                const unsubscribe = listenToJobCards((allJobs) => {
-                    setJobs(allJobs);
+                const unsubscribe = listenToJobCards(({ jobs }) => { // Updated to destructure jobs from the object
+                    setJobs(jobs);
                     setLoading(false);
                 });
                 return unsubscribe;
@@ -20158,7 +20346,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductCatalogPage.jsx
 // src/pages/ProductCatalogPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels } from '../api/firestore'; // Import getMakes and getModels
+import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore'; // Import getUnits
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
@@ -20167,8 +20355,8 @@ import toast from 'react-hot-toast';
 import ProductModal from '../components/features/catalog/ProductModal';
 import QrCodePrintModal from '../components/features/catalog/QrCodePrintModal';
 import ProductImportModal from '../components/features/catalog/ProductImportModal';
-import { writeBatch, doc, // Corrected: Removed '=>' and added 'from'
-         collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'; // Added missing imports for firestore methods
+import { writeBatch, doc,
+         collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
 
 const ProductCatalogPage = () => {
@@ -20176,6 +20364,7 @@ const ProductCatalogPage = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filters, setFilters] = useState({
+        categoryId: '',
         make: '',
         model: ''
     });
@@ -20183,11 +20372,16 @@ const ProductCatalogPage = () => {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [selectedProduct, setSelectedProduct] = useState(null);
-    const [selectedIds, setSelectedIds] = useState(new Set()); // Corrected line
+    const [selectedIds, setSelectedIds] = useState(new Set());
 
-    // New states for dropdown options
+    const [productCategories, setProductCategories] = useState([]);
     const [makes, setMakes] = useState([]);
     const [models, setModels] = useState([]);
+    const [units, setUnits] = useState([]); // Add units to state
+
+    // Maps to store ID-to-Name mappings
+    const [makeMap, setMakeMap] = useState(new Map());
+    const [modelMap, setModelMap] = useState(new Map());
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -20203,19 +20397,30 @@ const ProductCatalogPage = () => {
 
     const fetchDropdownData = async () => {
         try {
-            const fetchedMakes = await getMakes();
-            const fetchedModels = await getModels();
+            const [fetchedCategories, fetchedMakes, fetchedModels, fetchedUnits] = await Promise.all([ // Fetch units too
+                getProductCategories(),
+                getMakes(),
+                getModels(),
+                getUnits() // Fetch units
+            ]);
+            setProductCategories(fetchedCategories);
             setMakes(fetchedMakes);
             setModels(fetchedModels);
+            setUnits(fetchedUnits); // Set units state
+
+            // Populate the maps
+            setMakeMap(new Map(fetchedMakes.map(m => [m.id, m.name])));
+            setModelMap(new Map(fetchedModels.map(m => [m.id, m.name])));
+
         } catch (error) {
-            console.error("Error fetching make/model data:", error);
-            toast.error("Failed to load make/model filters.");
+            console.error("Error fetching make/model/category/unit data:", error);
+            toast.error("Failed to load filter data.");
         }
     };
 
     useEffect(() => {
         fetchProducts();
-        fetchDropdownData(); // Fetch dropdown data on component mount
+        fetchDropdownData();
     }, []);
     
     const filteredProducts = useMemo(() => {
@@ -20224,12 +20429,11 @@ const ProductCatalogPage = () => {
                  product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
             );
-            // Apply make filter
+            const categoryMatch = !filters.categoryId || product.categoryId === filters.categoryId;
             const makeMatch = !filters.make || product.make === filters.make;
-            // Apply model filter
             const modelMatch = !filters.model || product.model === filters.model;
             
-            return searchMatch && makeMatch && modelMatch;
+            return searchMatch && categoryMatch && makeMatch && modelMatch;
         });
     }, [products, searchTerm, filters]);
 
@@ -20299,8 +20503,8 @@ const ProductCatalogPage = () => {
     const handleCloseModal = () => {
         setIsModalOpen(false);
         setSelectedProduct(null);
-        fetchProducts(); // Refresh products after modal close
-        fetchDropdownData(); // Also refresh dropdown data in case makes/models were added/edited
+        fetchProducts();
+        fetchDropdownData();
     };
 
     const handleDelete = (productId) => {
@@ -20325,12 +20529,14 @@ const ProductCatalogPage = () => {
         ), { icon: 'âš ï¸' });
     };
 
-    // Handle filter changes for make and model dropdowns
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
         setFilters(prev => {
             const newFilters = { ...prev, [name]: value };
-            // Reset model filter if make changes
+            if (name === 'categoryId') {
+                newFilters.make = '';
+                newFilters.model = '';
+            }
             if (name === 'make') {
                 newFilters.model = '';
             }
@@ -20338,9 +20544,15 @@ const ProductCatalogPage = () => {
         });
     };
 
-    // Filter models based on selected make for the dropdown options
+    const filteredMakesForDropdown = useMemo(() => {
+        if (!filters.categoryId) return makes;
+        return makes.filter(make =>
+            Array.isArray(make.categoryIds) && make.categoryIds.includes(filters.categoryId)
+        );
+    }, [makes, filters.categoryId]);
+
     const filteredModelsForDropdown = useMemo(() => {
-        if (!filters.make) return models; // Show all models if no make is selected
+        if (!filters.make) return models;
         return models.filter(model => model.makeId === filters.make);
     }, [models, filters.make]);
 
@@ -20369,7 +20581,7 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="relative">
                             <Input
                                 type="text"
@@ -20380,8 +20592,8 @@ const ProductCatalogPage = () => {
                             />
                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         </div>
-                        {/* Filter Dropdowns */}
-                        <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={makes} placeholder="All Makes" />
+                        <Dropdown label="Filter by Category" name="categoryId" value={filters.categoryId} onChange={handleFilterChange} options={productCategories} placeholder="All Categories" />
+                        <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={filteredMakesForDropdown} placeholder="All Makes" disabled={!filters.categoryId} />
                         <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={filteredModelsForDropdown} placeholder="All Models" disabled={!filters.make} />
                     </div>
                 </div>
@@ -20402,8 +20614,8 @@ const ProductCatalogPage = () => {
                                      <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th> {/* New column header */}
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th> {/* New column header */}
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
+                                    <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
@@ -20411,9 +20623,9 @@ const ProductCatalogPage = () => {
                             </thead>
                             <tbody>
                                  {loading ? (
-                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr> {/* Adjusted colspan */}
-                                ) : filteredProducts.length === 0 ? (
-                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr> {/* Adjusted colspan */}
+                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                 ) : filteredProducts.length === 0 ? (
+                                     <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
                                  ) : (
                                     filteredProducts.map(product => (
                                         <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
@@ -20434,19 +20646,21 @@ const ProductCatalogPage = () => {
                                             </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                            <td className="p-3 text-gray-400">{product.make || 'N/A'}</td> {/* Display Make */}
-                                            <td className="p-3 text-gray-400">{product.model || 'N/A'}</td> {/* Display Model */}
+                                            {/* Display actual make name using makeMap */}
+                                            <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
+                                            {/* Display actual model name using modelMap */}
+                                            <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
                                                 <div className="flex justify-center gap-2">
-                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
+                                                    <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
                                         </tr>
-                                     ))
+                                    ))
                                 )}
                             </tbody>
                         </table>
@@ -21880,7 +22094,13 @@ import RoleManager from '../components/features/settings/RoleManager';
 import RoutineTasksManager from '../components/features/settings/RoutineTasksManager';
 import LearningPathManager from '../components/features/settings/LearningPathManager';
 import KaizenManager from '../components/features/settings/KaizenManager';
-import { ProductCategoryManager, MakeManager, ModelManager, UnitManager } from '../components/features/settings/ProductCategoryManager';
+
+// Import individual components from their new files
+import { ProductCategoryManager } from '../components/features/settings/ProductCategoryManager'; // Still imports GenericManager helper
+import MakeManager from '../components/features/settings/MakeManager'; // Now from its own file
+import ModelManager from '../components/features/settings/ModelManager'; // Now from its own file
+import UnitManager from '../components/features/settings/UnitManager'; // Now from its own file
+
 import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
 const TabButton = ({ label, isActive, onClick }) => {
@@ -22394,7 +22614,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
 ==================================================
 // src/pages/StockTakePage.jsx
 
-import React, { useState } from 'react';
+import React, { useState } => {
 import { reconcileStockLevels } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -22606,21 +22826,21 @@ const StockTakePage = () => {
                     label="Purchased Items"
                     icon={<Package size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={setActiveTab}
+                    setActiveTab={activeTab}
                 />
                 <TabButton 
                     id="products"
                     label="Manufactured Products"
                     icon={<Factory size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={setActiveTab}
+                    setActiveTab={activeTab}
                 />
                 <TabButton 
                     id="consignment"
                     label="Consignment Stock"
                     icon={<Truck size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={setActiveTab}
+                    setActiveTab={activeTab}
                 />
             </div>
 
@@ -23337,7 +23557,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.js
 ==================================================
 // src/utils/jobUtils.js
 
-import { CATALYST_RULES } from '../config';
+import { CATALYST_RULES, JOB_STATUSES } from '../config'; // Import JOB_STATUSES
 
 /**
  * Processes raw recipe consumables into a display-friendly format, calculating catalyst additions.
@@ -23389,18 +23609,19 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
-    if (!job.startedAt) return null;
+    if (!job.startedAt || typeof job.startedAt.seconds === 'undefined') return null; // Ensure startedAt and its seconds property exist
 
     let durationSeconds;
     const startTime = job.startedAt.seconds * 1000;
     const pausedMilliseconds = job.totalPausedMilliseconds || 0;
 
-    if (['Complete', 'Awaiting QC', 'Issue', 'Archived - Issue'].includes(job.status)) {
-        if (!job.completedAt) return null;
+    // Use JOB_STATUSES constants for consistency
+    if ([JOB_STATUSES.COMPLETE, JOB_STATUSES.AWAITING_QC, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE].includes(job.status)) {
+        if (!job.completedAt || typeof job.completedAt.seconds === 'undefined') return null; // Ensure completedAt and its seconds property exist
         durationSeconds = (job.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === 'In Progress') {
+    } else if (job.status === JOB_STATUSES.IN_PROGRESS) {
         durationSeconds = (currentTime - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === 'Paused' && job.pausedAt) {
+    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt && typeof job.pausedAt.seconds !== 'undefined') {
         durationSeconds = (job.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else {
         return null;
@@ -23418,6 +23639,7 @@ export const calculateJobDuration = (job, currentTime) => {
 
     return { text, totalMinutes };
 };
+
 
 
 
@@ -23699,6 +23921,51 @@ export const CATALYST_RULES = [
     { temp_max: 28, percentage: 2.0 },
     { temp_max: 100, percentage: 1.0 }
 ];
+
+/**
+ * Defines standard job statuses used throughout the application.
+ * Centralizing these helps prevent typos and ensures consistency.
+ */
+export const JOB_STATUSES = {
+    PENDING: 'Pending',
+    IN_PROGRESS: 'In Progress',
+    PAUSED: 'Paused',
+    AWAITING_QC: 'Awaiting QC',
+    COMPLETE: 'Complete',
+    ISSUE: 'Issue',
+    HALTED_ISSUE: 'Halted - Issue',
+    ARCHIVED_ISSUE: 'Archived - Issue',
+    PRODUCT: 'Product', // Added for inventory categorization consistency
+};
+
+/**
+ * Defines constants related to work hours and calculations.
+ */
+export const WORK_CONSTANTS = {
+    WORK_HOURS_PER_DAY: 8,
+    BREAK_MINUTES_PER_DAY: 45,
+    AVG_HOURS_PER_MONTH: 173.2, // Average working hours in a month (40 hours/week * 52 weeks/year / 12 months/year)
+};
+
+/**
+ * Defines standard system roles.
+ */
+export const SYSTEM_ROLES = {
+    MANAGER: 'Manager',
+    WORKSHOP_EMPLOYEE: 'Workshop Employee',
+    CLIENT: 'Client',
+    ADMIN: 'Admin', // Assuming an Admin role might exist or be needed
+};
+
+/**
+ * Defines titles and labels for sales reports and comparisons.
+ */
+export const SALES_REPORT_TITLES = {
+    CURRENT_MONTH_SALES_ACCOUNTING: "This Month's Sales (from Accounting)",
+    VS_LAST_YEAR: "vs. Last Year",
+    CURRENT_MONTH_SALES_LIVE: "This Month's Sales (Live)",
+};
+
 
 
 ==================================================

@@ -5,7 +5,7 @@ import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpen
 import Dropdown from '../components/ui/Dropdown';
 import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
-import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart'; // <-- IMPORT NEW CHART
+import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart';
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
@@ -49,7 +49,12 @@ const PerformancePage = () => {
                 const results = await Promise.all(expensePromises);
                 setAllOverheadExpenses(results.flat());
                 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => setJobs(fetchedJobs));
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
+                });
                 setLoading(false);
             } catch (error) {
                 console.error("Failed to fetch all data for performance page:", error);
@@ -61,8 +66,16 @@ const PerformancePage = () => {
         return () => { if (unsubscribeJobs) unsubscribeJobs(); };
     }, []);
     
-    // --- UPDATED useMemo to calculate department data ---
     const performanceData = useMemo(() => {
+        // Add a guard clause to ensure 'jobs' is an array before processing
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+            return {
+                overallKpis: { jobsCompleted: 0, totalWorkHours: '0.0', avgEfficiency: '0%', totalJobValue: 'R 0.00' },
+                employeePerformanceMetrics: [],
+                departmentData: [],
+            };
+        }
+
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
         const employeeCount = employees.length > 0 ? employees.length : 1;
         const overheadCostPerProductiveHour = totalMonthlyOverheads / (employeeCount * 173.2);
@@ -73,7 +86,6 @@ const PerformancePage = () => {
             job.completedAt
         );
 
-        // --- Department level calculations ---
         const departmentData = departments.map(dept => {
             const deptJobs = validCompletedJobs.filter(j => j.departmentId === dept.id);
             if (deptJobs.length === 0) {
@@ -97,7 +109,6 @@ const PerformancePage = () => {
             
             return { name: dept.name, avgEfficiency, totalValue };
         });
-        // --- End of department calculations ---
 
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -169,7 +180,7 @@ const PerformancePage = () => {
                 totalJobValue: `R ${overallTotalJobValue.toLocaleString('en-ZA', {minimumFractionDigits: 2})}`,
             },
             employeePerformanceMetrics,
-            departmentData, // <-- EXPORT NEW DATA
+            departmentData,
         };
     }, [jobs, employees, allOverheadExpenses, departments]);
 
@@ -186,7 +197,6 @@ const PerformancePage = () => {
                 <KpiCard icon={<DollarSign size={24} />} title="Total Job Value" value={performanceData.overallKpis.totalJobValue} color="bg-yellow-500/20 text-yellow-400" />
             </div>
 
-            {/* --- RENDER THE NEW CHART --- */}
             <DepartmentPerformanceChart data={performanceData.departmentData} />
             
              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">

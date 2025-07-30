@@ -58,8 +58,8 @@ const AddCustomWorkModal = ({ onClose, onAdd, calculationData }) => {
     }, [consumables, estimatedMinutes, averageBurdenedRate]);
 
     const handleAddItemToQuote = () => {
-        if (!description) return alert("Please provide a description for this custom work.");
-        if (calculatedCost <= 0) return alert("The estimated cost must be greater than zero.");
+        if (!description) return toast.error("Please provide a description for this custom work.");
+        if (calculatedCost <= 0) return toast.error("The estimated cost must be greater than zero.");
         
         onAdd({
             description: description,

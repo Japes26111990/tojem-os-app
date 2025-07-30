@@ -1,6 +1,7 @@
 // src/components/intelligence/ValueWasteAnalysis.jsx
 import React, { useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 const ValueWasteAnalysis = ({ jobs }) => {
     const timeAnalysisData = useMemo(() => {
@@ -23,10 +24,10 @@ const ValueWasteAnalysis = ({ jobs }) => {
 
             if (actualWorkSeconds < 0) return;
 
-            if (job.status === 'Complete') {
+            if (job.status === JOB_STATUSES.COMPLETE) { // Use JOB_STATUSES.COMPLETE
                 valueAddedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
-            } else if (job.status === 'Issue' || job.status === 'Archived - Issue') {
+            } else if (job.status === JOB_STATUSES.ISSUE || job.status === JOB_STATUSES.ARCHIVED_ISSUE) { // Use JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE
                 wastedSeconds += actualWorkSeconds;
                 nonValueSeconds += pauseDurationSeconds;
             }

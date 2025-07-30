@@ -22,6 +22,7 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
+import { JOB_STATUSES, SYSTEM_ROLES } from '../config';
 
 // =================================================================================================
 // ROUTINE TASK COMPLETION API
@@ -158,9 +159,16 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
 
 export const addKaizenSuggestion = (suggestionData) => addDoc(collection(db, 'kaizenSuggestions'), { ...suggestionData, createdAt: serverTimestamp(), status: 'new' });
 export const addPraise = (praiseData) => addDoc(collection(db, 'praise'), { ...praiseData, createdAt: serverTimestamp() });
+
+// --- FIX: Removed orderBy to prevent index error. Sorting is now done on the client-side. ---
 export const listenToPraiseForEmployee = (employeeId, callback) => {
-    const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId));
+    return onSnapshot(q, (snapshot) => {
+        const praiseItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Sort the results by date here in the client-side code
+        praiseItems.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+        callback(praiseItems);
+    });
 };
 
 export const listenToSystemStatus = (callback) => {
@@ -279,7 +287,7 @@ export const listenToPurchaseQueue = (callback) => {
     const q = query(purchaseQueueCollection, orderBy('queuedAt', 'desc'));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
 };
-export const addToPurchaseQueue = (itemData) => addDoc(purchaseQueueCollection, { ...itemData, status: 'pending', queuedAt: serverTimestamp() });
+export const addToPurchaseQueue = (itemData) => addDoc(purchaseQueueCollection, { ...itemData, status: JOB_STATUSES.PENDING, queuedAt: serverTimestamp() });
 export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities) => {
     const batch = writeBatch(db);
     itemsToOrder.forEach(item => {
@@ -287,7 +295,7 @@ export const markItemsAsOrdered = async (supplier, itemsToOrder, orderQuantities
         const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
         const orderQty = orderQuantities[item.id] || recommendedQty;
         batch.update(docRef, {
-            status: 'ordered',
+            status: JOB_STATUSES.ORDERED,
             orderDate: serverTimestamp(),
             orderedQty: Number(orderQty),
             orderedFromSupplierId: supplier.id,
@@ -304,7 +312,7 @@ export const receiveStockAndUpdateInventory = async (queuedItem, quantityReceive
         const inventoryDoc = await transaction.get(inventoryDocRef);
         if (!inventoryDoc.exists()) throw new Error("Original inventory item not found.");
         transaction.update(inventoryDocRef, { currentStock: increment(Number(quantityReceived)) });
-        transaction.update(purchaseQueueDocRef, { status: 'completed' });
+        transaction.update(purchaseQueueDocRef, { status: JOB_STATUSES.COMPLETE });
     });
 };
 export const requeueOrDeleteItem = async (queuedItem) => {
@@ -314,7 +322,7 @@ export const requeueOrDeleteItem = async (queuedItem) => {
     if (!inventoryDoc.exists()) return deleteDoc(purchaseQueueDocRef);
     const itemData = inventoryDoc.data();
     if (itemData.currentStock < itemData.reorderLevel) {
-        return updateDoc(purchaseQueueDocRef, { status: 'pending' });
+        return updateDoc(purchaseQueueDocRef, { status: JOB_STATUSES.PENDING });
     } else {
         return deleteDoc(purchaseQueueDocRef);
     }
@@ -349,30 +357,44 @@ export const updateStandardRecipe = async (jobData) => {
 };
 
 const jobCardsCollection = collection(db, 'createdJobCards');
-export const addJobCard = (jobCardData) => addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
+
+export const addJobCard = async (jobCardData) => {
+    if (!jobCardData.jobId || !jobCardData.partName || !jobCardData.status) {
+        throw new Error('Job card must include jobId, partName, and status.');
+    }
+    try {
+        const docRef = await addDoc(jobCardsCollection, { ...jobCardData, createdAt: serverTimestamp() });
+        return docRef;
+    } catch (error) {
+        console.error('Error adding job card:', error);
+        throw new Error(`Failed to create job card: ${error.message}`);
+    }
+};
 
 export const listenToJobCards = (callback, options = {}) => {
     const jobsCollectionRef = collection(db, 'createdJobCards');
     let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
     if (options.limit) {
-        if (options.startAfter) {
+        if (options.startAfter && options.startAfter.exists?.()) {
             q = query(q, startAfter(options.startAfter));
         }
         q = query(q, limit(options.limit));
         
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const lastVisible = snapshot.docs[snapshot.docs.length - 1];
+            const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
             callback({ jobs, lastVisible }); 
         }, (error) => {
             console.error("Error listening to paginated job cards:", error);
+            callback({ jobs: [], lastVisible: null, error });
         });
     } else {
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            callback(jobs);
+            callback({ jobs, lastVisible: null });
         }, (error) => {
             console.error("Error listening to all job cards:", error);
+            callback({ jobs: [], lastVisible: null, error });
         });
     }
 };
@@ -394,7 +416,7 @@ export const updateJobPriorities = async (orderedJobs) => {
 };
 
 export const getJobsAwaitingQC = async () => {
-    const q = query(jobCardsCollection, where('status', '==', 'Awaiting QC'));
+    const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.AWAITING_QC));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
@@ -411,7 +433,7 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
         const currentJobData = jobDoc.data();
         const dataToUpdate = {};
         if (isApproved) {
-            dataToUpdate.status = 'Complete';
+            dataToUpdate.status = JOB_STATUSES.COMPLETE;
             if (!currentJobData.completedAt) dataToUpdate.completedAt = serverTimestamp();
             if (job.partId) {
                 const productRef = doc(db, 'inventoryItems', job.partId);
@@ -419,13 +441,13 @@ export const processQcDecision = async (job, isApproved, options = {}) => {
             }
         } else {
             if (reworkDetails && reworkDetails.requeue) {
-                dataToUpdate.status = 'Pending';
+                dataToUpdate.status = JOB_STATUSES.PENDING;
                 dataToUpdate.issueReason = `REWORK: ${rejectionReason}`;
                 dataToUpdate.employeeId = reworkDetails.newEmployeeId || job.employeeId;
                 dataToUpdate.employeeName = reworkDetails.newEmployeeName || job.employeeName;
                 dataToUpdate.completedAt = null;
             } else {
-                dataToUpdate.status = 'Issue';
+                dataToUpdate.status = JOB_STATUSES.ISSUE;
                 dataToUpdate.issueReason = rejectionReason;
             }
         }
@@ -450,12 +472,12 @@ export const deleteDocument = async (collectionName, docId) => {
     return deleteDoc(docRef);
 };
 
-export const getProducts = async () => getAllInventoryItems('Product');
+export const getProducts = async () => getAllInventoryItems(JOB_STATUSES.PRODUCT);
 export const addProduct = async (productData) => {
-    const q = query(inventoryCollection, where("partNumber", "==", productData.partNumber), where("category", "==", "Product"));
+    const q = query(inventoryCollection, where("partNumber", "==", productData.partNumber), where("category", "==", JOB_STATUSES.PRODUCT));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) throw new Error(`A product with Part Number "${productData.partNumber}" already exists.`);
-    return addInventoryItem({ ...productData, category: 'Product' });
+    return addInventoryItem({ ...productData, category: JOB_STATUSES.PRODUCT });
 };
 export const updateProduct = (productId, updatedData) => updateInventoryItem(productId, updatedData);
 export const deleteProduct = (productId) => deleteInventoryItem(productId);
@@ -465,7 +487,6 @@ export const getProductCategories = async () => getDocs(query(productCategoriesC
 export const addProductCategory = (categoryName) => addDoc(productCategoriesCollection, { name: categoryName });
 export const deleteProductCategory = (categoryId) => deleteDoc(doc(db, 'productCategories', categoryId));
 
-// --- Functions to manage Catalog Data dropdowns ---
 const getGenericOptions = async (collectionName) => {
     const q = query(collection(db, collectionName), orderBy('name'));
     const snapshot = await getDocs(q);
@@ -473,7 +494,6 @@ const getGenericOptions = async (collectionName) => {
 };
 
 export const getMakes = () => getGenericOptions('makes');
-// UPDATED: addMake now accepts an array of categoryIds
 export const addMake = (name, categoryIds) => addDoc(collection(db, 'makes'), { name, categoryIds });
 export const deleteMake = (id) => deleteDoc(doc(db, 'makes', id));
 
@@ -494,12 +514,12 @@ export const linkRecipeToProduct = (linkData) => addDoc(productRecipeLinksCollec
 export const unlinkRecipeFromProduct = (linkId) => deleteDoc(doc(db, 'productRecipeLinks', linkId));
 
 export const getCompletedJobsInRange = async (startDate, endDate) => {
-    const q = query(jobCardsCollection, where('status', '==', 'Complete'), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
+    const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.COMPLETE), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 export const getCompletedJobsForEmployee = async (employeeId) => {
     if (!employeeId) return [];
-    const q = query(jobCardsCollection, where('employeeId', '==', employeeId), where('status', 'in', ['Complete', 'Issue', 'Archived - Issue']));
+    const q = query(jobCardsCollection, where('employeeId', '==', employeeId), where('status', 'in', [JOB_STATUSES.COMPLETE, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE]));
     return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 };
 
@@ -520,7 +540,7 @@ export const addCampaign = (campaignData) => addDoc(collection(db, 'marketingCam
 export const updateCampaign = (campaignId, updatedData) => updateDoc(doc(db, 'marketingCampaigns', campaignId), updatedData);
 export const deleteCampaign = (campaignId) => deleteDoc(doc(db, 'marketingCampaigns', campaignId));
 
-export const getTrainingResources = async () => getDocs(collection(db, 'trainingResources')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+export const getTrainingResources = async () => getDocs(query(collection(db, 'trainingResources'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addTrainingResource = (data) => addDoc(collection(db, 'trainingResources'), data);
 export const updateTrainingResource = (id, data) => updateDoc(doc(db, 'trainingResources', id), data);
 export const deleteTrainingResource = (id) => deleteDoc(doc(db, 'trainingResources', id));
@@ -532,18 +552,22 @@ export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quo
 export const createSalesOrderFromQuote = async (quote) => {
     const batch = writeBatch(db);
     const salesOrderRef = doc(collection(db, 'salesOrders'));
-    batch.set(salesOrderRef, {
+    
+    const salesOrderData = {
         salesOrderId: `SO-${quote.quoteId.replace('Q-', '')}`,
         customerName: quote.customerName,
         customerEmail: quote.customerEmail,
         total: quote.total,
         status: 'Pending Production',
         createdAt: serverTimestamp(),
-        lineItems: quote.lineItems.map(item => ({ ...item, id: doc(collection(db, '_')).id, status: 'Pending' }))
-    });
+        lineItems: quote.lineItems.map(item => ({ ...item, id: doc(collection(db, '_')).id, status: JOB_STATUSES.PENDING }))
+    };
+
+    batch.set(salesOrderRef, salesOrderData);
     batch.update(doc(db, 'quotes', quote.id), { status: 'Accepted' });
     return batch.commit();
 };
+
 export const listenToSalesOrders = (callback) => onSnapshot(query(collection(db, 'salesOrders'), orderBy('createdAt', 'desc')), s => callback(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 export const listenToOneOffPurchases = (callback) => onSnapshot(query(collection(db, 'oneOffPurchases'), orderBy('createdAt', 'desc')), s => callback(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 export const addPurchasedItemToQueue = (lineItem, salesOrder) => addDoc(collection(db, 'oneOffPurchases'), {
@@ -557,7 +581,7 @@ export const addPurchasedItemToQueue = (lineItem, salesOrder) => addDoc(collecti
 });
 export const markOneOffItemsAsOrdered = async (itemIds) => {
     const batch = writeBatch(db);
-    itemIds.forEach(id => batch.update(doc(db, 'oneOffPurchases', id), { status: 'Ordered' }));
+    itemIds.forEach(id => batch.update(doc(db, 'oneOffPurchases', id), { status: JOB_STATUSES.ORDERED }));
     return batch.commit();
 };
 export const updateSalesOrderLineItemStatus = async (orderId, lineItemId, newStatus) => {
@@ -614,10 +638,10 @@ export const addCustomerFeedback = (feedbackData) => addDoc(collection(db, 'cust
 export const getReworkReasons = async () => getDocs(query(collection(db, 'reworkReasons'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const giveKudosToJob = (jobId) => updateDoc(doc(db, 'createdJobCards', jobId), { kudos: true });
 export const listenToReworkQueue = (callback) => {
-    const q = query(collection(db, 'createdJobCards'), where('status', 'in', ['Issue', 'Halted - Issue']));
+    const q = query(collection(db, 'createdJobCards'), where('status', 'in', [JOB_STATUSES.ISSUE, JOB_STATUSES.HALTED_ISSUE]));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-export const resolveReworkJob = (jobDocId) => updateDoc(doc(db, 'createdJobCards', jobDocId), { status: 'Pending', issueReason: 'Rework Resolved - Re-queued' });
+export const resolveReworkJob = (jobDocId) => updateDoc(doc(db, 'createdJobCards', jobDocId), { status: JOB_STATUSES.PENDING, issueReason: 'Rework Resolved - Re-queued' });
 
 export const getRoutineTasks = async () => getDocs(query(collection(db, 'routineTasks'), orderBy('timeOfDay'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addRoutineTask = (taskData) => addDoc(collection(db, 'routineTasks'), taskData);
@@ -625,16 +649,16 @@ export const updateRoutineTask = (taskId, updatedData) => updateDoc(doc(db, 'rou
 export const deleteRoutineTask = (taskId) => deleteDoc(doc(db, 'routineTasks', taskId));
 
 export const listenToPickingLists = (callback) => {
-    const q = query(collection(db, 'pickingLists'), where('status', '==', 'pending'));
+    const q = query(collection(db, 'pickingLists'), where('status', '==', JOB_STATUSES.PENDING));
     return onSnapshot(q, (snapshot) => {
         const lists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         lists.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
         callback(lists);
     });
 };
-export const markPickingListAsCompleted = (listId) => updateDoc(doc(db, 'pickingLists', listId), { status: 'completed' });
+export const markPickingListAsCompleted = (listId) => updateDoc(doc(db, 'pickingLists', listId), { status: JOB_STATUSES.COMPLETE });
 
-export const getClientUsers = async () => getDocs(query(collection(db, 'users'), where('role', '==', 'Client'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+export const getClientUsers = async () => getDocs(query(collection(db, 'users'), where('role', '==', SYSTEM_ROLES.CLIENT))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const listenToConsignmentStockForClient = (clientId, callback) => {
     if (!clientId) return () => {};
     const q = query(collection(db, 'consignmentStock'), where('clientId', '==', clientId), orderBy('productName'));
@@ -658,5 +682,4 @@ export const addLearningPath = (pathData) => addDoc(collection(db, 'learningPath
 export const updateLearningPath = (pathId, updatedData) => updateDoc(doc(db, 'learningPaths', pathId), updatedData);
 export const deleteLearningPath = (pathId) => deleteDoc(doc(db, 'learningPaths', pathId));
 
-// Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs, onSnapshot };

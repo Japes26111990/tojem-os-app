@@ -17,6 +17,7 @@ import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.
 import PrintConfirmationModal from './PrintConfirmationModal';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -131,7 +132,7 @@ const JobCardCreator = ({ campaignId }) => {
                      departmentName: department.name,
                     employeeId: employee ? employee.id : 'unassigned',
                     employeeName: employee ? employee.name : 'Unassigned',
-                    status: 'Pending',
+                    status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
                     description: finalRecipeDetails.description,
                     quantity: Number(quantity) || 1,
                     vinNumber: recipeRequiresVin ? vinNumber : null,
@@ -269,7 +270,7 @@ const JobCardCreator = ({ campaignId }) => {
                             <div style="margin-top: 20px;">
                                 <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
                                 <ul style="list-style: disc; padding-left: 20px; margin: 0;">
-                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity} ${c.unit}</li>`).join('') : '<li>No consumables specified.</li>'}
+                                    ${jobToConfirm.processedConsumables?.length > 0 ? jobToConfirm.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity.toFixed(2)} ${c.unit}</li>`).join('') : '<li>No consumables required.</li>'}
                                 </ul>
                             </div>
                         </div>

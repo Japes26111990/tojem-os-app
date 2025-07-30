@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebas
 import { auth, db } from '../api/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
+import { SYSTEM_ROLES } from '../config'; // Import SYSTEM_ROLES
 
 export const AuthContext = createContext();
 
@@ -13,7 +14,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (userAuth) => {
       if (userAuth) {
-        let userRole = 'Workshop Employee'; // Default role
+        let userRole = SYSTEM_ROLES.WORKSHOP_EMPLOYEE; // Use SYSTEM_ROLES constant
         let landingPage = '/'; // Default landing page
         let hideSidebar = false; // Default sidebar visibility
 

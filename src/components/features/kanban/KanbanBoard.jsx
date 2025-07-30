@@ -8,6 +8,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { logScanEvent } from '../../../api/firestore';
 import toast from 'react-hot-toast';
 import { GripVertical, GraduationCap } from 'lucide-react';
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const JobCard = ({ job, index }) => {
     const isTrainingRecommended = useMemo(() => {
@@ -50,9 +51,9 @@ const JobCard = ({ job, index }) => {
 
 const KanbanColumn = ({ status, jobs }) => {
     const statusConfig = {
-        'Pending': { title: 'Pending', color: 'border-t-yellow-400' },
-        'In Progress': { title: 'In Progress', color: 'border-t-blue-400' },
-        'Awaiting QC': { title: 'Awaiting QC', color: 'border-t-purple-400' },
+        [JOB_STATUSES.PENDING]: { title: 'Pending', color: 'border-t-yellow-400' },
+        [JOB_STATUSES.IN_PROGRESS]: { title: 'In Progress', color: 'border-t-blue-400' },
+        [JOB_STATUSES.AWAITING_QC]: { title: 'Awaiting QC', color: 'border-t-purple-400' },
     };
     const config = statusConfig[status];
 
@@ -100,10 +101,14 @@ const KanbanBoard = ({ jobs, employees }) => {
     }, [jobs, employees]);
 
     const columns = useMemo(() => {
-        const pending = localJobs.filter(j => j.status === 'Pending').sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
-        const inProgress = localJobs.filter(j => j.status === 'In Progress');
-        const awaitingQc = localJobs.filter(j => j.status === 'Awaiting QC');
-        return { 'Pending': pending, 'In Progress': inProgress, 'Awaiting QC': awaitingQc };
+        const pending = localJobs.filter(j => j.status === JOB_STATUSES.PENDING).sort((a,b) => (a.priority ?? Infinity) - (b.priority ?? Infinity));
+        const inProgress = localJobs.filter(j => j.status === JOB_STATUSES.IN_PROGRESS);
+        const awaitingQc = localJobs.filter(j => j.status === JOB_STATUSES.AWAITING_QC);
+        return { 
+            [JOB_STATUSES.PENDING]: pending, 
+            [JOB_STATUSES.IN_PROGRESS]: inProgress, 
+            [JOB_STATUSES.AWAITING_QC]: awaitingQc 
+        };
     }, [localJobs]);
 
     const onDragEnd = (result) => {
@@ -116,8 +121,8 @@ const KanbanBoard = ({ jobs, employees }) => {
         if (!jobToMove) return;
 
         // WIP Limit Check
-        if (destination.droppableId === 'In Progress') {
-            const employeeWip = localJobs.filter(j => j.employeeId === jobToMove.employeeId && j.status === 'In Progress');
+        if (destination.droppableId === JOB_STATUSES.IN_PROGRESS) {
+            const employeeWip = localJobs.filter(j => j.employeeId === jobToMove.employeeId && j.status === JOB_STATUSES.IN_PROGRESS);
             if (employeeWip.length > 0) {
                 toast.error(`${jobToMove.employeeName} is already working on another job.`);
                 return;
@@ -151,9 +156,9 @@ const KanbanBoard = ({ jobs, employees }) => {
     return (
         <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex flex-col md:flex-row gap-6 h-full overflow-x-auto">
-                <KanbanColumn status="Pending" jobs={columns['Pending']} />
-                <KanbanColumn status="In Progress" jobs={columns['In Progress']} />
-                <KanbanColumn status="Awaiting QC" jobs={columns['Awaiting QC']} />
+                <KanbanColumn status={JOB_STATUSES.PENDING} jobs={columns[JOB_STATUSES.PENDING]} />
+                <KanbanColumn status={JOB_STATUSES.IN_PROGRESS} jobs={columns[JOB_STATUSES.IN_PROGRESS]} />
+                <KanbanColumn status={JOB_STATUSES.AWAITING_QC} jobs={columns[JOB_STATUSES.AWAITING_QC]} />
             </div>
         </DragDropContext>
     );

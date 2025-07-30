@@ -1,6 +1,6 @@
 // src/utils/jobUtils.js
 
-import { CATALYST_RULES } from '../config';
+import { CATALYST_RULES, JOB_STATUSES } from '../config'; // Import JOB_STATUSES
 
 /**
  * Processes raw recipe consumables into a display-friendly format, calculating catalyst additions.
@@ -52,18 +52,19 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
-    if (!job.startedAt) return null;
+    if (!job.startedAt || typeof job.startedAt.seconds === 'undefined') return null; // Ensure startedAt and its seconds property exist
 
     let durationSeconds;
     const startTime = job.startedAt.seconds * 1000;
     const pausedMilliseconds = job.totalPausedMilliseconds || 0;
 
-    if (['Complete', 'Awaiting QC', 'Issue', 'Archived - Issue'].includes(job.status)) {
-        if (!job.completedAt) return null;
+    // Use JOB_STATUSES constants for consistency
+    if ([JOB_STATUSES.COMPLETE, JOB_STATUSES.AWAITING_QC, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE].includes(job.status)) {
+        if (!job.completedAt || typeof job.completedAt.seconds === 'undefined') return null; // Ensure completedAt and its seconds property exist
         durationSeconds = (job.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === 'In Progress') {
+    } else if (job.status === JOB_STATUSES.IN_PROGRESS) {
         durationSeconds = (currentTime - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === 'Paused' && job.pausedAt) {
+    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt && typeof job.pausedAt.seconds !== 'undefined') {
         durationSeconds = (job.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else {
         return null;
@@ -81,3 +82,4 @@ export const calculateJobDuration = (job, currentTime) => {
 
     return { text, totalMinutes };
 };
+

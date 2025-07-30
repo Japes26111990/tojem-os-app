@@ -67,7 +67,12 @@ const DispatchQueue = () => {
         };
         fetchInitialData();
 
-        const unsubscribe = listenToJobCards(allJobs => {
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        const unsubscribe = listenToJobCards(({ jobs: allJobs }) => {
+            if (!Array.isArray(allJobs)) {
+                setLoading(false);
+                return;
+            }
             const pendingJobs = allJobs.filter(j => j.status === 'Pending' && j.employeeId);
             
             pendingJobs.sort((a, b) => {

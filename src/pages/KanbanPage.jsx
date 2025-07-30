@@ -22,8 +22,8 @@ const KanbanPage = () => {
                 const fetchedEmployees = await getEmployees();
                 setEmployees(fetchedEmployees);
                 
-                const unsubscribe = listenToJobCards((allJobs) => {
-                    setJobs(allJobs);
+                const unsubscribe = listenToJobCards(({ jobs }) => { // Updated to destructure jobs from the object
+                    setJobs(jobs);
                     setLoading(false);
                 });
                 return unsubscribe;

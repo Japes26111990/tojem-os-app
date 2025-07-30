@@ -12,41 +12,48 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
   const [allPricing, setAllPricing] = useState({});
   const [orderQuantities, setOrderQuantities] = useState({});
   const [selectedSuppliers, setSelectedSuppliers] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [loadingPricing, setLoadingPricing] = useState(true);
+  const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
+  const [sendToAdmin, setSendToAdmin] = useState({});
 
-  const fetchData = async () => {
-    setLoading(true);
-    const [queue, supplierList] = await Promise.all([getPurchaseQueue(), getSuppliers()]);
-    const pendingItems = queue.filter(item => item.status === 'pending');
-    setQueuedItems(pendingItems);
-    setSuppliers(supplierList);
+  const ADMIN_EMAIL = "admin@tojem.co.za";
 
-    // Fetch all pricing info for all queued items
-    const pricingMap = {};
-    const pricingPromises = pendingItems.map(async (item) => {
-      const prices = await getSupplierPricingForItem(item.itemId);
-      pricingMap[item.itemId] = prices;
-    });
-    await Promise.all(pricingPromises);
-    setAllPricing(pricingMap);
-
-    // Pre-select the cheapest supplier for each item
-    const initialSelections = {};
-    pendingItems.forEach(item => {
-        const prices = pricingMap[item.itemId] || [];
-        if (prices.length > 0) {
-            const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
-            initialSelections[item.itemId] = cheapest.supplierId;
-        }
-    });
-    setSelectedSuppliers(initialSelections);
-
-    setLoading(false);
-  };
+  const unifiedQueue = useMemo(() => [
+        ...stockItems.map(item => ({ ...item, type: 'Stock' })),
+        ...jobItems.map(item => ({ ...item, type: 'Job-Specific', itemId: item.id, itemName: item.itemName || item.description }))
+    ], [stockItems, jobItems]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const fetchAllPricing = async () => {
+      setLoadingPricing(true);
+      const pricingMap = {};
+      const pricingPromises = unifiedQueue.map(async (item) => {
+        if (!item.itemId) return;
+        const prices = await getSupplierPricingForItem(item.itemId);
+        pricingMap[item.itemId] = prices;
+      });
+      await Promise.all(pricingPromises);
+      setAllPricing(pricingMap);
+
+      const initialSelections = {};
+      unifiedQueue.forEach(item => {
+        if (!item.itemId) return;
+        const prices = allPricing[item.itemId] || []; // Use allPricing here
+        if (prices.length > 0) {
+          const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+          initialSelections[item.itemId] = cheapest.supplierId;
+        }
+      });
+      setSelectedSuppliers(initialSelections);
+      setLoadingPricing(false);
+    };
+
+    if (unifiedQueue.length > 0) {
+      fetchAllPricing();
+    } else {
+      setLoadingPricing(false);
+    }
+  }, [unifiedQueue, allPricing]); // Added allPricing to dependencies
 
   const handleQuantityChange = (itemId, qty) => {
     setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
@@ -58,23 +65,28 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
 
   // Group items by the *currently selected* supplier
   const groupedBySelectedSupplier = useMemo(() => {
-    const groups = {};
-    queuedItems.forEach(item => {
-      const selectedSupplierId = selectedSuppliers[item.itemId];
-      if (!selectedSupplierId) return; // Skip if no supplier is selected for this item
+    const groups = { admin: { supplierDetails: { name: 'Admin Purchase Request', email: ADMIN_EMAIL }, stockItems: [], jobItems: [] } };
+    
+    unifiedQueue.forEach(item => {
+      if (!item.itemId) return;
+      const isForAdmin = sendToAdmin[item.itemId];
+      const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
 
-      if (!groups[selectedSupplierId]) {
-        const supplierDetails = suppliers.find(s => s.id === selectedSupplierId);
+      if (!supplierId) return;
+
+      if (!groups[supplierId]) {
+        const supplierDetails = suppliers.find(s => s.id === supplierId);
         if(supplierDetails) {
-            groups[selectedSupplierId] = { supplierDetails: supplierDetails, items: [] };
+            groups[supplierId] = { supplierDetails: supplierDetails, items: [] };
         }
       }
-      if(groups[selectedSupplierId]) {
-        groups[selectedSupplierId].items.push(item);
+      if(groups[supplierId]) {
+        groups[supplierId].items.push(item);
       }
     });
+    
     return Object.values(groups).sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
-  }, [queuedItems, suppliers, selectedSuppliers]);
+  }, [unifiedQueue, suppliers, selectedSuppliers, sendToAdmin]);
 
   const handleGenerateEmail = (group) => {
     const supplierEmail = group.supplierDetails.email || '';
@@ -94,7 +106,7 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
     window.location.href = `mailto:${supplierEmail}?subject=${subject}&body=${encodedBody}`;
 
     markItemsAsOrdered(group.supplierDetails, group.items, orderQuantities).then(() => {
-        alert("Items have been marked as ordered and removed from the queue.");
+        toast.success("Items have been marked as ordered and removed from the queue.");
         fetchData();
         if(onOrderPlaced) onOrderPlaced();
     });
@@ -104,7 +116,8 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
       return allPricing[itemId] || [];
   };
 
-  if (loading) return <p className="text-center text-gray-400">Loading purchase queue...</p>;
+  if (loadingPricing) return <p className="text-center p-8 text-gray-400">Analyzing purchasing requirements...</p>;
+  if (unifiedQueue.length === 0) return <p className="text-center text-gray-400 p-8">The purchasing queue is empty.</p>;
 
   return (
     <div className="space-y-6">

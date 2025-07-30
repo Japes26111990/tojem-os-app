@@ -18,7 +18,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         const name = (editingItemId ? editingItemName : newItemName).trim();
-        if (!name) return;
+        if (!name) return toast.error("Category name is required.");
         if (parentCollection && !selectedParentId && !editingItemId) {
             return toast.error(`Please select a ${parentName}.`);
         }
@@ -115,7 +115,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                                     label="Name"
                                     type="text"
                                     value={editingItemName}
-                                    onChange={(e) => setEditingItemName(e.target.value)}
+                                    onChange={(e) => setNewItemName(e.target.value)}
                                     className="flex-grow"
                                     autoFocus
                                 />

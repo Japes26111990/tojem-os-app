@@ -17,8 +17,11 @@ const FloorPlanPage = () => {
                 const fetchedDepartments = await getDepartments();
                 setDepartments(fetchedDepartments);
 
-                const unsubscribeJobs = listenToJobCards((allJobs) => {
-                    setJobs(allJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                const unsubscribeJobs = listenToJobCards(({ jobs: allJobs }) => {
+                    if (Array.isArray(allJobs)) {
+                        setJobs(allJobs);
+                    }
                     setLoading(false);
                 });
 

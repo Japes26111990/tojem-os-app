@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Package, HardHat, CheckSquare, CheckCircle } from 'lucide-react';
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const KanbanColumn = ({ title, jobs, icon }) => (
     <div className="bg-gray-800/50 rounded-xl p-4 w-full">
@@ -27,10 +28,10 @@ const KanbanColumn = ({ title, jobs, icon }) => (
 
 const CustomerKanban = ({ jobs }) => {
     const columns = useMemo(() => {
-        const pending = jobs.filter(j => j.status === 'Pending');
-        const inProgress = jobs.filter(j => j.status === 'In Progress' || j.status === 'Paused');
-        const awaitingQc = jobs.filter(j => j.status === 'Awaiting QC');
-        const complete = jobs.filter(j => j.status === 'Complete');
+        const pending = jobs.filter(j => j.status === JOB_STATUSES.PENDING);
+        const inProgress = jobs.filter(j => j.status === JOB_STATUSES.IN_PROGRESS || j.status === JOB_STATUSES.PAUSED);
+        const awaitingQc = jobs.filter(j => j.status === JOB_STATUSES.AWAITing_QC);
+        const complete = jobs.filter(j => j.status === JOB_STATUSES.COMPLETE);
         return { pending, inProgress, awaitingQc, complete };
     }, [jobs]);
 

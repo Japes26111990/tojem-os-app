@@ -66,7 +66,7 @@ const MasterProductManager = () => {
     // Handlers
     const handleAddMasterProduct = async (e) => {
         e.preventDefault();
-        if (!newProductName.trim()) return alert('Product name is required.');
+        if (!newProductName.trim()) return toast.error('Product name is required.');
         await addMasterProduct({ name: newProductName, description: newProductDescription });
         setNewProductName('');
         setNewProductDescription('');
@@ -83,7 +83,7 @@ const MasterProductManager = () => {
 
     const handleLinkRecipe = async (e) => {
         e.preventDefault();
-        if (!partToLinkId || !departmentToLinkId) return alert('Please select a part and a department.');
+        if (!partToLinkId || !departmentToLinkId) return toast.error('Please select a part and a department.');
         
         const partName = parts.find(p => p.id === partToLinkId)?.name || 'Unknown Part';
         const departmentName = departments.find(d => d.id === departmentToLinkId)?.name || 'Unknown Dept';

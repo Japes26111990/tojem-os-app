@@ -29,7 +29,7 @@ const ValuationPage = () => {
   const [allOverheadExpenses, setAllOverheadExpenses] = useState([]);
   const [allJobs, setAllJobs] = useState([]);
   const [allRecipes, setAllRecipes] = useState([]);
-  const [allInventoryItems, setAllInventoryItems] = useState([]); // <-- NEW STATE for inventory
+  const [allInventoryItems, setAllInventoryItems] = useState([]);
   const [isRoiModalOpen, setIsRoiModalOpen] = useState(false);
 
   // States for historical period analysis
@@ -46,19 +46,22 @@ const ValuationPage = () => {
           getEmployees(), 
           getOverheadCategories(), 
           getJobStepDetails(),
-          getAllInventoryItems() // <-- FETCH INVENTORY
+          getAllInventoryItems()
         ]);
         setAllProducts(products);
         setAllEmployees(employees);
         setAllRecipes(recipes);
-        setAllInventoryItems(inventory); // <-- SET INVENTORY
+        setAllInventoryItems(inventory);
         
         const expensePromises = overheadCats.map(cat => getOverheadExpenses(cat.id));
         const expenseResults = await Promise.all(expensePromises);
         setAllOverheadExpenses(expenseResults.flat());
 
-        const unsubscribe = listenToJobCards((jobs) => {
-            setAllJobs(jobs);
+        // --- FIX: Destructure the 'jobs' array from the listener's response ---
+        const unsubscribe = listenToJobCards(({ jobs }) => {
+            if (Array.isArray(jobs)) {
+                setAllJobs(jobs);
+            }
             setLoading(false);
         });
         return unsubscribe;
@@ -95,6 +98,11 @@ const ValuationPage = () => {
   };
   
   const masterFinancials = useMemo(() => {
+    // Add a guard clause to ensure 'allJobs' is an array
+    if (!Array.isArray(allJobs)) {
+        return { totalFixedCosts: 0, historicalGrossMargin: 35, employeesWithPerformance: [], averageBurdenedRate: 0 };
+    }
+
     const productsMap = new Map(allProducts.map(p => [p.id, p]));
     const allCompletedJobs = allJobs.filter(j => j.status === 'Complete');
 

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, DollarSign } from 'lucide-react';
+import { SALES_REPORT_TITLES } from '../../config'; // Import SALES_REPORT_TITLES
 
 const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
     
@@ -18,17 +19,17 @@ const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
         if (isPositive) return {
             icon: <TrendingUp size={20} />,
             textColor: 'text-green-400',
-            text: `+${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `+${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         if (isNegative) return {
             icon: <TrendingDown size={20} />,
             textColor: 'text-red-400',
-            text: `${percentageChange.toFixed(1)}% vs. Last Year`
+            text: `${percentageChange.toFixed(1)}% ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
         return {
             icon: <Minus size={20} />,
             textColor: 'text-gray-400',
-            text: 'No Change vs. Last Year'
+            text: `No Change ${SALES_REPORT_TITLES.VS_LAST_YEAR}` // Use SALES_REPORT_TITLES.VS_LAST_YEAR
         };
     };
     
@@ -39,7 +40,7 @@ const YoYSalesComparison = ({ currentMonthSales, lastYearSales }) => {
             <div>
                 <p className="text-gray-400 text-sm font-medium flex items-center gap-2">
                     <DollarSign size={16} />
-                    This Month's Sales (from Accounting)
+                    {SALES_REPORT_TITLES.CURRENT_MONTH_SALES_ACCOUNTING} {/* Use SALES_REPORT_TITLES.CURRENT_MONTH_SALES_ACCOUNTING */}
                 </p>
                 <p className="text-4xl font-bold text-white mt-2">
                     R {currentMonthSales.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

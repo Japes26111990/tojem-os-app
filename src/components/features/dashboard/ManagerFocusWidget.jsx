@@ -39,8 +39,8 @@ const ManagerFocusWidget = () => {
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
         // Listener for Halted Jobs and long-waiting QC jobs (Urgent & Important)
-        const unsubscribeJobs = listenToJobCards(allJobs => {
-            const halted = allJobs
+        const unsubscribeJobs = listenToJobCards(({ jobs }) => { // Updated to destructure jobs from the object
+            const halted = jobs
                 .filter(j => j.status === 'Halted - Issue')
                 .map(j => ({
                     id: j.id,
@@ -48,7 +48,7 @@ const ManagerFocusWidget = () => {
                     secondaryText: `Halted: ${j.issueReason || 'No reason given'}`
                 }));
             
-            const oldQc = allJobs
+            const oldQc = jobs
                 .filter(j => j.status === 'Awaiting QC' && j.completedAt?.toDate() < twoHoursAgo)
                 .map(j => ({
                     id: j.id,
@@ -106,7 +106,7 @@ const ManagerFocusWidget = () => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-4">Manager's Focus</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <FocusQuadrant
                     title="Urgent & Important"
                     items={urgentImportant}

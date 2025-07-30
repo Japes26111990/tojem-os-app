@@ -26,15 +26,19 @@ const KpiDashboardPage = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = listenToJobCards((allJobs) => {
-            setJobs(allJobs);
+        // --- FIX: Destructure the 'jobs' array from the object returned by the listener ---
+        const unsubscribe = listenToJobCards(({ jobs: allJobs }) => {
+            if (Array.isArray(allJobs)) {
+                setJobs(allJobs);
+            }
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
     const kpiData = useMemo(() => {
-        if (jobs.length === 0) {
+        // Add a guard clause to ensure 'jobs' is an array before processing
+        if (!Array.isArray(jobs) || jobs.length === 0) {
             return {
                 jobsCompletedToday: 0,
                 reworkRate: '0%',

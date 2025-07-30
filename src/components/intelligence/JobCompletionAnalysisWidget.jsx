@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { getCompletedJobsForEmployee } from '../../api/firestore';
 import { CheckCircle2, AlertTriangle } from 'lucide-react';
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+
+const KpiCard = ({ icon, title, value, unit }) => (
+    <div className="bg-gray-900/50 p-4 rounded-lg text-center">
+        <p className="text-sm text-gray-400">{title}</p>
+        <p className="text-3xl font-bold text-white">
+            {value} <span className="text-xl text-gray-400">{unit}</span>
+        </p>
+    </div>
+);
 
 const JobCompletionAnalysisWidget = ({ employeeId }) => {
     const [stats, setStats] = useState({ onTime: 0, late: 0, total: 0 });

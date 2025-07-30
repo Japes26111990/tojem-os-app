@@ -8,6 +8,7 @@ import Button from '../../ui/Button';
 import { X, Package } from 'lucide-react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
     const [departments, setDepartments] = useState([]);
@@ -82,7 +83,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             departmentName: department?.name || 'Unknown',
             employeeId: selection.employeeId || 'unassigned',
             employeeName: employee?.name || 'Unassigned',
-            status: 'Pending',
+            status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
             description: recipe.description,
             estimatedTime: recipe.estimatedTime,
             steps: recipe.steps.map(s => s.text || s),
@@ -157,6 +158,8 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
                 printWindow.document.write(`<html><head><title>Job Card ${newJobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
                 printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+            } else {
+                toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
             }
 
             onClose();

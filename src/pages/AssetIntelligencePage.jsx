@@ -21,7 +21,12 @@ const AssetIntelligencePage = () => {
                 setTools(fetchedTools.filter(t => t.hourlyRate > 0));
                 setRecipes(fetchedRecipes);
                 
-                const unsubscribeJobs = listenToJobCards(setJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                const unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
+                });
                 setLoading(false);
                 
                 return unsubscribeJobs;
@@ -36,7 +41,7 @@ const AssetIntelligencePage = () => {
     }, []);
 
     const analysisData = useMemo(() => {
-        if (!selectedToolId) return null;
+        if (!selectedToolId || !Array.isArray(jobs)) return null;
 
         const selectedTool = tools.find(t => t.id === selectedToolId);
         if (!selectedTool) return null;

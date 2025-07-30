@@ -310,15 +310,15 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                     <JobDetailsModal
                         job={selectedJob}
                         onClose={handleCloseModal}
-                        currentTime={currentTime}
+                        currentTime={Date.now()}
                         employeeHourlyRates={employeeHourlyRates}
                         overheadCostPerHour={overheadCostPerHour}
-                        allEmployees={employees}
-                        onUpdateJob={handleUpdateJob}
-                        onDeleteJob={handleDeleteJob}
+                        allEmployees={allEmployees}
                         allInventoryItems={allInventoryItems}
                         allTools={allTools}
                         allToolAccessories={allToolAccessories}
+                        onUpdateJob={handleUpdateJob}
+                        onDeleteJob={handleDeleteJob}
                     />
                 )}
             </div>

@@ -19,6 +19,7 @@ import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PrintConfirmationModal from './PrintConfirmationModal';
 import QRCode from 'qrcode';
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -84,12 +85,17 @@ const CustomJobCreator = ({ campaignId }) => {
         };
         fetchData();
 
-        const unsubscribe = listenToJobCards(setAllPastJobs);
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        const unsubscribe = listenToJobCards(({ jobs }) => {
+            if (Array.isArray(jobs)) {
+                setAllPastJobs(jobs);
+            }
+        });
         return () => unsubscribe();
     }, []);
 
     useEffect(() => {
-        if (jobData.jobName.length > 2) {
+        if (jobData.jobName.length > 2 && Array.isArray(allPastJobs)) {
             const searchLower = jobData.jobName.toLowerCase();
             const results = allPastJobs
                 .filter(job => job.partName && job.partName.toLowerCase().includes(searchLower))
@@ -203,7 +209,6 @@ const CustomJobCreator = ({ campaignId }) => {
             toast.error("Please fill in Job Name, Department, Description, and Steps.");
             return;
         }
-        // --- ADDED: Time validation ---
         if (!jobData.estimatedTime || parseFloat(jobData.estimatedTime) <= 0) {
             toast.error("Please enter a valid estimated time for the job.");
             return;
@@ -223,7 +228,7 @@ const CustomJobCreator = ({ campaignId }) => {
             employeeId: jobData.employeeId || 'unassigned',
             employeeName: allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned',
             quantity: Number(jobData.quantity) || 1,
-            status: 'Pending',
+            status: JOB_STATUSES.PENDING,
             description: jobData.description.trim(),
             estimatedTime: parseFloat(jobData.estimatedTime) || 0,
             steps: jobData.steps.split('\n').filter(s => s.trim() !== ''),
@@ -249,7 +254,6 @@ const CustomJobCreator = ({ campaignId }) => {
             
             const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
             
-            // --- UPDATED: Using base64 logo ---
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
@@ -300,7 +304,12 @@ const CustomJobCreator = ({ campaignId }) => {
             if (printWindow) {
                 printWindow.document.write(`<html><head><title>Custom Job Card ${jobToConfirm.jobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
-                printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+                // --- PRINTING FIX: Use a timeout and focus the window ---
+                setTimeout(() => {
+                    printWindow.focus();
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
             } else {
                 toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
             }
@@ -417,14 +426,14 @@ const CustomJobCreator = ({ campaignId }) => {
                                     />
                                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                                     {consumableSearchTerm.length > 0 && filteredConsumableOptions.length > 0 && (
-                                        <ul className="absolute z-10 bg-gray-700 border border-gray-600 rounded-md w-full mt-1 max-h-48 overflow-y-auto shadow-lg">
+                                        <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-md mt-1 max-h-48 overflow-y-auto shadow-lg">
                                             {filteredConsumableOptions.map(item => (
                                                 <li
                                                     key={item.id}
                                                     className="p-2 text-sm text-gray-200 hover:bg-blue-600 hover:text-white cursor-pointer"
                                                     onClick={() => selectConsumableFromSearch(item)}
-                                                    >
-                                                    {item.name} ({item.itemCode || 'N/A'}) - {item.unit} (R{item.price.toFixed(2)})
+                                                >
+                                                    {item.name} (ID: {item.itemCode || 'N/A'}) - {item.unit} (R{item.price.toFixed(2)})
                                                 </li>
                                             ))}
                                         </ul>
@@ -451,7 +460,7 @@ const CustomJobCreator = ({ campaignId }) => {
                                             <Button type="button" onClick={() => removeConsumable(index)} variant="danger" className="py-0.5 px-2 text-xs">X</Button>
                                         </li>
                                     ))
-                                    ) : (
+                                ) : (
                                     <li className="text-gray-400 text-sm">No consumables added yet.</li>
                                 )}
                             </ul>

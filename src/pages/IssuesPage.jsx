@@ -42,8 +42,11 @@ const IssuesPage = () => {
                 }, {});
                 setEmployeeHourlyRates(rates);
 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
-                    setJobs(fetchedJobs);
+                // --- FIX: Destructure the 'jobs' array from the object ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
                     setLoading(false);
                 });
             } catch (error) {
@@ -67,6 +70,10 @@ const IssuesPage = () => {
     }, [searchParams, loading, jobs]);
 
     const { haltedJobs, qcRejectedJobs } = useMemo(() => {
+        // Add a guard clause to ensure 'jobs' is an array
+        if (!Array.isArray(jobs)) {
+            return { haltedJobs: [], qcRejectedJobs: [] };
+        }
         const halted = jobs.filter(job => job.status === 'Halted - Issue');
         const rejected = jobs.filter(job => job.status === 'Issue');
         return { haltedJobs: halted, qcRejectedJobs: rejected };

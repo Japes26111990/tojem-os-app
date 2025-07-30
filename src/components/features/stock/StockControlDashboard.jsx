@@ -3,6 +3,7 @@ import { getAllInventoryItems, getSuppliers, getPurchaseQueue, addToPurchaseQueu
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Search, Package, Factory, DollarSign } from 'lucide-react'; // Import DollarSign icon
+import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
 
 // NEW: KPI Card component for displaying the total value
 const KpiCard = ({ icon, title, value, color }) => (
@@ -73,9 +74,9 @@ const StockControlDashboard = () => {
     });
 
     if (inventoryTypeFilter === 'products') {
-        filtered = filtered.filter(item => item.category === 'Product');
+        filtered = filtered.filter(item => item.category === JOB_STATUSES.PRODUCT); // Use JOB_STATUSES.PRODUCT
     } else if (inventoryTypeFilter === 'purchased') {
-        filtered = filtered.filter(item => item.category !== 'Product');
+        filtered = filtered.filter(item => item.category !== JOB_STATUSES.PRODUCT); // Use JOB_STATUSES.PRODUCT
     }
 
     if (showLowStock) { filtered = filtered.filter(item => Number(item.currentStock) < Number(item.reorderLevel)); }
@@ -171,7 +172,7 @@ const StockControlDashboard = () => {
               return (
                 <tr key={`${item.id}-${item.category}`} className="border-b border-gray-700 hover:bg-gray-700/50">
                   <td className="p-3 text-gray-200 font-semibold flex items-center gap-2">
-                    {item.category === 'Product' ? <Factory size={16} className="text-teal-400"/> : <Package size={16} className="text-blue-400"/>}
+                    {item.category === JOB_STATUSES.PRODUCT ? <Factory size={16} className="text-teal-400"/> : <Package size={16} className="text-blue-400"/>}
                     {item.name}
                   </td>
                   <td className="p-3 text-gray-400">{item.category}</td>

@@ -3,13 +3,14 @@
 // instead of processing thousands of raw scan events on the client-side.
 
 import React, { useState, useEffect } from 'react';
-import Input from '../../ui/Input';
-import Button from '../../ui/Button';
-import { getDocs, collection, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../../../api/firebase';
+// --- CORRECTED IMPORTS ---
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { getEmployees } from '../../../api/firestore';
+import { db } from '../../../api/firebase';
+// -------------------------
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { WORK_CONSTANTS } from '../../config'; // Import WORK_CONSTANTS
 
 const PermanentPayroll = () => {
     const [employees, setEmployees] = useState([]);

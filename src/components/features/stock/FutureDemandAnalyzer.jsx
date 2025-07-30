@@ -68,7 +68,7 @@ const FutureDemandAnalyzer = ({ onClose }) => {
 
         } catch (error) {
             console.error("Error analyzing future demand:", error);
-            alert("Failed to analyze demand. See console for details.");
+            toast.error("Failed to analyze demand. See console for details.");
         }
         setLoading(false);
     };

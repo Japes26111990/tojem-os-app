@@ -8,7 +8,7 @@ import {
     getDocs, 
     listenToSystemStatus,
     getRoutineTasks,
-    getTodaysCompletedRoutineTasks // <-- NEW IMPORT
+    getTodaysCompletedRoutineTasks
 } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
@@ -45,7 +45,7 @@ const DashboardPage = () => {
     const [todaysTasks, setTodaysTasks] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // NEW: Function to refetch task data when one is completed
+    // Function to refetch task data when one is completed
     const refreshTasks = async () => {
         try {
             const [allTasks, completedIds] = await Promise.all([
@@ -81,7 +81,13 @@ const DashboardPage = () => {
 
                 await refreshTasks(); // Initial fetch of tasks
 
-                unsubscribeJobs = listenToJobCards(setJobs);
+                // --- FIX: Destructure the 'jobs' array from the object passed by the listener ---
+                unsubscribeJobs = listenToJobCards(({ jobs }) => {
+                    // Ensure that what we receive is an array before setting state
+                    if (Array.isArray(jobs)) {
+                        setJobs(jobs);
+                    }
+                });
                 unsubscribeStatus = listenToSystemStatus(setSystemStatus);
 
             } catch (error) {
@@ -99,7 +105,7 @@ const DashboardPage = () => {
     }, []);
 
     const dashboardData = useMemo(() => {
-        if (loading) return null;
+        if (loading || !Array.isArray(jobs)) return null; // Add guard clause for non-array
 
         const now = new Date();
         const currentMonthIndex = now.getMonth();
