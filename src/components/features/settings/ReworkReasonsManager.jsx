@@ -6,7 +6,7 @@ import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Trash2, Edit, PlusCircle } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const ReworkReasonsManager = () => {
     const [reasons, setReasons] = useState([]);
@@ -45,7 +45,7 @@ const ReworkReasonsManager = () => {
             fetchData();
         } catch (error) {
             console.error("Error saving rework reason:", error);
-            toast.error("Failed to save rework reason."); // --- REPLACE ALERT ---
+            toast.error("Failed to save rework reason.");
         }
     };
 
@@ -55,7 +55,6 @@ const ReworkReasonsManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Delete this reason?
@@ -77,7 +76,7 @@ const ReworkReasonsManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     return (
@@ -88,7 +87,7 @@ const ReworkReasonsManager = () => {
                 <Input
                     name="reasonName"
                     value={reasonName}
-                    onChange={(e) => setNewReasonName(e.target.value)}
+                    onChange={(e) => setReasonName(e.target.value)}
                     placeholder={editingId ? "Edit reason..." : "New reason (e.g., Poor Surface Finish)"}
                     className="flex-grow"
                 />

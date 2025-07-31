@@ -6,9 +6,9 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
-// Removed specific imports for addMake, addModel as they are now in their own files
 
-const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName }) => {
+// This is a generic, reusable component for managing simple or parent-child collections.
+const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName, parentIdField }) => {
     const [newItemName, setNewItemName] = useState('');
     const [editingItemId, setEditingItemId] = useState(null);
     const [editingItemName, setEditingItemName] = useState('');
@@ -18,27 +18,23 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         const name = (editingItemId ? editingItemName : newItemName).trim();
-        if (!name) return toast.error("Category name is required.");
-        if (parentCollection && !selectedParentId && !editingItemId) {
-            return toast.error(`Please select a ${parentName}.`);
+        if (!name) return toast.error("Name is required.");
+        
+        const data = { name };
+
+        if (parentCollection) {
+            const parentId = editingItemId ? editingParentId : selectedParentId;
+            if (!parentId) return toast.error(`Please select a parent ${parentName}.`);
+            data[parentIdField] = parentId;
         }
 
         try {
             if (editingItemId) {
-                const dataToUpdate = { name };
-                if (parentCollection && editingParentId) {
-                    const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
-                    dataToUpdate[parentIdField] = editingParentId;
-                }
-                await updateDoc(doc(db, collectionName, editingItemId), dataToUpdate);
+                await updateDoc(doc(db, collectionName, editingItemId), data);
                 toast.success(`${title.slice(7)} updated!`);
-                setEditingItemId(null);
-                setEditingItemName('');
-                setEditingParentId('');
+                handleCancelEdit();
             } else {
-                // GenericManager now only handles simple addDoc for categories and units
-                // Make and Model additions are handled by their specific managers
-                await addDoc(collection(db, collectionName), { name });
+                await addDoc(collection(db, collectionName), data);
                 toast.success(`${title.slice(7)} added!`);
                 setNewItemName('');
                 setSelectedParentId('');
@@ -73,8 +69,9 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleEditClick = (item) => {
         setEditingItemId(item.id);
         setEditingItemName(item.name);
-        const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
-        setEditingParentId(item[parentIdField] || '');
+        if (parentCollection) {
+            setEditingParentId(item[parentIdField] || '');
+        }
     };
     
     const handleCancelEdit = () => {
@@ -110,12 +107,12 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                 {items.map(item => (
                     <div key={item.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                         {editingItemId === item.id ? (
-                            <div className="flex-grow flex items-end gap-2">
+                             <div className="flex-grow flex items-end gap-2">
                                 <Input
                                     label="Name"
                                     type="text"
                                     value={editingItemName}
-                                    onChange={(e) => setNewItemName(e.target.value)}
+                                    onChange={(e) => setEditingItemName(e.target.value)}
                                     className="flex-grow"
                                     autoFocus
                                 />
@@ -131,7 +128,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                         ) : (
                             <div>
                                 <p className="text-gray-200">{item.name}</p>
-                                {parentMap && (item.makeId || item.categoryId) && <p className="text-xs text-blue-400">{parentMap.get(item.makeId || item.categoryId) || 'Unlinked'}</p>}
+                                {parentMap && item[parentIdField] && <p className="text-xs text-blue-400">{parentMap.get(item[parentIdField]) || 'Unlinked'}</p>}
                             </div>
                         )}
                         <div className="flex items-center gap-2 ml-4">
@@ -154,7 +151,8 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     );
 };
 
+// Export pre-configured versions of the GenericManager for each use case
 export const ProductCategoryManager = ({ items, onDataChange }) => <GenericManager title="Manage Product Categories" collectionName="productCategories" items={items} onDataChange={onDataChange} />;
-
-// Removed exports for MakeManager, ModelManager, UnitManager from here
-// They will now be in their own files
+export const MakeManager = ({ items, categories, onDataChange }) => <GenericManager title="Manage Makes" collectionName="makes" items={items} parentCollection={categories} parentName="Category" parentIdField="categoryIds" onDataChange={onDataChange} />;
+export const ModelManager = ({ items, makes, onDataChange }) => <GenericManager title="Manage Models/Years" collectionName="models" items={items} parentCollection={makes} parentName="Make" parentIdField="makeId" onDataChange={onDataChange} />;
+export const UnitManager = ({ items, onDataChange }) => <GenericManager title="Manage Units of Measure" collectionName="units" items={items} onDataChange={onDataChange} />;

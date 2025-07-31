@@ -311,7 +311,7 @@ const CustomJobCreator = ({ campaignId }) => {
                     printWindow.close();
                 }, 500);
             } else {
-                toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
+                toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸ ' });
             }
 
             setJobData({ jobName: '', departmentId: '', employeeId: '', quantity: 1, description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [], jobCategory: 'Production', requiresVin: false, vinNumber: '' });

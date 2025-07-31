@@ -12,7 +12,7 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const TrainingManager = () => {
     const [resources, setResources] = useState([]);
@@ -43,7 +43,7 @@ const TrainingManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching training data:", error);
-            toast.error("Could not load training data."); // --- REPLACE ALERT ---
+            toast.error("Could not load training data.");
         }
         setLoading(false);
     };
@@ -73,7 +73,6 @@ const TrainingManager = () => {
     };
 
     const handleDelete = (resourceId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this resource?
@@ -95,28 +94,28 @@ const TrainingManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.skillId || !formData.resourceName.trim() || !formData.url.trim()) {
-            return toast.error("Please select a skill and fill in the resource name and URL."); // --- REPLACE ALERT ---
+            return toast.error("Please select a skill and fill in the resource name and URL.");
         }
 
         try {
             if (editingId) {
                 await updateTrainingResource(editingId, formData);
-                toast.success("Resource updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Resource updated successfully!");
             } else {
                 await addTrainingResource(formData);
-                toast.success("Resource added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Resource added successfully!");
             }
             handleCancelEdit();
             fetchData();
         } catch (error) {
             console.error("Error saving resource:", error);
-            toast.error("Failed to save training resource."); // --- REPLACE ALERT ---
+            toast.error("Failed to save training resource.");
         }
     };
 

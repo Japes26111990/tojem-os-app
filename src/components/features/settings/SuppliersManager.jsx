@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getSuppliers, addSupplier, deleteSupplier, updateSupplier } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const SuppliersManager = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -29,7 +29,7 @@ const SuppliersManager = () => {
   const handleAddOrUpdate = async (e) => {
     e.preventDefault();
     if (!newSupplier.name.trim()) {
-      toast.error("Supplier name is required."); // --- REPLACE ALERT ---
+      toast.error("Supplier name is required.");
       return;
     }
     try {
@@ -41,17 +41,17 @@ const SuppliersManager = () => {
 
       if (editingSupplierId) {
         await updateSupplier(editingSupplierId, dataToSave); 
-        toast.success("Supplier updated successfully!"); // --- REPLACE ALERT ---
+        toast.success("Supplier updated successfully!");
       } else {
         await addSupplier(dataToSave);
-        toast.success("Supplier added successfully!"); // --- REPLACE ALERT ---
+        toast.success("Supplier added successfully!");
       }
       setNewSupplier({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
       setEditingSupplierId(null);
       fetchSuppliers();
     } catch (error) {
       console.error("Error saving supplier:", error);
-      toast.error(`Failed to ${editingSupplierId ? 'update' : 'add'} supplier.`); // --- REPLACE ALERT ---
+      toast.error(`Failed to ${editingSupplierId ? 'update' : 'add'} supplier.`);
     }
   };
 
@@ -71,7 +71,6 @@ const SuppliersManager = () => {
   };
 
   const handleDelete = (id) => {
-    // --- REPLACE window.confirm ---
     toast((t) => (
         <span>
             Are you sure you want to delete this supplier?
@@ -93,7 +92,7 @@ const SuppliersManager = () => {
                 Cancel
             </Button>
         </span>
-    ), { icon: '⚠️' });
+    ), { icon: 'âš ï¸ ' });
   };
 
   return (

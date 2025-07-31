@@ -126,7 +126,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       unitWeight: parseFloat(newItem.unitWeight) || 0,
       tareWeight: parseFloat(newItem.tareWeight) || 0,
       associatedSkills: filteredAssociatedSkills,
-      // NEW: Save location data
       location: newItem.location || '',
       shelf_number: newItem.shelf_number || '',
       bin_number: newItem.bin_number || '',
@@ -159,17 +158,12 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   };
 
   const handleDelete = (id) => { 
-      toast((t) => React.createElement(
-          'span',
-          null,
-          'Delete this item and all its supplier pricing links?',
-          React.createElement(
-              Button,
-              {
-                  variant: "danger",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => {
+      toast((t) => (
+          <span>
+              Delete this item and all its pricing?
+              <Button
+                  variant="danger" size="sm" className="ml-2"
+                  onClick={() => {
                       api.delete(id)
                           .then(() => {
                               toast.success("Item deleted.");
@@ -180,21 +174,18 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                               console.error(err);
                           });
                       toast.dismiss(t.id);
-                  }
-              },
-              'Delete'
-          ),
-          React.createElement(
-              Button,
-              {
-                  variant: "secondary",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => toast.dismiss(t.id)
-              },
-              'Cancel'
-          )
-      ), { icon: '⚠️' });
+                  }}
+              >
+                  Delete
+              </Button>
+              <Button
+                  variant="secondary" size="sm" className="ml-2"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                  Cancel
+              </Button>
+          </span>
+      ), { icon: 'âš ï¸ ' });
   };
   
   const handleAddSupplierPrice = async (supplierId, price) => {
@@ -219,17 +210,12 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   };
 
   const handleDeleteSupplierPrice = (priceId) => {
-      toast((t) => React.createElement(
-          'span',
-          null,
-          'Delete this supplier price link?',
-          React.createElement(
-              Button,
-              {
-                  variant: "danger",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => {
+      toast((t) => (
+          <span>
+              Delete this supplier price link?
+              <Button
+                  variant="danger" size="sm" className="ml-2"
+                  onClick={() => {
                       deleteSupplierPrice(priceId)
                           .then(() => {
                               toast.success("Price link deleted.");
@@ -240,21 +226,18 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                               console.error(err);
                           });
                       toast.dismiss(t.id);
-                  }
-              },
-              'Delete'
-          ),
-          React.createElement(
-              Button,
-              {
-                  variant: "secondary",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => toast.dismiss(t.id)
-              },
-              'Cancel'
-          )
-      ), { icon: '⚠️' });
+                  }}
+              >
+                  Delete
+              </Button>
+              <Button
+                  variant="secondary" size="sm" className="ml-2"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                  Cancel
+              </Button>
+          </span>
+      ), { icon: 'âš ï¸ ' });
   };
 
   return {

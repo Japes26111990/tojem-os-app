@@ -7,8 +7,8 @@ import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
-import { SYSTEM_ROLES } from '../../../config'; // Import SYSTEM_ROLES
+import toast from 'react-hot-toast';
+import { SYSTEM_ROLES } from '../../../config';
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
@@ -49,7 +49,7 @@ const EmployeesManager = () => {
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newEmployee.name.trim() || !newEmployee.departmentId) {
-            toast.error("Please enter a name and select a department."); // --- REPLACE ALERT ---
+            toast.error("Please enter a name and select a department.");
             return;
         }
 
@@ -65,17 +65,17 @@ const EmployeesManager = () => {
 
             if (editingEmployeeId) {
                 await updateDocument('employees', editingEmployeeId, dataToSave);
-                toast.success("Employee updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Employee updated successfully!");
             } else {
                 await addEmployee(dataToSave);
-                toast.success("Employee added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Employee added successfully!");
             }
             setNewEmployee(initialFormState);
             setEditingEmployeeId(null);
             fetchData();
         } catch (error) {
             console.error("Error saving employee:", error);
-            toast.error(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`);
         }
     };
 
@@ -97,7 +97,6 @@ const EmployeesManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure?
@@ -120,7 +119,7 @@ const EmployeesManager = () => {
                 </Button>
             </span>
         ), {
-            icon: '⚠️',
+            icon: 'âš ï¸ ',
         });
     };
 

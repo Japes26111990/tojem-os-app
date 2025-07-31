@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const DepartmentsManager = () => {
     const [departments, setDepartments] = useState([]);
@@ -28,17 +28,17 @@ const DepartmentsManager = () => {
         try {
             if (editingDeptId) {
                 await updateDocument('departments', editingDeptId, { name: newDepartmentName });
-                toast.success("Department updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Department updated successfully!");
             } else {
                 await addDepartment(newDepartmentName);
-                toast.success("Department added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Department added successfully!");
             }
             setNewDepartmentName('');
             setEditingDeptId(null);
             fetchDepartments();
         } catch (error) {
             console.error("Error saving department:", error);
-            toast.error(`Failed to ${editingDeptId ? 'update' : 'add'} department.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingDeptId ? 'update' : 'add'} department.`);
         }
     };
 
@@ -53,7 +53,6 @@ const DepartmentsManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this department?
@@ -76,7 +75,7 @@ const DepartmentsManager = () => {
                 </Button>
             </span>
         ), {
-            icon: '⚠️',
+            icon: 'âš ï¸ ',
         });
     };
 

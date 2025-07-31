@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, processQcDecision } from '../../../api/firestore'; // Use the new function
 import Button from '../../ui/Button';
+import toast from 'react-hot-toast';
 
-const QcQueue = () => {
+const QcPage = () => {
   const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,27 +20,34 @@ const QcQueue = () => {
   }, [allJobs]);
 
   const handleApprove = async (job) => {
-    if (window.confirm(`Are you sure you want to approve this job? This will deduct used items from stock.`)) {
-      try {
-        await processQcDecision(job, true); // Call with 'true' for approval
-        alert('Job approved and stock updated!');
-      } catch (err) {
-        alert('Failed to process approval.');
-        console.error(err);
-      }
-    }
+    toast((t) => (
+        <span>
+            Approve this job and deduct stock?
+            <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                    await processQcDecision(job, true);
+                    toast.success('Job approved and stock updated!');
+                } catch (err) {
+                    toast.error('Failed to process approval.');
+                    console.error(err);
+                }
+            }}>Confirm</Button>
+            <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+        </span>
+    ));
   };
 
   const handleReject = async (job) => {
     const reason = prompt(`Please provide a reason for rejecting this job:`);
     if (reason) {
-      try {
-        await processQcDecision(job, false, reason); // Call with 'false' and a reason for rejection
-        alert('Job marked with an issue, and stock has been deducted.');
-      } catch (err) {
-        alert('Failed to process rejection.');
-        console.error(err);
-      }
+        try {
+            await processQcDecision(job, false, { rejectionReason: reason });
+            toast.success('Job marked with an issue, stock deducted.');
+        } catch (err) {
+            toast.error('Failed to process rejection.');
+            console.error(err);
+        }
     }
   };
 
@@ -57,7 +65,7 @@ const QcQueue = () => {
               <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>
             </tr>
           </thead>
-          <tbody>
+           <tbody>
             {(qcJobs || []).map(job => (
               <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
@@ -77,4 +85,4 @@ const QcQueue = () => {
   );
 };
 
-export default QcQueue;
+export default QcPage;

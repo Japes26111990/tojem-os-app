@@ -18,11 +18,13 @@ import RoutineTasksManager from '../components/features/settings/RoutineTasksMan
 import LearningPathManager from '../components/features/settings/LearningPathManager';
 import KaizenManager from '../components/features/settings/KaizenManager';
 
-// Import individual components from their new files
-import { ProductCategoryManager } from '../components/features/settings/ProductCategoryManager'; // Still imports GenericManager helper
-import MakeManager from '../components/features/settings/MakeManager'; // Now from its own file
-import ModelManager from '../components/features/settings/ModelManager'; // Now from its own file
-import UnitManager from '../components/features/settings/UnitManager'; // Now from its own file
+// Import all consolidated managers from the single updated file
+import { 
+    ProductCategoryManager, 
+    MakeManager, 
+    ModelManager, 
+    UnitManager 
+} from '../components/features/settings/ProductCategoryManager';
 
 import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
@@ -40,7 +42,6 @@ const TabButton = ({ label, isActive, onClick }) => {
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('inventory');
   
-  // State for catalog data is now managed here to ensure components refresh
   const [catalogData, setCatalogData] = useState({
     categories: [],
     makes: [],
@@ -48,7 +49,6 @@ const SettingsPage = () => {
     units: []
   });
 
-  // This function will be passed down to child components to trigger a data refresh
   const fetchCatalogData = async () => {
     const [cats, mks, mdls, uts] = await Promise.all([
         getProductCategories(),
@@ -60,9 +60,10 @@ const SettingsPage = () => {
   };
 
   useEffect(() => {
-    // Fetch data when the component mounts and when the relevant tab is selected
-    fetchCatalogData();
-  }, []);
+    if (activeTab === 'catalog_data') {
+        fetchCatalogData();
+    }
+  }, [activeTab]);
 
 
   const tabs = useMemo(() => ({

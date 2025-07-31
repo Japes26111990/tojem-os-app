@@ -199,7 +199,7 @@ const PerformancePage = () => {
 
             <DepartmentPerformanceChart data={performanceData.departmentData} />
             
-             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                     <h3 className="text-xl font-bold text-white">
                         Performance Leaderboard
@@ -211,13 +211,13 @@ const PerformancePage = () => {
                             onChange={(e) => setLeaderboardDepartmentFilter(e.target.value)}
                             options={[{ id: 'all', name: 'Overall Company' }, ...departments]}
                         />
-                     </div>
+                    </div>
                 </div>
                 <PerformanceLeaderboard
                     employees={leaderboardDepartmentFilter === 'all' ? performanceData.employeePerformanceMetrics : performanceData.employeePerformanceMetrics.filter(e => e.departmentId === leaderboardDepartmentFilter)}
                     activeSortKey={leaderboardSortKey}
                     setActiveSortKey={setLeaderboardSortKey}
-                 />
+                />
             </div>
         </div>
     );

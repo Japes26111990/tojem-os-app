@@ -3,7 +3,7 @@ import { getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../..
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { DollarSign, Trash2, Edit, PlusCircle, Users } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const CampaignManager = () => {
     const [campaigns, setCampaigns] = useState([]);
@@ -27,7 +27,7 @@ const CampaignManager = () => {
             setCampaigns(fetchedCampaigns);
         } catch (error) {
             console.error("Error fetching campaigns:", error);
-            toast.error("Could not load campaign data."); // --- REPLACE ALERT ---
+            toast.error("Could not load campaign data.");
         }
         setLoading(false);
     };
@@ -61,7 +61,7 @@ const CampaignManager = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.name || !formData.platform || !formData.budget || !formData.startDate) {
-            toast.error("Please fill in name, platform, budget, and start date."); // --- REPLACE ALERT ---
+            toast.error("Please fill in name, platform, budget, and start date.");
             return;
         }
 
@@ -77,21 +77,20 @@ const CampaignManager = () => {
         try {
             if (editingCampaign) {
                 await updateCampaign(editingCampaign.id, dataToSave);
-                toast.success("Campaign updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Campaign updated successfully!");
             } else {
                 await addCampaign(dataToSave);
-                toast.success("Campaign added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Campaign added successfully!");
             }
             handleCancelEdit();
             fetchCampaigns();
         } catch (error) {
             console.error("Error saving campaign:", error);
-            toast.error("Failed to save campaign."); // --- REPLACE ALERT ---
+            toast.error("Failed to save campaign.");
         }
     };
 
     const handleDeleteClick = (campaignId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this campaign?
@@ -114,7 +113,7 @@ const CampaignManager = () => {
                 </Button>
             </span>
         ), {
-            icon: '⚠️',
+            icon: 'âš ï¸ ',
         });
     };
 

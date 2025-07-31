@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/29/2025 16:54:53
+Generated on: 07/31/2025 15:21:45
 
 
 ==================================================
@@ -8,7 +8,8 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firebase.js
 // src/api/firebase.js
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+// UPDATED: Import necessary auth functions for persistence
+import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
@@ -25,10 +26,23 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize and export Firebase services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const functions = getFunctions(app);
+// Initialize Firebase services
+const authInstance = getAuth(app);
+const db = getFirestore(app);
+const functions = getFunctions(app);
+
+// --- NEW: Set authentication persistence ---
+// This function configures how user sessions are saved.
+// 'browserSessionPersistence' means the user is logged out when the browser tab is closed.
+setPersistence(authInstance, browserSessionPersistence)
+  .catch((error) => {
+    // Handle errors here, such as if the browser doesn't support session storage.
+    console.error("Firebase Persistence Error: ", error);
+  });
+
+// Export the configured services
+export const auth = authInstance;
+export { db, functions };
 
 export default app;
 
@@ -61,7 +75,7 @@ import {
 } from 'firebase/firestore';
 import { db, functions } from './firebase';
 import { httpsCallable } from 'firebase/functions';
-import { JOB_STATUSES, SYSTEM_ROLES } from '../config'; // Import JOB_STATUSES and SYSTEM_ROLES
+import { JOB_STATUSES, SYSTEM_ROLES } from '../config';
 
 // =================================================================================================
 // ROUTINE TASK COMPLETION API
@@ -198,9 +212,16 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
 
 export const addKaizenSuggestion = (suggestionData) => addDoc(collection(db, 'kaizenSuggestions'), { ...suggestionData, createdAt: serverTimestamp(), status: 'new' });
 export const addPraise = (praiseData) => addDoc(collection(db, 'praise'), { ...praiseData, createdAt: serverTimestamp() });
+
+// --- FIX: Removed orderBy to prevent index error. Sorting is now done on the client-side. ---
 export const listenToPraiseForEmployee = (employeeId, callback) => {
-    const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId), orderBy('createdAt', 'desc'));
-    return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+    const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId));
+    return onSnapshot(q, (snapshot) => {
+        const praiseItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Sort the results by date here in the client-side code
+        praiseItems.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
+        callback(praiseItems);
+    });
 };
 
 export const listenToSystemStatus = (callback) => {
@@ -390,14 +411,7 @@ export const updateStandardRecipe = async (jobData) => {
 
 const jobCardsCollection = collection(db, 'createdJobCards');
 
-/**
- * Adds a new job card to the createdJobCards collection with input validation and error handling.
- * @param {Object} jobCardData - The job card data, including jobId, partName, and status.
- * @returns {Promise<DocumentReference>} A promise that resolves to the DocumentReference of the created document.
- * @throws {Error} If required fields are missing or the Firestore write fails.
- */
 export const addJobCard = async (jobCardData) => {
-    // Input validation: Ensure critical fields are present
     if (!jobCardData.jobId || !jobCardData.partName || !jobCardData.status) {
         throw new Error('Job card must include jobId, partName, and status.');
     }
@@ -410,31 +424,30 @@ export const addJobCard = async (jobCardData) => {
     }
 };
 
-
 export const listenToJobCards = (callback, options = {}) => {
     const jobsCollectionRef = collection(db, 'createdJobCards');
     let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
     if (options.limit) {
-        if (options.startAfter && options.startAfter.exists?.()) { // Added .exists?.() for robustness
+        if (options.startAfter && options.startAfter.exists?.()) {
             q = query(q, startAfter(options.startAfter));
         }
         q = query(q, limit(options.limit));
         
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null; // Ensure lastVisible is null if no docs
+            const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
             callback({ jobs, lastVisible }); 
         }, (error) => {
             console.error("Error listening to paginated job cards:", error);
-            callback({ jobs: [], lastVisible: null, error }); // Pass error to callback
+            callback({ jobs: [], lastVisible: null, error });
         });
     } else {
         return onSnapshot(q, (snapshot) => {
             const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            callback({ jobs, lastVisible: null }); // Consistently return object with lastVisible: null
+            callback({ jobs, lastVisible: null });
         }, (error) => {
             console.error("Error listening to all job cards:", error);
-            callback({ jobs: [], lastVisible: null, error }); // Pass error to callback
+            callback({ jobs: [], lastVisible: null, error });
         });
     }
 };
@@ -527,7 +540,6 @@ export const getProductCategories = async () => getDocs(query(productCategoriesC
 export const addProductCategory = (categoryName) => addDoc(productCategoriesCollection, { name: categoryName });
 export const deleteProductCategory = (categoryId) => deleteDoc(doc(db, 'productCategories', categoryId));
 
-// --- Functions to manage Catalog Data dropdowns ---
 const getGenericOptions = async (collectionName) => {
     const q = query(collection(db, collectionName), orderBy('name'));
     const snapshot = await getDocs(q);
@@ -535,7 +547,6 @@ const getGenericOptions = async (collectionName) => {
 };
 
 export const getMakes = () => getGenericOptions('makes');
-// UPDATED: addMake now accepts an array of categoryIds
 export const addMake = (name, categoryIds) => addDoc(collection(db, 'makes'), { name, categoryIds });
 export const deleteMake = (id) => deleteDoc(doc(db, 'makes', id));
 
@@ -590,22 +601,26 @@ export const deleteTrainingResource = (id) => deleteDoc(doc(db, 'trainingResourc
 export const addSubcontractorAdHocLog = (logData) => addDoc(collection(db, 'subcontractorAdHocLogs'), { ...logData, createdAt: serverTimestamp() });
 export const addSubcontractorTeamLog = (logData) => addDoc(collection(db, 'subcontractorTeamLogs'), { ...logData, createdAt: serverTimestamp() });
 
-export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quoteData, status: JOB_STATUSES.DRAFT, createdAt: serverTimestamp() });
+export const addQuote = (quoteData) => addDoc(collection(db, 'quotes'), { ...quoteData, status: 'draft', createdAt: serverTimestamp() });
 export const createSalesOrderFromQuote = async (quote) => {
     const batch = writeBatch(db);
     const salesOrderRef = doc(collection(db, 'salesOrders'));
-    batch.set(salesOrderRef, {
+    
+    const salesOrderData = {
         salesOrderId: `SO-${quote.quoteId.replace('Q-', '')}`,
         customerName: quote.customerName,
         customerEmail: quote.customerEmail,
         total: quote.total,
-        status: JOB_STATUSES.PENDING_PRODUCTION,
+        status: 'Pending Production',
         createdAt: serverTimestamp(),
         lineItems: quote.lineItems.map(item => ({ ...item, id: doc(collection(db, '_')).id, status: JOB_STATUSES.PENDING }))
-    });
-    batch.update(doc(db, 'quotes', quote.id), { status: JOB_STATUSES.ACCEPTED });
+    };
+
+    batch.set(salesOrderRef, salesOrderData);
+    batch.update(doc(db, 'quotes', quote.id), { status: 'Accepted' });
     return batch.commit();
 };
+
 export const listenToSalesOrders = (callback) => onSnapshot(query(collection(db, 'salesOrders'), orderBy('createdAt', 'desc')), s => callback(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 export const listenToOneOffPurchases = (callback) => onSnapshot(query(collection(db, 'oneOffPurchases'), orderBy('createdAt', 'desc')), s => callback(s.docs.map(d => ({ id: d.id, ...d.data() }))));
 export const addPurchasedItemToQueue = (lineItem, salesOrder) => addDoc(collection(db, 'oneOffPurchases'), {
@@ -614,7 +629,7 @@ export const addPurchasedItemToQueue = (lineItem, salesOrder) => addDoc(collecti
     estimatedCost: lineItem.unitCost,
     salesOrderId: salesOrder.salesOrderId,
     customerName: salesOrder.customerName,
-    status: JOB_STATUSES.PENDING_PURCHASE,
+    status: 'Pending Purchase',
     createdAt: serverTimestamp()
 });
 export const markOneOffItemsAsOrdered = async (itemIds) => {
@@ -720,9 +735,7 @@ export const addLearningPath = (pathData) => addDoc(collection(db, 'learningPath
 export const updateLearningPath = (pathId, updatedData) => updateDoc(doc(db, 'learningPaths', pathId), updatedData);
 export const deleteLearningPath = (pathId) => deleteDoc(doc(db, 'learningPaths', pathId));
 
-// Export `collection`, `query`, and `where` to be used in other files if needed
 export { collection, query, where, getDocs, onSnapshot };
-
 
 
 
@@ -832,6 +845,128 @@ describe('Firestore API Tests', () => {
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\inventoryApi.js
+==================================================
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, runTransaction, increment } from 'firebase/firestore';
+import { db } from './firebase';
+import { JOB_STATUSES } from '../config';
+
+const inventoryCollection = collection(db, 'inventoryItems');
+
+export const getAllInventoryItems = async (category) => {
+  let q = inventoryCollection;
+  if (category) {
+    q = query(inventoryCollection, where('category', '==', category));
+  }
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+};
+
+export const getProducts = async () => getAllInventoryItems(JOB_STATUSES.PRODUCT);
+
+export const addInventoryItem = (itemData) => {
+  if (!itemData.category) {
+    return Promise.reject(new Error("Item data must include a 'category' field."));
+  }
+  return addDoc(inventoryCollection, { ...itemData, createdAt: new Date() }); // Use Date for offline compatibility
+};
+
+export const updateStockByWeight = async (itemId, grossWeight) => {
+  if (!itemId || isNaN(parseFloat(grossWeight))) {
+    throw new Error("Item ID and a valid gross weight are required.");
+  }
+  const itemRef = doc(db, 'inventoryItems', itemId);
+  return runTransaction(db, async (transaction) => {
+    const itemDoc = await transaction.get(itemRef);
+    if (!itemDoc.exists()) throw new Error("Inventory item not found.");
+    
+    const itemData = itemDoc.data();
+    const tareWeight = parseFloat(itemData.tareWeight) || 0;
+    const unitWeight = parseFloat(itemData.unitWeight) || 1;
+    if (unitWeight <= 0) throw new Error("Item has an invalid unit weight of zero or less.");
+
+    const netWeight = parseFloat(grossWeight) - tareWeight;
+    const newQuantity = Math.round(netWeight / unitWeight);
+    if (newQuantity < 0) throw new Error("Calculated quantity is negative. Please check weights.");
+    
+    transaction.update(itemRef, { currentStock: newQuantity });
+    return { newQuantity };
+  });
+};
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobApi.js
+==================================================
+import { collection, query, where, getDocs, onSnapshot, orderBy, limit, startAfter, updateDoc, doc, runTransaction, increment } from 'firebase/firestore';
+import { db } from './firebase';
+import { JOB_STATUSES } from '../config';
+
+const jobCardsCollection = collection(db, 'createdJobCards');
+
+export const listenToJobCards = (callback, options = {}) => {
+  const jobsCollectionRef = collection(db, 'createdJobCards');
+  let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
+  if (options.limit) {
+    if (options.startAfter) {
+      q = query(q, startAfter(options.startAfter));
+    }
+    q = query(q, limit(options.limit));
+  }
+  return onSnapshot(q, (snapshot) => {
+    const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
+    callback({ jobs, lastVisible });
+  }, (error) => {
+    console.error("Error listening to job cards:", error);
+    callback({ jobs: [], lastVisible: null, error });
+  });
+};
+
+export const getCompletedJobsInRange = async (startDate, endDate) => {
+  const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.COMPLETE), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
+  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+};
+
+export const processQcDecision = async (job, isApproved, options = {}) => {
+  const { rejectionReason = '', preventStockDeduction = false, reworkDetails = null } = options;
+  return runTransaction(db, async (transaction) => {
+    const jobRef = doc(db, 'createdJobCards', job.id);
+    const jobDoc = await transaction.get(jobRef);
+    if (!jobDoc.exists()) throw "Job document does not exist!";
+    const currentJobData = jobDoc.data();
+    const dataToUpdate = {};
+    if (isApproved) {
+      dataToUpdate.status = JOB_STATUSES.COMPLETE;
+      if (!currentJobData.completedAt) dataToUpdate.completedAt = new Date();
+      if (job.partId) {
+        const productRef = doc(db, 'inventoryItems', job.partId);
+        transaction.update(productRef, { currentStock: increment(job.quantity || 1) });
+      }
+    } else {
+      if (reworkDetails && reworkDetails.requeue) {
+        dataToUpdate.status = JOB_STATUSES.PENDING;
+        dataToUpdate.issueReason = `REWORK: ${rejectionReason}`;
+        dataToUpdate.employeeId = reworkDetails.newEmployeeId || job.employeeId;
+        dataToUpdate.employeeName = reworkDetails.newEmployeeName || job.employeeName;
+        dataToUpdate.completedAt = null;
+      } else {
+        dataToUpdate.status = JOB_STATUSES.ISSUE;
+        dataToUpdate.issueReason = rejectionReason;
+      }
+    }
+    if (!preventStockDeduction && currentJobData.processedConsumables?.length > 0) {
+      for (const consumable of currentJobData.processedConsumables) {
+        const itemRef = doc(db, 'inventoryItems', consumable.id);
+        transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
+      }
+    }
+    transaction.update(jobRef, dataToUpdate);
+  });
+};
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobUtils.test.js
 ==================================================
 // src/utils/jobUtils.test.js
@@ -916,6 +1051,26 @@ describe('calculateJobDuration', () => {
     });
 });
 
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\api\userApi.js
+==================================================
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { db } from './firebase';
+import { logAuditEvent } from '../api/firestore';
+
+export const getAllUsers = async () => getDocs(collection(db, 'users')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
+
+export const updateUserRole = async (userId, newRole, discountPercentage, companyName) => {
+  const dataToUpdate = { role: newRole };
+  if (discountPercentage !== undefined) dataToUpdate.discountPercentage = Number(discountPercentage) || 0;
+  if (companyName !== undefined) dataToUpdate.companyName = companyName;
+  await updateDoc(doc(db, 'users', userId), dataToUpdate);
+  // Log audit (assuming currentUser from AuthContext)
+  const currentUser = { uid: 'current-uid', email: 'current-email' }; // Replace with actual
+  await logAuditEvent('user_role_updated', currentUser.uid, currentUser.email, { userId, newRole });
+};
 
 
 ==================================================
@@ -2008,7 +2163,12 @@ const DispatchQueue = () => {
         };
         fetchInitialData();
 
-        const unsubscribe = listenToJobCards(allJobs => {
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        const unsubscribe = listenToJobCards(({ jobs: allJobs }) => {
+            if (!Array.isArray(allJobs)) {
+                setLoading(false);
+                return;
+            }
             const pendingJobs = allJobs.filter(j => j.status === 'Pending' && j.employeeId);
             
             pendingJobs.sort((a, b) => {
@@ -2199,7 +2359,7 @@ import { Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import PrintConfirmationModal from './PrintConfirmationModal';
 import QRCode from 'qrcode';
-import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -2265,12 +2425,17 @@ const CustomJobCreator = ({ campaignId }) => {
         };
         fetchData();
 
-        const unsubscribe = listenToJobCards(setAllPastJobs);
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        const unsubscribe = listenToJobCards(({ jobs }) => {
+            if (Array.isArray(jobs)) {
+                setAllPastJobs(jobs);
+            }
+        });
         return () => unsubscribe();
     }, []);
 
     useEffect(() => {
-        if (jobData.jobName.length > 2) {
+        if (jobData.jobName.length > 2 && Array.isArray(allPastJobs)) {
             const searchLower = jobData.jobName.toLowerCase();
             const results = allPastJobs
                 .filter(job => job.partName && job.partName.toLowerCase().includes(searchLower))
@@ -2384,7 +2549,6 @@ const CustomJobCreator = ({ campaignId }) => {
             toast.error("Please fill in Job Name, Department, Description, and Steps.");
             return;
         }
-        // --- ADDED: Time validation ---
         if (!jobData.estimatedTime || parseFloat(jobData.estimatedTime) <= 0) {
             toast.error("Please enter a valid estimated time for the job.");
             return;
@@ -2404,7 +2568,7 @@ const CustomJobCreator = ({ campaignId }) => {
             employeeId: jobData.employeeId || 'unassigned',
             employeeName: allEmployees.find(e => e.id === jobData.employeeId)?.name || 'Unassigned',
             quantity: Number(jobData.quantity) || 1,
-            status: JOB_STATUSES.PENDING, // Use JOB_STATUSES constant
+            status: JOB_STATUSES.PENDING,
             description: jobData.description.trim(),
             estimatedTime: parseFloat(jobData.estimatedTime) || 0,
             steps: jobData.steps.split('\n').filter(s => s.trim() !== ''),
@@ -2430,7 +2594,6 @@ const CustomJobCreator = ({ campaignId }) => {
             
             const qrCodeDataUrl = await QRCode.toDataURL(jobToConfirm.jobId, { width: 80 });
             
-            // --- UPDATED: Using base64 logo ---
             const printContents = `
                 <div style="font-family: sans-serif; padding: 20px; color: #333;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
@@ -2481,7 +2644,12 @@ const CustomJobCreator = ({ campaignId }) => {
             if (printWindow) {
                 printWindow.document.write(`<html><head><title>Custom Job Card ${jobToConfirm.jobId}</title></head><body>${printContents}</body></html>`);
                 printWindow.document.close();
-                printWindow.onload = () => { setTimeout(() => printWindow.print(), 1000); }; // Changed from 500ms to 1000ms
+                // --- PRINTING FIX: Use a timeout and focus the window ---
+                setTimeout(() => {
+                    printWindow.focus();
+                    printWindow.print();
+                    printWindow.close();
+                }, 500);
             } else {
                 toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸' });
             }
@@ -2660,7 +2828,6 @@ export default CustomJobCreator;
 
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\job_cards\JobCardCreator.jsx
 ==================================================
@@ -2683,7 +2850,7 @@ import ConsumableEditor from '/src/components/features/recipes/ConsumableEditor.
 import PrintConfirmationModal from './PrintConfirmationModal';
 import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
-import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 // Base64 encoded logo to ensure it prints correctly
 const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
@@ -3399,7 +3566,7 @@ import Button from '../../ui/Button';
 import { X, Package } from 'lucide-react';
 import QRCode from 'qrcode';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
-import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
     const [departments, setDepartments] = useState([]);
@@ -3630,7 +3797,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { logScanEvent } from '../../../api/firestore';
 import toast from 'react-hot-toast';
 import { GripVertical, GraduationCap } from 'lucide-react';
-import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const JobCard = ({ job, index }) => {
     const isTrainingRecommended = useMemo(() => {
@@ -4430,7 +4597,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\portal\CustomerKa
 
 import React, { useMemo } from 'react';
 import { Package, HardHat, CheckSquare, CheckCircle } from 'lucide-react';
-import { JOB_STATUSES } from '../../config'; // Import JOB_STATUSES
+import { JOB_STATUSES } from '../../../config'; // Import JOB_STATUSES
 
 const KanbanColumn = ({ title, jobs, icon }) => (
     <div className="bg-gray-800/50 rounded-xl p-4 w-full">
@@ -6746,7 +6913,7 @@ import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
 import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
-import { SYSTEM_ROLES } from '../../config'; // Import SYSTEM_ROLES
+import { SYSTEM_ROLES } from '../../../config'; // Import SYSTEM_ROLES
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
@@ -16248,6 +16415,38 @@ export default Input;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\KpiCard.jsx
+==================================================
+import React from 'react';
+
+const KpiCard = ({ icon, title, value, color }) => (
+  <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 flex items-start space-x-4">
+    <div className={`p-3 rounded-full ${color}`}>{icon}</div>
+    <div>
+      <p className="text-gray-400 text-sm">{title}</p>
+      <p className="text-3xl font-bold text-white">{value}</p>
+    </div>
+  </div>
+);
+
+export default KpiCard;
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\LoadingSpinner.jsx
+==================================================
+import React from 'react';
+
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center py-4">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+  </div>
+);
+
+export default LoadingSpinner;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Textarea.jsx
 ==================================================
 import React from 'react';
@@ -16365,6 +16564,121 @@ export const useAuth = () => {
   return useContext(AuthContext);
 };
 
+
+
+==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\contexts\DataContext.jsx
+==================================================
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { db } from '../api/firebase';
+import { enableIndexedDbPersistence, collection, query, where, getDocs, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
+import { getEmployees, getTools, getOverheadCategories, getOverheadExpenses, getJobStepDetails, getRoles, getProductCategories } from '../api/firestore';
+import { getAllInventoryItems, getProducts } from '../api/inventoryApi';
+import { listenToJobCards } from '../api/jobApi';
+
+const DataContext = createContext();
+
+export const DataProvider = ({ children }) => {
+  const [employees, setEmployees] = useState([]);
+  const [tools, setTools] = useState([]);
+  const [overheadCategories, setOverheadCategories] = useState([]);
+  const [overheadExpenses, setOverheadExpenses] = useState([]);
+  const [jobStepDetails, setJobStepDetails] = useState([]);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [productCategories, setProductCategories] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [lastVisibleJob, setLastVisibleJob] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [offline, setOffline] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    // Enable offline persistence
+    enableIndexedDbPersistence(db)
+      .catch((err) => {
+        if (err.code === 'failed-precondition') {
+          console.warn('Multiple tabs open, persistence can only be enabled in one tab.');
+        } else if (err.code === 'unimplemented') {
+          console.warn('Browser does not support offline persistence.');
+        }
+      });
+
+    // Offline detection
+    const handleOffline = () => setOffline(true);
+    const handleOnline = () => setOffline(false);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    // Fetch static data with caching
+    const fetchData = async () => {
+      try {
+        const [emps, tls, ovhCats, recipes, inv, prods, rls, cats] = await Promise.all([
+          getEmployees(),
+          getTools(),
+          getOverheadCategories(),
+          getJobStepDetails(),
+          getAllInventoryItems(),
+          getProducts(),
+          getRoles(),
+          getProductCategories()
+        ]);
+        setEmployees(emps);
+        setTools(tls);
+        setOverheadCategories(ovhCats);
+        setJobStepDetails(recipes);
+        setInventoryItems(inv);
+        setProducts(prods);
+        setRoles(rls);
+        setProductCategories(cats);
+
+        const expensePromises = ovhCats.map(cat => getOverheadExpenses(cat.id));
+        const expenseResults = await Promise.all(expensePromises);
+        setOverheadExpenses(expenseResults.flat());
+
+        // Paginated jobs listener with offline fallback
+        const unsubscribe = listenToJobCards(({ jobs: fetchedJobs, lastVisible }) => {
+          setJobs(fetchedJobs);
+          setLastVisibleJob(lastVisible);
+        }, { limit: 20 });
+
+        return unsubscribe;
+      } catch (err) {
+        setError('Failed to load data. Using cache if available.');
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  const loadMoreJobs = () => {
+    if (lastVisibleJob) {
+      listenToJobCards(({ jobs: moreJobs }) => {
+        setJobs(prev => [...prev, ...moreJobs]);
+      }, { limit: 20, startAfter: lastVisibleJob });
+    }
+  };
+
+  return (
+    <DataContext.Provider value={{
+      employees, tools, overheadCategories, overheadExpenses, jobStepDetails, inventoryItems, products, roles, productCategories, jobs,
+      loading, offline, error, loadMoreJobs
+    }}>
+      {children}
+    </DataContext.Provider>
+  );
+};
+
+export const useData = () => useContext(DataContext);
 
 
 ==================================================
@@ -16925,7 +17239,12 @@ const AssetIntelligencePage = () => {
                 setTools(fetchedTools.filter(t => t.hourlyRate > 0));
                 setRecipes(fetchedRecipes);
                 
-                const unsubscribeJobs = listenToJobCards(setJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                const unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
+                });
                 setLoading(false);
                 
                 return unsubscribeJobs;
@@ -16940,7 +17259,7 @@ const AssetIntelligencePage = () => {
     }, []);
 
     const analysisData = useMemo(() => {
-        if (!selectedToolId) return null;
+        if (!selectedToolId || !Array.isArray(jobs)) return null;
 
         const selectedTool = tools.find(t => t.id === selectedToolId);
         if (!selectedTool) return null;
@@ -17083,7 +17402,13 @@ const CalendarPage = () => {
         }, {});
         setEmployeeHourlyRates(rates);
 
-        unsubscribeJobs = listenToJobCards((fetchedJobs) => {
+        // --- FIX: Destructure the 'jobs' array from the object ---
+        unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+          if (!Array.isArray(fetchedJobs)) {
+              console.error("Received non-array data for jobs:", fetchedJobs);
+              setEvents([]); // Set to empty array to prevent crash
+              return;
+          }
           const calendarEvents = fetchedJobs
             .filter(job => job.scheduledDate)
             .map(job => ({
@@ -17647,7 +17972,7 @@ import {
     getDocs, 
     listenToSystemStatus,
     getRoutineTasks,
-    getTodaysCompletedRoutineTasks // <-- NEW IMPORT
+    getTodaysCompletedRoutineTasks
 } from '../api/firestore';
 import { db } from '../api/firebase';
 import { HeartPulse, CheckCircle2, AlertTriangle, HardHat } from 'lucide-react';
@@ -17684,7 +18009,7 @@ const DashboardPage = () => {
     const [todaysTasks, setTodaysTasks] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // NEW: Function to refetch task data when one is completed
+    // Function to refetch task data when one is completed
     const refreshTasks = async () => {
         try {
             const [allTasks, completedIds] = await Promise.all([
@@ -17720,7 +18045,13 @@ const DashboardPage = () => {
 
                 await refreshTasks(); // Initial fetch of tasks
 
-                unsubscribeJobs = listenToJobCards(setJobs);
+                // --- FIX: Destructure the 'jobs' array from the object passed by the listener ---
+                unsubscribeJobs = listenToJobCards(({ jobs }) => {
+                    // Ensure that what we receive is an array before setting state
+                    if (Array.isArray(jobs)) {
+                        setJobs(jobs);
+                    }
+                });
                 unsubscribeStatus = listenToSystemStatus(setSystemStatus);
 
             } catch (error) {
@@ -17738,7 +18069,7 @@ const DashboardPage = () => {
     }, []);
 
     const dashboardData = useMemo(() => {
-        if (loading) return null;
+        if (loading || !Array.isArray(jobs)) return null; // Add guard clause for non-array
 
         const now = new Date();
         const currentMonthIndex = now.getMonth();
@@ -17874,12 +18205,12 @@ import {
     listenToJobCards, 
     getSkills, 
     getTrainingResources,
-    addPraise, // <-- Import addPraise
-    listenToPraiseForEmployee // <-- Import listenToPraiseForEmployee
+    addPraise,
+    listenToPraiseForEmployee
 } from '../api/firestore';
-import { useAuth } from '../contexts/AuthContext'; // <-- Import useAuth
+import { useAuth } from '../contexts/AuthContext';
 import { ChevronsLeft, Zap, DollarSign, AlertCircle, CheckCircle2, Users, BarChartHorizontal, Lightbulb, GraduationCap, Link as LinkIcon, Award, Gem, ShieldCheck, Star, TrendingDown, Clock, ShieldAlert, Send } from 'lucide-react';
-import Button from '../components/ui/Button'; // <-- Import Button
+import Button from '../components/ui/Button';
 
 // Child Components (Widgets)
 import EfficiencyChart from '../components/intelligence/EfficiencyChart';
@@ -17891,8 +18222,8 @@ import SkillProgressionWidget from '../components/intelligence/SkillProgressionW
 import EfficiencyAnalysisModal from '../components/intelligence/EfficiencyAnalysisModal';
 import TrophyCase from '../components/intelligence/TrophyCase';
 import ReliabilityReport from '../components/intelligence/ReliabilityReport';
-import PraiseWidget from '../components/intelligence/PraiseWidget'; // <-- Import PraiseWidget
-import PraiseModal from '../components/intelligence/PraiseModal'; // <-- Import PraiseModal
+import PraiseWidget from '../components/intelligence/PraiseWidget';
+import PraiseModal from '../components/intelligence/PraiseModal';
 
 const KpiCard = ({ icon, title, value, teamAverage, color, onClick, buttonText }) => (
     <div className={`bg-gray-800 p-5 rounded-lg border border-gray-700 flex flex-col justify-between`}>
@@ -18052,7 +18383,7 @@ const ProactiveInterventionWidget = ({ jobs, employee, allSkills }) => {
 
 const EmployeeIntelligencePage = () => {
     const { employeeId } = useParams();
-    const { user } = useAuth(); // <-- Get current user
+    const { user } = useAuth();
     const [employee, setEmployee] = useState(null);
     const [allEmployees, setAllEmployees] = useState([]);
     const [jobs, setJobs] = useState([]);
@@ -18063,9 +18394,9 @@ const EmployeeIntelligencePage = () => {
     const [loading, setLoading] = useState(true);
     const [isReworkModalOpen, setReworkModalOpen] = useState(false);
     const [isEfficiencyModalOpen, setEfficiencyModalOpen] = useState(false);
-    const [isPraiseModalOpen, setIsPraiseModalOpen] = useState(false); // <-- State for praise modal
-    const [praiseItems, setPraiseItems] = useState([]); // <-- State for praise data
-    const [loadingPraise, setLoadingPraise] = useState(true); // <-- Loading state for praise
+    const [isPraiseModalOpen, setIsPraiseModalOpen] = useState(false);
+    const [praiseItems, setPraiseItems] = useState([]);
+    const [loadingPraise, setLoadingPraise] = useState(true);
 
     useEffect(() => {
         let unsubscribeJobs = () => {};
@@ -18082,9 +18413,13 @@ const EmployeeIntelligencePage = () => {
                 if (employeeDoc.exists()) setEmployee({ id: employeeDoc.id, ...employeeDoc.data() });
                 setJobs(completedJobs); setAllEmployees(allEmps); setAllSkills(fetchedSkills); setTrainingResources(fetchedResources);
                 
-                unsubscribeJobs = listenToJobCards(j => setAllJobs(j));
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setAllJobs(fetchedJobs);
+                    }
+                });
                 
-                // Set up listener for praise items
                 setLoadingPraise(true);
                 unsubscribePraise = listenToPraiseForEmployee(employeeId, (fetchedPraise) => {
                     setPraiseItems(fetchedPraise);
@@ -18108,7 +18443,7 @@ const EmployeeIntelligencePage = () => {
 
     const { performanceMetrics, overheadCostPerHour, earnedBadges } = useMemo(() => {
         const metrics = { individual: { efficiency: 0, netValueAdded: 0, reworkRate: 0, jobsCompleted: 0 }, team: { efficiency: 0, netValueAdded: 0, reworkRate: 0 } };
-        if (!employee || allEmployees.length === 0) return { performanceMetrics: metrics, overheadCostPerHour: 0, earnedBadges: [] };
+        if (!employee || allEmployees.length === 0 || !Array.isArray(allJobs)) return { performanceMetrics: metrics, overheadCostPerHour: 0, earnedBadges: [] };
         
         const calculatedOverheadCostPerHour = overheads > 0 && allEmployees.length > 0 ? overheads / (allEmployees.length * 173.2) : 0;
         const issueJobsCount = jobs.filter(j => j.status === 'Issue' || j.status === 'Archived - Issue').length;
@@ -18202,7 +18537,6 @@ const EmployeeIntelligencePage = () => {
                         <Link to="/performance" className="flex items-center text-blue-400 hover:text-blue-300">
                             <ChevronsLeft size={20} className="mr-1" />Back to Business Performance Dashboard
                         </Link>
-                        {/* NEW: Give Praise Button */}
                         <Button onClick={() => setIsPraiseModalOpen(true)} variant="secondary">
                             <Send size={16} className="mr-2" /> Give Praise
                         </Button>
@@ -18234,7 +18568,6 @@ const EmployeeIntelligencePage = () => {
                     <ValueWasteAnalysis jobs={jobs} />
                 </div>
                 
-                {/* NEW: Praise Widget added to the layout */}
                 <PraiseWidget praiseItems={praiseItems} loading={loadingPraise} />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -18245,7 +18578,6 @@ const EmployeeIntelligencePage = () => {
             </div>
             {isEfficiencyModalOpen && (<EfficiencyAnalysisModal jobs={jobs} employeeName={employee.name} onClose={() => setEfficiencyModalOpen(false)} />)}
             {isReworkModalOpen && (<ReworkAnalysisModal jobs={jobs} employeeName={employee.name} onClose={() => setReworkModalOpen(false)} />)}
-            {/* NEW: Render Praise Modal */}
             {isPraiseModalOpen && (
                 <PraiseModal 
                     allEmployees={allEmployees}
@@ -18284,8 +18616,11 @@ const FloorPlanPage = () => {
                 const fetchedDepartments = await getDepartments();
                 setDepartments(fetchedDepartments);
 
-                const unsubscribeJobs = listenToJobCards((allJobs) => {
-                    setJobs(allJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                const unsubscribeJobs = listenToJobCards(({ jobs: allJobs }) => {
+                    if (Array.isArray(allJobs)) {
+                        setJobs(allJobs);
+                    }
                     setLoading(false);
                 });
 
@@ -18369,8 +18704,11 @@ const IssuesPage = () => {
                 }, {});
                 setEmployeeHourlyRates(rates);
 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
-                    setJobs(fetchedJobs);
+                // --- FIX: Destructure the 'jobs' array from the object ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
                     setLoading(false);
                 });
             } catch (error) {
@@ -18394,6 +18732,10 @@ const IssuesPage = () => {
     }, [searchParams, loading, jobs]);
 
     const { haltedJobs, qcRejectedJobs } = useMemo(() => {
+        // Add a guard clause to ensure 'jobs' is an array
+        if (!Array.isArray(jobs)) {
+            return { haltedJobs: [], qcRejectedJobs: [] };
+        }
         const halted = jobs.filter(job => job.status === 'Halted - Issue');
         const rejected = jobs.filter(job => job.status === 'Issue');
         return { haltedJobs: halted, qcRejectedJobs: rejected };
@@ -19180,15 +19522,19 @@ const KpiDashboardPage = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = listenToJobCards((allJobs) => {
-            setJobs(allJobs);
+        // --- FIX: Destructure the 'jobs' array from the object returned by the listener ---
+        const unsubscribe = listenToJobCards(({ jobs: allJobs }) => {
+            if (Array.isArray(allJobs)) {
+                setJobs(allJobs);
+            }
             setLoading(false);
         });
         return () => unsubscribe();
     }, []);
 
     const kpiData = useMemo(() => {
-        if (jobs.length === 0) {
+        // Add a guard clause to ensure 'jobs' is an array before processing
+        if (!Array.isArray(jobs) || jobs.length === 0) {
             return {
                 jobsCompletedToday: 0,
                 reworkRate: '0%',
@@ -19457,8 +19803,11 @@ const MarketingPage = () => {
                 const fetchedCampaigns = await getCampaigns();
                 setCampaigns(fetchedCampaigns);
                 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => {
-                    setJobs(fetchedJobs);
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
                 });
 
             } catch (error) {
@@ -19622,6 +19971,7 @@ const MarketingPage = () => {
 };
 
 export default MarketingPage;
+
 
 
 ==================================================
@@ -19815,7 +20165,7 @@ import { getEmployees, listenToJobCards, getOverheadCategories, getOverheadExpen
 import Dropdown from '../components/ui/Dropdown';
 import { CheckCircle2, Clock, DollarSign, Zap } from 'lucide-react';
 import PerformanceLeaderboard from '../components/intelligence/PerformanceLeaderboard';
-import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart'; // <-- IMPORT NEW CHART
+import DepartmentPerformanceChart from '../components/intelligence/DepartmentPerformanceChart';
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-5 rounded-lg border border-gray-700 flex items-start space-x-4">
@@ -19859,7 +20209,12 @@ const PerformancePage = () => {
                 const results = await Promise.all(expensePromises);
                 setAllOverheadExpenses(results.flat());
                 
-                unsubscribeJobs = listenToJobCards((fetchedJobs) => setJobs(fetchedJobs));
+                // --- FIX: Destructure the 'jobs' array from the listener's response ---
+                unsubscribeJobs = listenToJobCards(({ jobs: fetchedJobs }) => {
+                    if (Array.isArray(fetchedJobs)) {
+                        setJobs(fetchedJobs);
+                    }
+                });
                 setLoading(false);
             } catch (error) {
                 console.error("Failed to fetch all data for performance page:", error);
@@ -19871,8 +20226,16 @@ const PerformancePage = () => {
         return () => { if (unsubscribeJobs) unsubscribeJobs(); };
     }, []);
     
-    // --- UPDATED useMemo to calculate department data ---
     const performanceData = useMemo(() => {
+        // Add a guard clause to ensure 'jobs' is an array before processing
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+            return {
+                overallKpis: { jobsCompleted: 0, totalWorkHours: '0.0', avgEfficiency: '0%', totalJobValue: 'R 0.00' },
+                employeePerformanceMetrics: [],
+                departmentData: [],
+            };
+        }
+
         const totalMonthlyOverheads = (allOverheadExpenses || []).reduce((sum, exp) => sum + (exp.amount || 0), 0);
         const employeeCount = employees.length > 0 ? employees.length : 1;
         const overheadCostPerProductiveHour = totalMonthlyOverheads / (employeeCount * 173.2);
@@ -19883,7 +20246,6 @@ const PerformancePage = () => {
             job.completedAt
         );
 
-        // --- Department level calculations ---
         const departmentData = departments.map(dept => {
             const deptJobs = validCompletedJobs.filter(j => j.departmentId === dept.id);
             if (deptJobs.length === 0) {
@@ -19907,7 +20269,6 @@ const PerformancePage = () => {
             
             return { name: dept.name, avgEfficiency, totalValue };
         });
-        // --- End of department calculations ---
 
         const overallTotalWorkMinutes = validCompletedJobs.reduce((acc, job) => {
             const durationSeconds = (job.completedAt.toDate().getTime() - job.startedAt.toDate().getTime() - (job.totalPausedMilliseconds || 0)) / 1000;
@@ -19979,7 +20340,7 @@ const PerformancePage = () => {
                 totalJobValue: `R ${overallTotalJobValue.toLocaleString('en-ZA', {minimumFractionDigits: 2})}`,
             },
             employeePerformanceMetrics,
-            departmentData, // <-- EXPORT NEW DATA
+            departmentData,
         };
     }, [jobs, employees, allOverheadExpenses, departments]);
 
@@ -19996,7 +20357,6 @@ const PerformancePage = () => {
                 <KpiCard icon={<DollarSign size={24} />} title="Total Job Value" value={performanceData.overallKpis.totalJobValue} color="bg-yellow-500/20 text-yellow-400" />
             </div>
 
-            {/* --- RENDER THE NEW CHART --- */}
             <DepartmentPerformanceChart data={performanceData.departmentData} />
             
              <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
@@ -20024,6 +20384,7 @@ const PerformancePage = () => {
 };
 
 export default PerformancePage;
+
 
 
 ==================================================
@@ -22073,6 +22434,56 @@ export default ScannerPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsDashboard.jsx
+==================================================
+import React, { useEffect, useState } from 'react';
+import { useData } from '../contexts/DataContext';
+import { logAuditEvent } from '../api/firestore';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
+import { useAuth } from '../contexts/AuthContext';
+
+const SettingsDashboard = () => {
+  const { roles, productCategories, loading, error } = useData();
+  const { user } = useAuth();
+  const [newRole, setNewRole] = useState('');
+
+  useEffect(() => {
+    // Log access
+    logAuditEvent('settings_accessed', user.uid, user.email, {});
+  }, [user]);
+
+  const addRole = async () => {
+    // Placeholder add role logic
+    console.log('Adding role:', newRole);
+    logAuditEvent('role_added', user.uid, user.email, { newRole });
+    setNewRole('');
+  };
+
+  if (loading) return <p>Loading settings...</p>;
+  if (error) return <p>Error: {error}</p>;
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-3xl font-bold text-white">Settings Dashboard</h2>
+      <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <h3>Roles</h3>
+        <ul>{roles.map(r => <li key={r.id}>{r.name}</li>)}</ul>
+        <Input label="New Role" value={newRole} onChange={e => setNewRole(e.target.value)} />
+        <Button onClick={addRole}>Add Role</Button>
+      </div>
+      <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <h3>Product Categories</h3>
+        <ul>{productCategories.map(c => <li key={c.id}>{c.name}</li>)}</ul>
+      </div>
+    </div>
+  );
+};
+
+export default SettingsDashboard;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsPage.jsx
 ==================================================
 // src/pages/SettingsPage.jsx
@@ -22614,7 +23025,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockTakePage.jsx
 ==================================================
 // src/pages/StockTakePage.jsx
 
-import React, { useState } => {
+import React, { useState } from 'react';
 import { reconcileStockLevels } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -22625,7 +23036,7 @@ import ConsignmentStockTake from '../components/features/stock/ConsignmentStockT
 import toast from 'react-hot-toast';
 import QrScannerModal from '../components/features/scanner/QrScannerModal'; // <-- NEW IMPORT
 import { findInventoryItemByItemCode } from '../api/firestore'; // <-- NEW IMPORT
-import StockCountModal from '../components/features/stock/StockCountModal'; // <-- NEW IMPORT
+import StockCountModal from '../components/features/stock/StockCountModal'; // <-- CORRECTED IMPORT PATH
 
 const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
@@ -22826,21 +23237,21 @@ const StockTakePage = () => {
                     label="Purchased Items"
                     icon={<Package size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={activeTab}
+                    setActiveTab={setActiveTab}
                 />
                 <TabButton 
                     id="products"
                     label="Manufactured Products"
                     icon={<Factory size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={activeTab}
+                    setActiveTab={setActiveTab}
                 />
                 <TabButton 
                     id="consignment"
                     label="Consignment Stock"
                     icon={<Truck size={22} />}
                     activeTab={activeTab}
-                    setActiveTab={activeTab}
+                    setActiveTab={setActiveTab}
                 />
             </div>
 
@@ -23359,7 +23770,7 @@ const ValuationPage = () => {
   const [allOverheadExpenses, setAllOverheadExpenses] = useState([]);
   const [allJobs, setAllJobs] = useState([]);
   const [allRecipes, setAllRecipes] = useState([]);
-  const [allInventoryItems, setAllInventoryItems] = useState([]); // <-- NEW STATE for inventory
+  const [allInventoryItems, setAllInventoryItems] = useState([]);
   const [isRoiModalOpen, setIsRoiModalOpen] = useState(false);
 
   // States for historical period analysis
@@ -23376,19 +23787,22 @@ const ValuationPage = () => {
           getEmployees(), 
           getOverheadCategories(), 
           getJobStepDetails(),
-          getAllInventoryItems() // <-- FETCH INVENTORY
+          getAllInventoryItems()
         ]);
         setAllProducts(products);
         setAllEmployees(employees);
         setAllRecipes(recipes);
-        setAllInventoryItems(inventory); // <-- SET INVENTORY
+        setAllInventoryItems(inventory);
         
         const expensePromises = overheadCats.map(cat => getOverheadExpenses(cat.id));
         const expenseResults = await Promise.all(expensePromises);
         setAllOverheadExpenses(expenseResults.flat());
 
-        const unsubscribe = listenToJobCards((jobs) => {
-            setAllJobs(jobs);
+        // --- FIX: Destructure the 'jobs' array from the listener's response ---
+        const unsubscribe = listenToJobCards(({ jobs }) => {
+            if (Array.isArray(jobs)) {
+                setAllJobs(jobs);
+            }
             setLoading(false);
         });
         return unsubscribe;
@@ -23425,6 +23839,11 @@ const ValuationPage = () => {
   };
   
   const masterFinancials = useMemo(() => {
+    // Add a guard clause to ensure 'allJobs' is an array
+    if (!Array.isArray(allJobs)) {
+        return { totalFixedCosts: 0, historicalGrossMargin: 35, employeesWithPerformance: [], averageBurdenedRate: 0 };
+    }
+
     const productsMap = new Map(allProducts.map(p => [p.id, p]));
     const allCompletedJobs = allJobs.filter(j => j.status === 'Complete');
 

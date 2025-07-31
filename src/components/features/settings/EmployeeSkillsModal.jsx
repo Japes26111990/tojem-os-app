@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getSkills, getEmployeeSkills, updateEmployeeSkillsAndLogHistory, getSkillHistoryForEmployee } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import { X } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const EmployeeSkillsModal = ({ employee, onClose }) => {
     const [allSkills, setAllSkills] = useState([]);
@@ -37,7 +37,7 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
             setSkillHistory(fetchedHistory.sort((a,b) => b.assessmentDate.toDate() - a.assessmentDate.toDate()));
         } catch (error) {
             console.error("Error fetching skills data:", error);
-            toast.error("Failed to load skills data for this employee."); // --- REPLACE ALERT ---
+            toast.error("Failed to load skills data for this employee.");
         }
         setLoading(false);
     };
@@ -65,11 +65,11 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
     const handleSaveChanges = async () => {
         try {
             await updateEmployeeSkillsAndLogHistory(employee, employeeSkills, allSkills);
-            toast.success(`Successfully updated skills for ${employee.name}.`); // --- REPLACE ALERT ---
+            toast.success(`Successfully updated skills for ${employee.name}.`);
             onClose();
         } catch (error) {
             console.error("Error saving employee skills:", error);
-            toast.error("Failed to save skills. Please try again."); // --- REPLACE ALERT ---
+            toast.error("Failed to save skills. Please try again.");
         }
     };
 

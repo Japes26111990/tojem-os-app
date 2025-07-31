@@ -106,10 +106,16 @@ const ProductModal = ({ product, onClose }) => {
         }
     };
 
-    // --- UPDATED: Filter makes based on the new many-to-many relationship ---
+    // --- NEW: This function prevents the modal from closing on accidental drags ---
+    const handleBackdropClick = (e) => {
+        // Only close if the mousedown event started on the backdrop itself
+        if (e.target === e.currentTarget) {
+            onClose();
+        }
+    };
+
     const filteredMakes = useMemo(() => {
         if (!formData.categoryId) return [];
-        // A make is included if its `categoryIds` array contains the selected categoryId
         return dropdownData.makes.filter(make => 
             Array.isArray(make.categoryIds) && make.categoryIds.includes(formData.categoryId)
         );
@@ -121,7 +127,8 @@ const ProductModal = ({ product, onClose }) => {
     }, [formData.make, dropdownData.models]);
 
     return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        // --- UPDATED: Swapped onClick for onMouseDown for a better user experience ---
+        <div onMouseDown={handleBackdropClick} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
                     <h2 className="text-xl font-bold text-white">{product ? 'Edit Product' : 'Add New Product'}</h2>

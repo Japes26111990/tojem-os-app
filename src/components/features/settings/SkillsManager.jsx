@@ -5,7 +5,7 @@ import { getSkills, addSkill, deleteSkill, updateSkill } from '../../../api/fire
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Edit, Trash2, Check, X } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const SkillsManager = () => {
     const [skills, setSkills] = useState([]);
@@ -21,7 +21,7 @@ const SkillsManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching skills:", error);
-            toast.error("Could not fetch skills."); // --- REPLACE ALERT ---
+            toast.error("Could not fetch skills.");
         }
         setLoading(false);
     };
@@ -40,12 +40,11 @@ const SkillsManager = () => {
             await fetchSkills();
         } catch (error) {
             console.error("Error adding skill:", error);
-            toast.error("Failed to add skill."); // --- REPLACE ALERT ---
+            toast.error("Failed to add skill.");
         }
     };
 
     const handleDeleteSkill = (skillId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this skill?
@@ -67,7 +66,7 @@ const SkillsManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     const handleEditClick = (skill) => {
@@ -90,7 +89,7 @@ const SkillsManager = () => {
             await fetchSkills();
         } catch (error) {
             console.error("Error updating skill:", error);
-            toast.error("Failed to update skill."); // --- REPLACE ALERT ---
+            toast.error("Failed to update skill.");
         }
     };
 

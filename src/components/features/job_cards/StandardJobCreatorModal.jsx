@@ -54,17 +54,17 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 
     const handleSubmit = async () => {
         if (!selection.departmentId) {
-            return toast.error("Please select a department."); // --- REPLACE ALERT ---
+            return toast.error("Please select a department.");
         }
         
         const product = allProducts.find(p => p.id === lineItem.productId);
         if (!product) {
-            return toast.error("Could not find the product details for this line item."); // --- REPLACE ALERT ---
+            return toast.error("Could not find the product details.");
         }
         
         const recipe = await getRecipeForProductDepartment(lineItem.productId, selection.departmentId);
         if (!recipe) {
-            return toast.error(`No recipe found for "${product.name}" in the selected department. Please define one in Settings first.`); // --- REPLACE ALERT ---
+            return toast.error(`No recipe found for "${product.name}" in the selected department.`);
         }
         
         const department = departments.find(d => d.id === selection.departmentId);
@@ -100,7 +100,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             const qrCodeDataUrl = await QRCode.toDataURL(newJobId, { width: 80 });
 
             await addJobCard(finalJobData);
-            toast.success(`Job card created successfully for ${product.name}!`); // --- REPLACE ALERT ---
+            toast.success(`Job card created successfully for ${product.name}!`);
             
             const imageSection = product.photoUrl
                 ? `<img src="${product.photoUrl}" alt="${product.name}" style="width: 100%; height: 200px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />`
@@ -159,13 +159,13 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
                 printWindow.document.close();
                 printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
             } else {
-                toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
+                toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸ ' });
             }
 
             onClose();
         } catch (error) {
             console.error("Error creating job card:", error);
-            toast.error("Failed to create job card."); // --- REPLACE ALERT ---
+            toast.error("Failed to create job card.");
         }
     };
 

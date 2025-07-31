@@ -33,7 +33,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
                 }
                 if (percentage > 0) {
                     const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}°C)` });
+                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Â°C)` });
                 }
             }
         } else if (consumable.type === 'dimensional') {
@@ -76,10 +76,7 @@ export const calculateJobDuration = (job, currentTime) => {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = Math.floor(totalMinutes % 60);
     
-    let text = '';
-    if (hours > 0) text += `${hours}h `;
-    text += `${minutes}m`;
+    const text = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
     return { text, totalMinutes };
 };
-

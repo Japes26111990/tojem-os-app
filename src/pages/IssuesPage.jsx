@@ -99,7 +99,7 @@ const IssuesPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     const handleUpdateJob = async (jobDocId, updatedData) => {

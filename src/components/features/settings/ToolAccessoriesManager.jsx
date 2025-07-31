@@ -3,7 +3,7 @@ import { getTools, getToolAccessories, addToolAccessory, deleteToolAccessory, up
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const ToolAccessoriesManager = () => {
     const [tools, setTools] = useState([]);
@@ -28,7 +28,7 @@ const ToolAccessoriesManager = () => {
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newAccessoryName.trim() || !selectedToolId) {
-            toast.error("Please select a parent tool and enter an accessory name."); // --- REPLACE ALERT ---
+            toast.error("Please select a parent tool and enter an accessory name.");
             return;
         }
         try {
@@ -36,10 +36,10 @@ const ToolAccessoriesManager = () => {
 
             if (editingAccessoryId) {
                 await updateDocument('toolAccessories', editingAccessoryId, dataToSave);
-                toast.success("Accessory updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Accessory updated successfully!");
             } else {
                 await addToolAccessory(dataToSave);
-                toast.success("Accessory added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Accessory added successfully!");
             }
             setNewAccessoryName('');
             setSelectedToolId('');
@@ -47,7 +47,7 @@ const ToolAccessoriesManager = () => {
             fetchData();
         } catch (error) {
             console.error("Error saving accessory:", error);
-            toast.error(`Failed to ${editingAccessoryId ? 'update' : 'add'} accessory.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingAccessoryId ? 'update' : 'add'} accessory.`);
         }
     };
 
@@ -64,7 +64,6 @@ const ToolAccessoriesManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this accessory?
@@ -86,7 +85,7 @@ const ToolAccessoriesManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
     
     const groupedAccessories = useMemo(() => {

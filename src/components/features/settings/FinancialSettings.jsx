@@ -6,7 +6,7 @@ import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const FinancialSettings = () => {
     const [historicalData, setHistoricalData] = useState([]);
@@ -38,7 +38,7 @@ const FinancialSettings = () => {
         const { year, month, totalSales, totalCOGS } = newData;
 
         if (!year || !month || !totalSales || !totalCOGS || month < 1 || month > 12) {
-            toast.error("Please enter valid data for all fields (Month must be 1-12)."); // --- REPLACE ALERT ---
+            toast.error("Please enter valid data for all fields (Month must be 1-12).");
             return;
         }
 
@@ -57,11 +57,11 @@ const FinancialSettings = () => {
         try {
             const docRef = doc(db, 'historicalSales', docId);
             await setDoc(docRef, dataToSave, { merge: true });
-            toast.success(`Financial data for ${docId} has been saved.`); // --- REPLACE ALERT ---
+            toast.success(`Financial data for ${docId} has been saved.`);
             handleCancelEdit();
         } catch (error) {
             console.error("Error saving historical data:", error);
-            toast.error("Failed to save data."); // --- REPLACE ALERT ---
+            toast.error("Failed to save data.");
         }
     };
     
@@ -81,7 +81,6 @@ const FinancialSettings = () => {
     };
 
     const handleDelete = (docId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Delete financial data for {docId}?
@@ -101,7 +100,7 @@ const FinancialSettings = () => {
                 </Button>
             </span>
         ), {
-            icon: '⚠️',
+            icon: 'âš ï¸ ',
         });
     };
 
