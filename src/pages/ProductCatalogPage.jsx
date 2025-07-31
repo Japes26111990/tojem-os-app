@@ -1,7 +1,7 @@
 // src/pages/ProductCatalogPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore'; // Import getUnits
+import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
@@ -13,6 +13,7 @@ import ProductImportModal from '../components/features/catalog/ProductImportModa
 import { writeBatch, doc,
          collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
+import SearchInput from '../components/ui/SearchInput';
 
 const ProductCatalogPage = () => {
     const [products, setProducts] = useState([]);
@@ -142,7 +143,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     const handleOpenModal = (product = null) => {
@@ -181,7 +182,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: '⚠️' });
+        ), { icon: 'âš ï¸ ' });
     };
 
     const handleFilterChange = (e) => {
@@ -236,17 +237,15 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="relative">
-                            <Input
-                                type="text"
-                                placeholder="Search by name or part number..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                className="pl-10"
-                            />
-                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        </div>
+                    {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <SearchInput
+                            label="Search by Name or Part Number"
+                            type="text"
+                            placeholder="Search..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
                         <Dropdown label="Filter by Category" name="categoryId" value={filters.categoryId} onChange={handleFilterChange} options={productCategories} placeholder="All Categories" />
                         <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={filteredMakesForDropdown} placeholder="All Makes" disabled={!filters.categoryId} />
                         <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={filteredModelsForDropdown} placeholder="All Models" disabled={!filters.make} />
@@ -278,11 +277,11 @@ const ProductCatalogPage = () => {
                             </thead>
                             <tbody>
                                  {loading ? (
-                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                     <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
                                  ) : filteredProducts.length === 0 ? (
                                      <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
                                  ) : (
-                                    filteredProducts.map(product => (
+                                     filteredProducts.map(product => (
                                         <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
                                             <td className="p-3">
                                                 <input
@@ -301,9 +300,7 @@ const ProductCatalogPage = () => {
                                             </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                            {/* Display actual make name using makeMap */}
                                             <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
-                                            {/* Display actual model name using modelMap */}
                                             <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
@@ -316,7 +313,7 @@ const ProductCatalogPage = () => {
                                             </td>
                                         </tr>
                                     ))
-                                )}
+                                 )}
                             </tbody>
                         </table>
                     </div>

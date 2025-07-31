@@ -1,6 +1,11 @@
+// src/components/ui/Input.jsx
+
 import React from 'react';
 
-const Input = React.forwardRef(({ label, name, type = "text", value, onChange, placeholder, ...props }, ref) => {
+const Input = React.forwardRef(({ label, name, type = "text", value, onChange, placeholder, className = '', ...props }, ref) => {
+  // Define base styles separately
+  const baseStyles = "w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  
   return (
     <div className="w-full">
       {label && (
@@ -15,8 +20,9 @@ const Input = React.forwardRef(({ label, name, type = "text", value, onChange, p
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        ref={ref} // Forward the ref to the input element
+        // Combine the base styles with any custom className passed in props
+        className={`${baseStyles} ${className}`}
+        ref={ref}
         {...props}
       />
     </div>

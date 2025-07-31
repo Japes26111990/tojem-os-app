@@ -138,3 +138,21 @@ input[type=number] {
 .rbc-agenda-time-cell { 
     color: #9ca3af !important; 
 }
+
+/* --- Standardize input placeholder text color to be more subtle --- */
+input::placeholder,
+textarea::placeholder {
+  color: #4B5563; /* This is Tailwind's gray-600 */
+  opacity: 1; /* Override browser defaults */
+}
+
+/* --- NEW: Override browser autofill styles for a consistent dark theme --- */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-text-fill-color: #FFFFFF !important; /* Set text color to white */
+    -webkit-box-shadow: 0 0 0px 1000px #374151 inset !important; /* Set background color (Tailwind gray-700) using a box shadow trick */
+    transition: background-color 5000s ease-in-out 0s; /* Delay browser style apply */
+    caret-color: #FFFFFF !important; /* Ensure the text cursor is white */
+}

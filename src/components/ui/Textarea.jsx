@@ -1,6 +1,11 @@
+// src/components/ui/Textarea.jsx
+
 import React from 'react';
 
-const Textarea = ({ label, name, value, onChange, placeholder, rows = 3 }) => {
+const Textarea = ({ label, name, value, onChange, placeholder, rows = 3, className = '' }) => {
+  // Define base styles separately
+  const baseStyles = "w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  
   return (
     <div className="w-full">
       {label && (
@@ -15,7 +20,8 @@ const Textarea = ({ label, name, value, onChange, placeholder, rows = 3 }) => {
         onChange={onChange}
         placeholder={placeholder}
         rows={rows}
-        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        // Combine the base styles with any custom className
+        className={`${baseStyles} ${className}`}
       />
     </div>
   );

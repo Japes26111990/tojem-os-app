@@ -1,12 +1,12 @@
-// src/pages/QcPage.jsx (Upgraded with Toasts & Rejection Modal)
+// src/pages/QcPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore';
+import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore'; // CORRECTED PATH
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ConfirmationModal from '../components/ui/ConfirmationModal'; // --- IMPORT NEW COMPONENT ---
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 const RejectionModal = ({ job, reasons, onReject, onClose }) => {
     const [rejectionReasonId, setRejectionReasonId] = useState('');
@@ -48,18 +48,18 @@ const RejectionModal = ({ job, reasons, onReject, onClose }) => {
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20}/></Button>
                 </div>
                 <div className="p-6 space-y-4">
-                    <Dropdown 
-                        label="Reason for Rejection" 
-                        options={reasons} 
-                        value={rejectionReasonId} 
-                        onChange={(e) => setRejectionReasonId(e.target.value)} 
-                        placeholder="Select a failure mode..." 
+                    <Dropdown
+                        label="Reason for Rejection"
+                        options={reasons}
+                        value={rejectionReasonId}
+                        onChange={(e) => setRejectionReasonId(e.target.value)}
+                        placeholder="Select a failure mode..."
                     />
-                    <textarea 
-                        value={notes} 
-                        onChange={(e) => setNotes(e.target.value)} 
-                        placeholder="Add optional specific notes here..." 
-                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Add optional specific notes here..."
+                        className="w-full p-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         rows="3"
                     ></textarea>
                     
@@ -98,7 +98,7 @@ const QcPage = () => {
   const [loading, setLoading] = useState(true);
   const [rejectionReasons, setRejectionReasons] = useState([]);
   const [jobToReject, setJobToReject] = useState(null);
-  const [jobToApprove, setJobToApprove] = useState(null); // --- NEW STATE for approval confirmation ---
+  const [jobToApprove, setJobToApprove] = useState(null);
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -107,8 +107,8 @@ const QcPage = () => {
     };
     fetchReasons();
 
-    const unsubscribe = listenToJobCards((fetchedJobs) => {
-       setAllJobs(fetchedJobs);
+    const unsubscribe = listenToJobCards(({ jobs: fetchedJobs }) => {
+       setAllJobs(Array.isArray(fetchedJobs) ? fetchedJobs : []);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -127,7 +127,7 @@ const QcPage = () => {
         success: 'Job approved and stock updated!',
         error: 'Failed to process approval.'
     });
-    setJobToApprove(null); // Close modal after initiating
+    setJobToApprove(null);
   };
 
   const handleReject = async (job, options) => {
@@ -141,7 +141,7 @@ const QcPage = () => {
 
     try {
         await promise;
-        setJobToReject(null); // Close the modal on success
+        setJobToReject(null);
     } catch (err) {
         console.error(err);
     }
@@ -166,13 +166,13 @@ const QcPage = () => {
                         </thead>
                         <tbody>
                             {(qcJobs || []).map(job => (
-                                 <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
                                     <td className="p-3 text-gray-300">{job.partName}</td>
-                                     <td className="p-3 text-gray-300">{job.employeeName}</td>
+                                    <td className="p-3 text-gray-300">{job.employeeName}</td>
                                     <td className="p-3 flex space-x-2">
                                         <Button onClick={() => setJobToApprove(job)} variant="primary" className="bg-green-600 hover:bg-green-700 py-1 px-3 text-sm">Approve</Button>
-                                         <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
+                                        <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
                                     </td>
                                 </tr>
                             ))}
@@ -192,7 +192,6 @@ const QcPage = () => {
             />
         )}
 
-        {/* --- NEW: Confirmation Modal for Approval --- */}
         <ConfirmationModal
             isOpen={!!jobToApprove}
             onClose={() => setJobToApprove(null)}

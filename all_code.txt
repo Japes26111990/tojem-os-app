@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/31/2025 15:21:45
+Generated on: 07/31/2025 16:18:58
 
 
 ==================================================
@@ -845,128 +845,6 @@ describe('Firestore API Tests', () => {
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\inventoryApi.js
-==================================================
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, runTransaction, increment } from 'firebase/firestore';
-import { db } from './firebase';
-import { JOB_STATUSES } from '../config';
-
-const inventoryCollection = collection(db, 'inventoryItems');
-
-export const getAllInventoryItems = async (category) => {
-  let q = inventoryCollection;
-  if (category) {
-    q = query(inventoryCollection, where('category', '==', category));
-  }
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-};
-
-export const getProducts = async () => getAllInventoryItems(JOB_STATUSES.PRODUCT);
-
-export const addInventoryItem = (itemData) => {
-  if (!itemData.category) {
-    return Promise.reject(new Error("Item data must include a 'category' field."));
-  }
-  return addDoc(inventoryCollection, { ...itemData, createdAt: new Date() }); // Use Date for offline compatibility
-};
-
-export const updateStockByWeight = async (itemId, grossWeight) => {
-  if (!itemId || isNaN(parseFloat(grossWeight))) {
-    throw new Error("Item ID and a valid gross weight are required.");
-  }
-  const itemRef = doc(db, 'inventoryItems', itemId);
-  return runTransaction(db, async (transaction) => {
-    const itemDoc = await transaction.get(itemRef);
-    if (!itemDoc.exists()) throw new Error("Inventory item not found.");
-    
-    const itemData = itemDoc.data();
-    const tareWeight = parseFloat(itemData.tareWeight) || 0;
-    const unitWeight = parseFloat(itemData.unitWeight) || 1;
-    if (unitWeight <= 0) throw new Error("Item has an invalid unit weight of zero or less.");
-
-    const netWeight = parseFloat(grossWeight) - tareWeight;
-    const newQuantity = Math.round(netWeight / unitWeight);
-    if (newQuantity < 0) throw new Error("Calculated quantity is negative. Please check weights.");
-    
-    transaction.update(itemRef, { currentStock: newQuantity });
-    return { newQuantity };
-  });
-};
-
-
-==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobApi.js
-==================================================
-import { collection, query, where, getDocs, onSnapshot, orderBy, limit, startAfter, updateDoc, doc, runTransaction, increment } from 'firebase/firestore';
-import { db } from './firebase';
-import { JOB_STATUSES } from '../config';
-
-const jobCardsCollection = collection(db, 'createdJobCards');
-
-export const listenToJobCards = (callback, options = {}) => {
-  const jobsCollectionRef = collection(db, 'createdJobCards');
-  let q = query(jobsCollectionRef, orderBy('createdAt', 'desc'));
-  if (options.limit) {
-    if (options.startAfter) {
-      q = query(q, startAfter(options.startAfter));
-    }
-    q = query(q, limit(options.limit));
-  }
-  return onSnapshot(q, (snapshot) => {
-    const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const lastVisible = snapshot.docs[snapshot.docs.length - 1] || null;
-    callback({ jobs, lastVisible });
-  }, (error) => {
-    console.error("Error listening to job cards:", error);
-    callback({ jobs: [], lastVisible: null, error });
-  });
-};
-
-export const getCompletedJobsInRange = async (startDate, endDate) => {
-  const q = query(jobCardsCollection, where('status', '==', JOB_STATUSES.COMPLETE), where('completedAt', '>=', startDate), where('completedAt', '<=', endDate));
-  return getDocs(q).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
-};
-
-export const processQcDecision = async (job, isApproved, options = {}) => {
-  const { rejectionReason = '', preventStockDeduction = false, reworkDetails = null } = options;
-  return runTransaction(db, async (transaction) => {
-    const jobRef = doc(db, 'createdJobCards', job.id);
-    const jobDoc = await transaction.get(jobRef);
-    if (!jobDoc.exists()) throw "Job document does not exist!";
-    const currentJobData = jobDoc.data();
-    const dataToUpdate = {};
-    if (isApproved) {
-      dataToUpdate.status = JOB_STATUSES.COMPLETE;
-      if (!currentJobData.completedAt) dataToUpdate.completedAt = new Date();
-      if (job.partId) {
-        const productRef = doc(db, 'inventoryItems', job.partId);
-        transaction.update(productRef, { currentStock: increment(job.quantity || 1) });
-      }
-    } else {
-      if (reworkDetails && reworkDetails.requeue) {
-        dataToUpdate.status = JOB_STATUSES.PENDING;
-        dataToUpdate.issueReason = `REWORK: ${rejectionReason}`;
-        dataToUpdate.employeeId = reworkDetails.newEmployeeId || job.employeeId;
-        dataToUpdate.employeeName = reworkDetails.newEmployeeName || job.employeeName;
-        dataToUpdate.completedAt = null;
-      } else {
-        dataToUpdate.status = JOB_STATUSES.ISSUE;
-        dataToUpdate.issueReason = rejectionReason;
-      }
-    }
-    if (!preventStockDeduction && currentJobData.processedConsumables?.length > 0) {
-      for (const consumable of currentJobData.processedConsumables) {
-        const itemRef = doc(db, 'inventoryItems', consumable.id);
-        transaction.update(itemRef, { currentStock: increment(-consumable.quantity) });
-      }
-    }
-    transaction.update(jobRef, dataToUpdate);
-  });
-};
-
-
-==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\api\jobUtils.test.js
 ==================================================
 // src/utils/jobUtils.test.js
@@ -1051,26 +929,6 @@ describe('calculateJobDuration', () => {
     });
 });
 
-
-
-==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\api\userApi.js
-==================================================
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore';
-import { db } from './firebase';
-import { logAuditEvent } from '../api/firestore';
-
-export const getAllUsers = async () => getDocs(collection(db, 'users')).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
-
-export const updateUserRole = async (userId, newRole, discountPercentage, companyName) => {
-  const dataToUpdate = { role: newRole };
-  if (discountPercentage !== undefined) dataToUpdate.discountPercentage = Number(discountPercentage) || 0;
-  if (companyName !== undefined) dataToUpdate.companyName = companyName;
-  await updateDoc(doc(db, 'users', userId), dataToUpdate);
-  // Log audit (assuming currentUser from AuthContext)
-  const currentUser = { uid: 'current-uid', email: 'current-email' }; // Replace with actual
-  await logAuditEvent('user_role_updated', currentUser.uid, currentUser.email, { userId, newRole });
-};
 
 
 ==================================================
@@ -1621,10 +1479,16 @@ const ProductModal = ({ product, onClose }) => {
         }
     };
 
-    // --- UPDATED: Filter makes based on the new many-to-many relationship ---
+    // --- NEW: This function prevents the modal from closing on accidental drags ---
+    const handleBackdropClick = (e) => {
+        // Only close if the mousedown event started on the backdrop itself
+        if (e.target === e.currentTarget) {
+            onClose();
+        }
+    };
+
     const filteredMakes = useMemo(() => {
         if (!formData.categoryId) return [];
-        // A make is included if its `categoryIds` array contains the selected categoryId
         return dropdownData.makes.filter(make => 
             Array.isArray(make.categoryIds) && make.categoryIds.includes(formData.categoryId)
         );
@@ -1636,7 +1500,8 @@ const ProductModal = ({ product, onClose }) => {
     }, [formData.make, dropdownData.models]);
 
     return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        // --- UPDATED: Swapped onClick for onMouseDown for a better user experience ---
+        <div onMouseDown={handleBackdropClick} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
                     <h2 className="text-xl font-bold text-white">{product ? 'Edit Product' : 'Add New Product'}</h2>
@@ -1678,7 +1543,6 @@ const ProductModal = ({ product, onClose }) => {
 };
 
 export default ProductModal;
-
 
 
 ==================================================
@@ -2265,7 +2129,6 @@ const DispatchQueue = () => {
 export default DispatchQueue;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\floorplan\FloorPlan.jsx
 ==================================================
@@ -2651,7 +2514,7 @@ const CustomJobCreator = ({ campaignId }) => {
                     printWindow.close();
                 }, 500);
             } else {
-                toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸' });
+                toast("The print window was blocked. Please allow popups.", { icon: 'Ã¢â€žÂ¹Ã¯Â¸ ' });
             }
 
             setJobData({ jobName: '', departmentId: '', employeeId: '', quantity: 1, description: '', estimatedTime: '', steps: '', selectedTools: new Set(), selectedAccessories: new Set(), consumables: [], jobCategory: 'Production', requiresVin: false, vinNumber: '' });
@@ -2825,7 +2688,6 @@ const CustomJobCreator = ({ campaignId }) => {
 };
 
 export default CustomJobCreator;
-
 
 
 ==================================================
@@ -3612,17 +3474,17 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 
     const handleSubmit = async () => {
         if (!selection.departmentId) {
-            return toast.error("Please select a department."); // --- REPLACE ALERT ---
+            return toast.error("Please select a department.");
         }
         
         const product = allProducts.find(p => p.id === lineItem.productId);
         if (!product) {
-            return toast.error("Could not find the product details for this line item."); // --- REPLACE ALERT ---
+            return toast.error("Could not find the product details.");
         }
         
         const recipe = await getRecipeForProductDepartment(lineItem.productId, selection.departmentId);
         if (!recipe) {
-            return toast.error(`No recipe found for "${product.name}" in the selected department. Please define one in Settings first.`); // --- REPLACE ALERT ---
+            return toast.error(`No recipe found for "${product.name}" in the selected department.`);
         }
         
         const department = departments.find(d => d.id === selection.departmentId);
@@ -3658,7 +3520,7 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
             const qrCodeDataUrl = await QRCode.toDataURL(newJobId, { width: 80 });
 
             await addJobCard(finalJobData);
-            toast.success(`Job card created successfully for ${product.name}!`); // --- REPLACE ALERT ---
+            toast.success(`Job card created successfully for ${product.name}!`);
             
             const imageSection = product.photoUrl
                 ? `<img src="${product.photoUrl}" alt="${product.name}" style="width: 100%; height: 200px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />`
@@ -3717,13 +3579,13 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
                 printWindow.document.close();
                 printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
             } else {
-                toast("The print window was blocked. Please allow popups.", { icon: 'â„¹ï¸' });
+                toast("The print window was blocked. Please allow popups.", { icon: 'Ã¢â€žÂ¹Ã¯Â¸ ' });
             }
 
             onClose();
         } catch (error) {
             console.error("Error creating job card:", error);
-            toast.error("Failed to create job card."); // --- REPLACE ALERT ---
+            toast.error("Failed to create job card.");
         }
     };
 
@@ -3781,7 +3643,6 @@ const StandardJobCreatorModal = ({ salesOrder, lineItem, onClose }) => {
 };
 
 export default StandardJobCreatorModal;
-
 
 
 ==================================================
@@ -5047,8 +4908,9 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\qc\QcQueue.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, processQcDecision } from '../../../api/firestore'; // Use the new function
 import Button from '../../ui/Button';
+import toast from 'react-hot-toast';
 
-const QcQueue = () => {
+const QcPage = () => {
   const [allJobs, setAllJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -5065,27 +4927,34 @@ const QcQueue = () => {
   }, [allJobs]);
 
   const handleApprove = async (job) => {
-    if (window.confirm(`Are you sure you want to approve this job? This will deduct used items from stock.`)) {
-      try {
-        await processQcDecision(job, true); // Call with 'true' for approval
-        alert('Job approved and stock updated!');
-      } catch (err) {
-        alert('Failed to process approval.');
-        console.error(err);
-      }
-    }
+    toast((t) => (
+        <span>
+            Approve this job and deduct stock?
+            <Button variant="primary" size="sm" className="ml-2" onClick={async () => {
+                toast.dismiss(t.id);
+                try {
+                    await processQcDecision(job, true);
+                    toast.success('Job approved and stock updated!');
+                } catch (err) {
+                    toast.error('Failed to process approval.');
+                    console.error(err);
+                }
+            }}>Confirm</Button>
+            <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
+        </span>
+    ));
   };
 
   const handleReject = async (job) => {
     const reason = prompt(`Please provide a reason for rejecting this job:`);
     if (reason) {
-      try {
-        await processQcDecision(job, false, reason); // Call with 'false' and a reason for rejection
-        alert('Job marked with an issue, and stock has been deducted.');
-      } catch (err) {
-        alert('Failed to process rejection.');
-        console.error(err);
-      }
+        try {
+            await processQcDecision(job, false, { rejectionReason: reason });
+            toast.success('Job marked with an issue, stock deducted.');
+        } catch (err) {
+            toast.error('Failed to process rejection.');
+            console.error(err);
+        }
     }
   };
 
@@ -5103,7 +4972,7 @@ const QcQueue = () => {
               <th className="p-3 text-sm font-semibold text-gray-400">Actions</th>
             </tr>
           </thead>
-          <tbody>
+           <tbody>
             {(qcJobs || []).map(job => (
               <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                 <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
@@ -5123,8 +4992,7 @@ const QcQueue = () => {
   );
 };
 
-export default QcQueue;
-
+export default QcPage;
 
 
 ==================================================
@@ -6423,7 +6291,7 @@ import { getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../..
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { DollarSign, Trash2, Edit, PlusCircle, Users } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const CampaignManager = () => {
     const [campaigns, setCampaigns] = useState([]);
@@ -6447,7 +6315,7 @@ const CampaignManager = () => {
             setCampaigns(fetchedCampaigns);
         } catch (error) {
             console.error("Error fetching campaigns:", error);
-            toast.error("Could not load campaign data."); // --- REPLACE ALERT ---
+            toast.error("Could not load campaign data.");
         }
         setLoading(false);
     };
@@ -6481,7 +6349,7 @@ const CampaignManager = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.name || !formData.platform || !formData.budget || !formData.startDate) {
-            toast.error("Please fill in name, platform, budget, and start date."); // --- REPLACE ALERT ---
+            toast.error("Please fill in name, platform, budget, and start date.");
             return;
         }
 
@@ -6497,21 +6365,20 @@ const CampaignManager = () => {
         try {
             if (editingCampaign) {
                 await updateCampaign(editingCampaign.id, dataToSave);
-                toast.success("Campaign updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Campaign updated successfully!");
             } else {
                 await addCampaign(dataToSave);
-                toast.success("Campaign added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Campaign added successfully!");
             }
             handleCancelEdit();
             fetchCampaigns();
         } catch (error) {
             console.error("Error saving campaign:", error);
-            toast.error("Failed to save campaign."); // --- REPLACE ALERT ---
+            toast.error("Failed to save campaign.");
         }
     };
 
     const handleDeleteClick = (campaignId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this campaign?
@@ -6534,7 +6401,7 @@ const CampaignManager = () => {
                 </Button>
             </span>
         ), {
-            icon: 'âš ï¸',
+            icon: 'Ã¢Å¡Â Ã¯Â¸ ',
         });
     };
 
@@ -6602,7 +6469,6 @@ const CampaignManager = () => {
 export default CampaignManager;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\DepartmentsManager.jsx
 ==================================================
@@ -6610,7 +6476,7 @@ import React, { useState, useEffect } from 'react';
 import { getDepartments, addDepartment, deleteDepartment, updateDocument } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const DepartmentsManager = () => {
     const [departments, setDepartments] = useState([]);
@@ -6636,17 +6502,17 @@ const DepartmentsManager = () => {
         try {
             if (editingDeptId) {
                 await updateDocument('departments', editingDeptId, { name: newDepartmentName });
-                toast.success("Department updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Department updated successfully!");
             } else {
                 await addDepartment(newDepartmentName);
-                toast.success("Department added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Department added successfully!");
             }
             setNewDepartmentName('');
             setEditingDeptId(null);
             fetchDepartments();
         } catch (error) {
             console.error("Error saving department:", error);
-            toast.error(`Failed to ${editingDeptId ? 'update' : 'add'} department.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingDeptId ? 'update' : 'add'} department.`);
         }
     };
 
@@ -6661,7 +6527,6 @@ const DepartmentsManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this department?
@@ -6684,7 +6549,7 @@ const DepartmentsManager = () => {
                 </Button>
             </span>
         ), {
-            icon: 'âš ï¸',
+            icon: 'Ã¢Å¡Â Ã¯Â¸ ',
         });
     };
 
@@ -6734,7 +6599,6 @@ const DepartmentsManager = () => {
 export default DepartmentsManager;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeeSkillsModal.jsx
 ==================================================
@@ -6744,7 +6608,7 @@ import React, { useState, useEffect } from 'react';
 import { getSkills, getEmployeeSkills, updateEmployeeSkillsAndLogHistory, getSkillHistoryForEmployee } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import { X } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const EmployeeSkillsModal = ({ employee, onClose }) => {
     const [allSkills, setAllSkills] = useState([]);
@@ -6777,7 +6641,7 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
             setSkillHistory(fetchedHistory.sort((a,b) => b.assessmentDate.toDate() - a.assessmentDate.toDate()));
         } catch (error) {
             console.error("Error fetching skills data:", error);
-            toast.error("Failed to load skills data for this employee."); // --- REPLACE ALERT ---
+            toast.error("Failed to load skills data for this employee.");
         }
         setLoading(false);
     };
@@ -6805,11 +6669,11 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
     const handleSaveChanges = async () => {
         try {
             await updateEmployeeSkillsAndLogHistory(employee, employeeSkills, allSkills);
-            toast.success(`Successfully updated skills for ${employee.name}.`); // --- REPLACE ALERT ---
+            toast.success(`Successfully updated skills for ${employee.name}.`);
             onClose();
         } catch (error) {
             console.error("Error saving employee skills:", error);
-            toast.error("Failed to save skills. Please try again."); // --- REPLACE ALERT ---
+            toast.error("Failed to save skills. Please try again.");
         }
     };
 
@@ -6899,7 +6763,6 @@ const EmployeeSkillsModal = ({ employee, onClose }) => {
 export default EmployeeSkillsModal;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\EmployeesManager.jsx
 ==================================================
@@ -6912,8 +6775,8 @@ import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { Award } from 'lucide-react';
 import EmployeeSkillsModal from './EmployeeSkillsModal';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
-import { SYSTEM_ROLES } from '../../../config'; // Import SYSTEM_ROLES
+import toast from 'react-hot-toast';
+import { SYSTEM_ROLES } from '../../../config';
 
 const EmployeesManager = () => {
     const [employees, setEmployees] = useState([]);
@@ -6954,7 +6817,7 @@ const EmployeesManager = () => {
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newEmployee.name.trim() || !newEmployee.departmentId) {
-            toast.error("Please enter a name and select a department."); // --- REPLACE ALERT ---
+            toast.error("Please enter a name and select a department.");
             return;
         }
 
@@ -6970,17 +6833,17 @@ const EmployeesManager = () => {
 
             if (editingEmployeeId) {
                 await updateDocument('employees', editingEmployeeId, dataToSave);
-                toast.success("Employee updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Employee updated successfully!");
             } else {
                 await addEmployee(dataToSave);
-                toast.success("Employee added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Employee added successfully!");
             }
             setNewEmployee(initialFormState);
             setEditingEmployeeId(null);
             fetchData();
         } catch (error) {
             console.error("Error saving employee:", error);
-            toast.error(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingEmployeeId ? 'update' : 'add'} employee.`);
         }
     };
 
@@ -7002,7 +6865,6 @@ const EmployeesManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure?
@@ -7025,7 +6887,7 @@ const EmployeesManager = () => {
                 </Button>
             </span>
         ), {
-            icon: 'âš ï¸',
+            icon: 'Ã¢Å¡Â Ã¯Â¸ ',
         });
     };
 
@@ -7098,7 +6960,6 @@ const EmployeesManager = () => {
 export default EmployeesManager;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\FinancialSettings.jsx
 ==================================================
@@ -7110,7 +6971,7 @@ import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const FinancialSettings = () => {
     const [historicalData, setHistoricalData] = useState([]);
@@ -7142,7 +7003,7 @@ const FinancialSettings = () => {
         const { year, month, totalSales, totalCOGS } = newData;
 
         if (!year || !month || !totalSales || !totalCOGS || month < 1 || month > 12) {
-            toast.error("Please enter valid data for all fields (Month must be 1-12)."); // --- REPLACE ALERT ---
+            toast.error("Please enter valid data for all fields (Month must be 1-12).");
             return;
         }
 
@@ -7161,11 +7022,11 @@ const FinancialSettings = () => {
         try {
             const docRef = doc(db, 'historicalSales', docId);
             await setDoc(docRef, dataToSave, { merge: true });
-            toast.success(`Financial data for ${docId} has been saved.`); // --- REPLACE ALERT ---
+            toast.success(`Financial data for ${docId} has been saved.`);
             handleCancelEdit();
         } catch (error) {
             console.error("Error saving historical data:", error);
-            toast.error("Failed to save data."); // --- REPLACE ALERT ---
+            toast.error("Failed to save data.");
         }
     };
     
@@ -7185,7 +7046,6 @@ const FinancialSettings = () => {
     };
 
     const handleDelete = (docId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Delete financial data for {docId}?
@@ -7205,7 +7065,7 @@ const FinancialSettings = () => {
                 </Button>
             </span>
         ), {
-            icon: 'âš ï¸',
+            icon: 'Ã¢Å¡Â Ã¯Â¸ ',
         });
     };
 
@@ -7253,7 +7113,6 @@ const FinancialSettings = () => {
 };
 
 export default FinancialSettings;
-
 
 
 ==================================================
@@ -7820,189 +7679,6 @@ export default LearningPathManager;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MakeManager.jsx
-==================================================
-// src/components/features/settings/MakeManager.jsx
-import React, { useState, useEffect } from 'react';
-import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
-import { db } from '../../../api/firebase'; // Import db
-import Input from '../../ui/Input';
-import Button from '../../ui/Button';
-import toast from 'react-hot-toast';
-import { getMakes, getProductCategories } from '../../../api/firestore'; // Import getMakes, getProductCategories
-
-const MakeManager = ({ items, categories, onDataChange }) => {
-    const [newMakeName, setNewMakeName] = useState('');
-    const [selectedCategoryIds, setSelectedCategoryIds] = useState(new Set());
-    const [editingMakeId, setEditingMakeId] = useState(null);
-    const [editingMakeName, setEditingMakeName] = useState('');
-    const [editingCategoryIds, setEditingCategoryIds] = useState(new Set());
-
-    const handleAddOrUpdateMake = async (e) => {
-        e.preventDefault();
-        const name = (editingMakeId ? editingMakeName : newMakeName).trim();
-        const categoryIds = Array.from(editingMakeId ? editingCategoryIds : selectedCategoryIds);
-        
-        if (!name) return toast.error("Make name is required.");
-        if (categoryIds.length === 0) return toast.error("Please select at least one category.");
-
-        try {
-            if (editingMakeId) {
-                await updateDoc(doc(db, 'makes', editingMakeId), { name, categoryIds });
-                toast.success("Make updated!");
-                setEditingMakeId(null);
-                setEditingMakeName('');
-                setEditingCategoryIds(new Set());
-            } else {
-                await addDoc(collection(db, 'makes'), { name, categoryIds });
-                toast.success("Make added!");
-                setNewMakeName('');
-                setSelectedCategoryIds(new Set());
-            }
-            onDataChange(); // Refresh data in parent (SettingsPage)
-        } catch (error) {
-            toast.error("Failed to save make.");
-        }
-    };
-    
-    const handleDeleteMake = (id) => {
-        toast((t) => (
-            <span>
-                Delete this make?
-                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteDoc(doc(db, 'makes', id)).then(() => {
-                        toast.success("Make deleted.");
-                        onDataChange();
-                    }).catch(() => toast.error("Failed to delete."));
-                    toast.dismiss(t.id);
-                }}>Delete</Button>
-                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
-            </span>
-        ));
-    };
-
-    const handleEditClickMake = (make) => {
-        setEditingMakeId(make.id);
-        setEditingMakeName(make.name);
-        setEditingCategoryIds(new Set(make.categoryIds || []));
-    };
-
-    const handleCancelEditMake = () => {
-        setEditingMakeId(null);
-        setEditingMakeName('');
-        setEditingCategoryIds(new Set());
-    };
-
-    const handleCategoryToggle = (categoryId, isEditing) => {
-        if (isEditing) {
-            setEditingCategoryIds(prev => {
-                const newSet = new Set(prev);
-                if (newSet.has(categoryId)) {
-                    newSet.delete(categoryId);
-                } else {
-                    newSet.add(categoryId);
-                }
-                return newSet;
-            });
-        } else {
-            setSelectedCategoryIds(prev => {
-                const newSet = new Set(prev);
-                if (newSet.has(categoryId)) {
-                    newSet.delete(categoryId);
-                } else {
-                    newSet.add(categoryId);
-                }
-                return newSet;
-            });
-        }
-    };
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Manage Makes</h3>
-            <form onSubmit={handleAddOrUpdateMake} className="space-y-4 mb-6 p-4 bg-gray-900/50 rounded-lg">
-                <Input
-                    label="New Make Name"
-                    type="text"
-                    value={newMakeName}
-                    onChange={(e) => setNewMakeName(e.target.value)}
-                    placeholder="Enter make name..."
-                />
-                <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Link to Categories</label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-gray-800 rounded-md">
-                        {categories.map(cat => (
-                            <label key={cat.id} className="flex items-center space-x-2 text-gray-200">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedCategoryIds.has(cat.id)}
-                                    onChange={() => handleCategoryToggle(cat.id, false)}
-                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span>{cat.name}</span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-                <Button type="submit" variant="primary" className="w-full">Add Make</Button>
-            </form>
-            <div className="space-y-3">
-                {items.map(make => (
-                    <div key={make.id} className="bg-gray-700 p-3 rounded-lg">
-                        {editingMakeId === make.id ? (
-                            <div className="space-y-3">
-                                <Input
-                                    label="Make Name"
-                                    value={editingMakeName}
-                                    onChange={(e) => setEditingMakeName(e.target.value)}
-                                />
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Update Linked Categories</label>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-2 bg-gray-800 rounded-md">
-                                        {categories.map(cat => (
-                                            <label key={cat.id} className="flex items-center space-x-2 text-gray-200">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={editingCategoryIds.has(cat.id)}
-                                                    onChange={() => handleCategoryToggle(cat.id, true)}
-                                                    className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"
-                                                />
-                                                <span>{cat.name}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="flex gap-2 justify-end">
-                                    <Button onClick={handleCancelEditMake} variant="secondary" size="sm">Cancel</Button>
-                                    <Button onClick={handleAddOrUpdateMake} variant="success" size="sm">Save</Button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <p className="text-gray-200 font-semibold">{make.name}</p>
-                                    <p className="text-xs text-blue-400">
-                                        { (make.categoryIds || []).map(id => categories.find(c=>c.id===id)?.name).join(', ') || 'Uncategorized' }
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Button onClick={() => handleEditClickMake(make)} variant="secondary" size="sm">Edit</Button>
-                                    <Button onClick={() => handleDeleteMake(make.id)} variant="danger" size="sm">Delete</Button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-export default MakeManager;
-
-
-
-==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\MasterProductManager.jsx
 ==================================================
 // src/components/features/settings/MasterProductManager.jsx (New File)
@@ -8205,130 +7881,6 @@ const MasterProductManager = () => {
 };
 
 export default MasterProductManager;
-
-
-
-==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ModelManager.jsx
-==================================================
-// src/components/features/settings/ModelManager.jsx
-import React, { useState, useEffect, useMemo } from 'react';
-import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
-import { db } from '../../../api/firebase'; // Import db
-import Input from '../../ui/Input';
-import Button from '../../ui/Button';
-import Dropdown from '../../ui/Dropdown';
-import toast from 'react-hot-toast';
-import { getModels, getMakes } from '../../../api/firestore'; // Import getModels, getMakes
-
-const ModelManager = ({ items, makes, onDataChange }) => {
-    const [newModelName, setNewModelName] = useState('');
-    const [selectedMakeId, setSelectedMakeId] = useState('');
-    const [editingModelId, setEditingModelId] = useState(null);
-    const [editingModelName, setEditingModelName] = useState('');
-
-    const handleAddOrUpdate = async (e) => {
-        e.preventDefault();
-        const name = (editingModelId ? editingModelName : newModelName).trim();
-        if (!name || !selectedMakeId) {
-            return toast.error("Please select a make and enter a model name.");
-        }
-
-        try {
-            if (editingModelId) {
-                // Note: Updating the parent 'make' is not supported via this simple UI to prevent data integrity issues.
-                await updateDoc(doc(db, 'models', editingModelId), { name });
-                toast.success("Model updated!");
-                setEditingModelId(null);
-                setEditingModelName('');
-            } else {
-                await addDoc(collection(db, 'models'), { name, makeId: selectedMakeId }); // Changed to addDoc
-                toast.success("Model added!");
-                setNewModelName('');
-            }
-            onDataChange(); // Refresh data in parent (SettingsPage)
-        } catch (error) {
-            toast.error("Failed to save model.");
-        }
-    };
-    
-    const handleDelete = (id) => {
-        toast((t) => (
-            <span>
-                Delete this model?
-                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteDoc(doc(db, 'models', id)).then(() => {
-                        toast.success("Model deleted.");
-                        onDataChange();
-                    }).catch(() => toast.error("Failed to delete."));
-                    toast.dismiss(t.id);
-                }}>Delete</Button>
-                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
-            </span>
-        ));
-    };
-
-    const makeMap = useMemo(() => new Map(makes.map(m => [m.id, m.name])), [makes]);
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Manage Models/Years</h3>
-            <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
-                <Dropdown
-                    label="Parent Make"
-                    value={selectedMakeId}
-                    onChange={(e) => setSelectedMakeId(e.target.value)}
-                    options={makes}
-                    placeholder="Select a make..."
-                />
-                <Input
-                    label="New Model/Year Name"
-                    type="text"
-                    value={newModelName}
-                    onChange={(e) => setNewModelName(e.target.value)}
-                    placeholder="e.g., FH Series, 2022..."
-                    className="flex-grow"
-                />
-                <Button type="submit" variant="primary">Add Model</Button>
-            </form>
-            <div className="space-y-3">
-                {items.map(model => (
-                    <div key={model.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
-                        {editingModelId === model.id ? (
-                            <Input
-                                type="text"
-                                value={editingModelName}
-                                onChange={(e) => setEditingModelName(e.target.value)}
-                                className="flex-grow mr-2"
-                                autoFocus
-                            />
-                        ) : (
-                            <div>
-                                <p className="text-gray-200">{model.name}</p>
-                                <p className="text-xs text-blue-400">{makeMap.get(model.makeId) || 'Unlinked'}</p>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                            {editingModelId === model.id ? (
-                                <>
-                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
-                                    <Button onClick={() => setEditingModelId(null)} variant="secondary" size="sm">Cancel</Button>
-                                </>
-                            ) : (
-                                <>
-                                    <Button onClick={() => { setEditingModelId(model.id); setEditingModelName(model.name); setSelectedMakeId(model.makeId); }} variant="secondary" size="sm">Edit</Button>
-                                    <Button onClick={() => handleDelete(model.id)} variant="danger" size="sm">Delete</Button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-export default ModelManager;
 
 
 
@@ -8628,9 +8180,9 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import toast from 'react-hot-toast';
-// Removed specific imports for addMake, addModel as they are now in their own files
 
-const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName }) => {
+// This is a generic, reusable component for managing simple or parent-child collections.
+const GenericManager = ({ title, collectionName, items, onDataChange, parentCollection, parentName, parentIdField }) => {
     const [newItemName, setNewItemName] = useState('');
     const [editingItemId, setEditingItemId] = useState(null);
     const [editingItemName, setEditingItemName] = useState('');
@@ -8640,27 +8192,23 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         const name = (editingItemId ? editingItemName : newItemName).trim();
-        if (!name) return toast.error("Category name is required.");
-        if (parentCollection && !selectedParentId && !editingItemId) {
-            return toast.error(`Please select a ${parentName}.`);
+        if (!name) return toast.error("Name is required.");
+        
+        const data = { name };
+
+        if (parentCollection) {
+            const parentId = editingItemId ? editingParentId : selectedParentId;
+            if (!parentId) return toast.error(`Please select a parent ${parentName}.`);
+            data[parentIdField] = parentId;
         }
 
         try {
             if (editingItemId) {
-                const dataToUpdate = { name };
-                if (parentCollection && editingParentId) {
-                    const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
-                    dataToUpdate[parentIdField] = editingParentId;
-                }
-                await updateDoc(doc(db, collectionName, editingItemId), dataToUpdate);
+                await updateDoc(doc(db, collectionName, editingItemId), data);
                 toast.success(`${title.slice(7)} updated!`);
-                setEditingItemId(null);
-                setEditingItemName('');
-                setEditingParentId('');
+                handleCancelEdit();
             } else {
-                // GenericManager now only handles simple addDoc for categories and units
-                // Make and Model additions are handled by their specific managers
-                await addDoc(collection(db, collectionName), { name });
+                await addDoc(collection(db, collectionName), data);
                 toast.success(`${title.slice(7)} added!`);
                 setNewItemName('');
                 setSelectedParentId('');
@@ -8695,8 +8243,9 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     const handleEditClick = (item) => {
         setEditingItemId(item.id);
         setEditingItemName(item.name);
-        const parentIdField = collectionName === 'models' ? 'makeId' : 'categoryId';
-        setEditingParentId(item[parentIdField] || '');
+        if (parentCollection) {
+            setEditingParentId(item[parentIdField] || '');
+        }
     };
     
     const handleCancelEdit = () => {
@@ -8732,12 +8281,12 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                 {items.map(item => (
                     <div key={item.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                         {editingItemId === item.id ? (
-                            <div className="flex-grow flex items-end gap-2">
+                             <div className="flex-grow flex items-end gap-2">
                                 <Input
                                     label="Name"
                                     type="text"
                                     value={editingItemName}
-                                    onChange={(e) => setNewItemName(e.target.value)}
+                                    onChange={(e) => setEditingItemName(e.target.value)}
                                     className="flex-grow"
                                     autoFocus
                                 />
@@ -8753,7 +8302,7 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
                         ) : (
                             <div>
                                 <p className="text-gray-200">{item.name}</p>
-                                {parentMap && (item.makeId || item.categoryId) && <p className="text-xs text-blue-400">{parentMap.get(item.makeId || item.categoryId) || 'Unlinked'}</p>}
+                                {parentMap && item[parentIdField] && <p className="text-xs text-blue-400">{parentMap.get(item[parentIdField]) || 'Unlinked'}</p>}
                             </div>
                         )}
                         <div className="flex items-center gap-2 ml-4">
@@ -8776,11 +8325,11 @@ const GenericManager = ({ title, collectionName, items, onDataChange, parentColl
     );
 };
 
+// Export pre-configured versions of the GenericManager for each use case
 export const ProductCategoryManager = ({ items, onDataChange }) => <GenericManager title="Manage Product Categories" collectionName="productCategories" items={items} onDataChange={onDataChange} />;
-
-// Removed exports for MakeManager, ModelManager, UnitManager from here
-// They will now be in their own files
-
+export const MakeManager = ({ items, categories, onDataChange }) => <GenericManager title="Manage Makes" collectionName="makes" items={items} parentCollection={categories} parentName="Category" parentIdField="categoryIds" onDataChange={onDataChange} />;
+export const ModelManager = ({ items, makes, onDataChange }) => <GenericManager title="Manage Models/Years" collectionName="models" items={items} parentCollection={makes} parentName="Make" parentIdField="makeId" onDataChange={onDataChange} />;
+export const UnitManager = ({ items, onDataChange }) => <GenericManager title="Manage Units of Measure" collectionName="units" items={items} onDataChange={onDataChange} />;
 
 
 ==================================================
@@ -8794,7 +8343,7 @@ import { db } from '../../../api/firebase';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Trash2, Edit, PlusCircle } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const ReworkReasonsManager = () => {
     const [reasons, setReasons] = useState([]);
@@ -8833,7 +8382,7 @@ const ReworkReasonsManager = () => {
             fetchData();
         } catch (error) {
             console.error("Error saving rework reason:", error);
-            toast.error("Failed to save rework reason."); // --- REPLACE ALERT ---
+            toast.error("Failed to save rework reason.");
         }
     };
 
@@ -8843,7 +8392,6 @@ const ReworkReasonsManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Delete this reason?
@@ -8865,7 +8413,7 @@ const ReworkReasonsManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     return (
@@ -8876,7 +8424,7 @@ const ReworkReasonsManager = () => {
                 <Input
                     name="reasonName"
                     value={reasonName}
-                    onChange={(e) => setNewReasonName(e.target.value)}
+                    onChange={(e) => setReasonName(e.target.value)}
                     placeholder={editingId ? "Edit reason..." : "New reason (e.g., Poor Surface Finish)"}
                     className="flex-grow"
                 />
@@ -8901,7 +8449,6 @@ const ReworkReasonsManager = () => {
 };
 
 export default ReworkReasonsManager;
-
 
 
 ==================================================
@@ -9342,7 +8889,7 @@ import { getSkills, addSkill, deleteSkill, updateSkill } from '../../../api/fire
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import { Edit, Trash2, Check, X } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const SkillsManager = () => {
     const [skills, setSkills] = useState([]);
@@ -9358,7 +8905,7 @@ const SkillsManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching skills:", error);
-            toast.error("Could not fetch skills."); // --- REPLACE ALERT ---
+            toast.error("Could not fetch skills.");
         }
         setLoading(false);
     };
@@ -9377,12 +8924,11 @@ const SkillsManager = () => {
             await fetchSkills();
         } catch (error) {
             console.error("Error adding skill:", error);
-            toast.error("Failed to add skill."); // --- REPLACE ALERT ---
+            toast.error("Failed to add skill.");
         }
     };
 
     const handleDeleteSkill = (skillId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this skill?
@@ -9404,7 +8950,7 @@ const SkillsManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     const handleEditClick = (skill) => {
@@ -9427,7 +8973,7 @@ const SkillsManager = () => {
             await fetchSkills();
         } catch (error) {
             console.error("Error updating skill:", error);
-            toast.error("Failed to update skill."); // --- REPLACE ALERT ---
+            toast.error("Failed to update skill.");
         }
     };
 
@@ -9493,7 +9039,6 @@ const SkillsManager = () => {
 export default SkillsManager;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\SuppliersManager.jsx
 ==================================================
@@ -9501,7 +9046,7 @@ import React, { useState, useEffect } from 'react';
 import { getSuppliers, addSupplier, deleteSupplier, updateSupplier } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const SuppliersManager = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -9528,7 +9073,7 @@ const SuppliersManager = () => {
   const handleAddOrUpdate = async (e) => {
     e.preventDefault();
     if (!newSupplier.name.trim()) {
-      toast.error("Supplier name is required."); // --- REPLACE ALERT ---
+      toast.error("Supplier name is required.");
       return;
     }
     try {
@@ -9540,17 +9085,17 @@ const SuppliersManager = () => {
 
       if (editingSupplierId) {
         await updateSupplier(editingSupplierId, dataToSave); 
-        toast.success("Supplier updated successfully!"); // --- REPLACE ALERT ---
+        toast.success("Supplier updated successfully!");
       } else {
         await addSupplier(dataToSave);
-        toast.success("Supplier added successfully!"); // --- REPLACE ALERT ---
+        toast.success("Supplier added successfully!");
       }
       setNewSupplier({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
       setEditingSupplierId(null);
       fetchSuppliers();
     } catch (error) {
       console.error("Error saving supplier:", error);
-      toast.error(`Failed to ${editingSupplierId ? 'update' : 'add'} supplier.`); // --- REPLACE ALERT ---
+      toast.error(`Failed to ${editingSupplierId ? 'update' : 'add'} supplier.`);
     }
   };
 
@@ -9570,7 +9115,6 @@ const SuppliersManager = () => {
   };
 
   const handleDelete = (id) => {
-    // --- REPLACE window.confirm ---
     toast((t) => (
         <span>
             Are you sure you want to delete this supplier?
@@ -9592,7 +9136,7 @@ const SuppliersManager = () => {
                 Cancel
             </Button>
         </span>
-    ), { icon: 'âš ï¸' });
+    ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
   };
 
   return (
@@ -9641,7 +9185,6 @@ const SuppliersManager = () => {
 export default SuppliersManager;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\ToolAccessoriesManager.jsx
 ==================================================
@@ -9650,7 +9193,7 @@ import { getTools, getToolAccessories, addToolAccessory, deleteToolAccessory, up
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const ToolAccessoriesManager = () => {
     const [tools, setTools] = useState([]);
@@ -9675,7 +9218,7 @@ const ToolAccessoriesManager = () => {
     const handleAddOrUpdate = async (e) => {
         e.preventDefault();
         if (!newAccessoryName.trim() || !selectedToolId) {
-            toast.error("Please select a parent tool and enter an accessory name."); // --- REPLACE ALERT ---
+            toast.error("Please select a parent tool and enter an accessory name.");
             return;
         }
         try {
@@ -9683,10 +9226,10 @@ const ToolAccessoriesManager = () => {
 
             if (editingAccessoryId) {
                 await updateDocument('toolAccessories', editingAccessoryId, dataToSave);
-                toast.success("Accessory updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Accessory updated successfully!");
             } else {
                 await addToolAccessory(dataToSave);
-                toast.success("Accessory added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Accessory added successfully!");
             }
             setNewAccessoryName('');
             setSelectedToolId('');
@@ -9694,7 +9237,7 @@ const ToolAccessoriesManager = () => {
             fetchData();
         } catch (error) {
             console.error("Error saving accessory:", error);
-            toast.error(`Failed to ${editingAccessoryId ? 'update' : 'add'} accessory.`); // --- REPLACE ALERT ---
+            toast.error(`Failed to ${editingAccessoryId ? 'update' : 'add'} accessory.`);
         }
     };
 
@@ -9711,7 +9254,6 @@ const ToolAccessoriesManager = () => {
     };
 
     const handleDelete = (id) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this accessory?
@@ -9733,7 +9275,7 @@ const ToolAccessoriesManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
     
     const groupedAccessories = useMemo(() => {
@@ -9807,7 +9349,6 @@ const ToolAccessoriesManager = () => {
 };
 
 export default ToolAccessoriesManager;
-
 
 
 ==================================================
@@ -10138,7 +9679,7 @@ import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import { PlusCircle, Trash2, Edit } from 'lucide-react';
-import toast from 'react-hot-toast'; // --- IMPORT TOAST ---
+import toast from 'react-hot-toast';
 
 const TrainingManager = () => {
     const [resources, setResources] = useState([]);
@@ -10169,7 +9710,7 @@ const TrainingManager = () => {
             setSkills(fetchedSkills);
         } catch (error) {
             console.error("Error fetching training data:", error);
-            toast.error("Could not load training data."); // --- REPLACE ALERT ---
+            toast.error("Could not load training data.");
         }
         setLoading(false);
     };
@@ -10199,7 +9740,6 @@ const TrainingManager = () => {
     };
 
     const handleDelete = (resourceId) => {
-        // --- REPLACE window.confirm ---
         toast((t) => (
             <span>
                 Are you sure you want to delete this resource?
@@ -10221,28 +9761,28 @@ const TrainingManager = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!formData.skillId || !formData.resourceName.trim() || !formData.url.trim()) {
-            return toast.error("Please select a skill and fill in the resource name and URL."); // --- REPLACE ALERT ---
+            return toast.error("Please select a skill and fill in the resource name and URL.");
         }
 
         try {
             if (editingId) {
                 await updateTrainingResource(editingId, formData);
-                toast.success("Resource updated successfully!"); // --- REPLACE ALERT ---
+                toast.success("Resource updated successfully!");
             } else {
                 await addTrainingResource(formData);
-                toast.success("Resource added successfully!"); // --- REPLACE ALERT ---
+                toast.success("Resource added successfully!");
             }
             handleCancelEdit();
             fetchData();
         } catch (error) {
             console.error("Error saving resource:", error);
-            toast.error("Failed to save training resource."); // --- REPLACE ALERT ---
+            toast.error("Failed to save training resource.");
         }
     };
 
@@ -10292,118 +9832,6 @@ const TrainingManager = () => {
 };
 
 export default TrainingManager;
-
-
-
-==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\UnitManager.jsx
-==================================================
-// src/components/features/settings/UnitManager.jsx
-import React, { useState, useEffect } from 'react';
-import { addDoc, deleteDoc, doc, updateDoc, collection } from 'firebase/firestore'; // Added collection, doc, updateDoc, deleteDoc
-import { db } from '../../../api/firebase'; // Import db
-import Input from '../../ui/Input';
-import Button from '../../ui/Button';
-import toast from 'react-hot-toast';
-import { getUnits } from '../../../api/firestore'; // Import getUnits
-
-const UnitManager = ({ items, onDataChange }) => { // Removed makes from props
-    const [newUnitName, setNewUnitName] = useState('');
-    const [editingUnitId, setEditingUnitId] = useState(null);
-    const [editingUnitName, setEditingUnitName] = useState('');
-
-    const handleAddOrUpdate = async (e) => {
-        e.preventDefault();
-        const name = (editingUnitId ? editingUnitName : newUnitName).trim();
-        if (!name) {
-            return toast.error("Unit name is required.");
-        }
-
-        try {
-            if (editingUnitId) {
-                await updateDoc(doc(db, 'units', editingUnitId), { name });
-                toast.success("Unit updated!");
-                setEditingUnitId(null);
-                setEditingUnitName('');
-            } else {
-                await addDoc(collection(db, 'units'), { name }); // Changed to addDoc
-                toast.success("Unit added!");
-                setNewUnitName('');
-            }
-            onDataChange(); // Refresh data in parent (SettingsPage)
-        } catch (error) {
-            toast.error("Failed to save unit.");
-        }
-    };
-    
-    const handleDelete = (id) => {
-        toast((t) => (
-            <span>
-                Delete this unit?
-                <Button variant="danger" size="sm" className="ml-2" onClick={() => {
-                    deleteDoc(doc(db, 'units', id)).then(() => {
-                        toast.success("Unit deleted.");
-                        onDataChange();
-                    }).catch(() => toast.error("Failed to delete."));
-                    toast.dismiss(t.id);
-                }}>Delete</Button>
-                <Button variant="secondary" size="sm" className="ml-2" onClick={() => toast.dismiss(t.id)}>Cancel</Button>
-            </span>
-        ));
-    };
-
-    return (
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-            <h3 className="text-xl font-bold text-white mb-4">Manage Units of Measure</h3>
-            <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end mb-6">
-                <Input
-                    label="New Unit Name"
-                    type="text"
-                    value={newUnitName}
-                    onChange={(e) => setNewUnitName(e.target.value)}
-                    placeholder="e.g., each, kg, box..."
-                    className="flex-grow"
-                />
-                <Button type="submit" variant="primary">Add Unit</Button>
-            </form>
-            <div className="space-y-3">
-                {items.map(unit => (
-                    <div key={unit.id} className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
-                        {editingUnitId === unit.id ? (
-                            <Input
-                                type="text"
-                                value={editingUnitName}
-                                onChange={(e) => setEditingUnitName(e.target.value)}
-                                className="flex-grow mr-2"
-                                autoFocus
-                            />
-                        ) : (
-                            <div>
-                                <p className="text-gray-200">{unit.name}</p>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                            {editingUnitId === unit.id ? (
-                                <>
-                                    <Button onClick={handleAddOrUpdate} variant="success" size="sm">Save</Button>
-                                    <Button onClick={() => setEditingUnitId(null)} variant="secondary" size="sm">Cancel</Button>
-                                </>
-                            ) : (
-                                <>
-                                    <Button onClick={() => { setEditingUnitId(unit.id); setEditingUnitName(unit.name); }} variant="secondary" size="sm">Edit</Button>
-                                    <Button onClick={() => handleDelete(unit.id)} variant="danger" size="sm">Delete</Button>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-export default UnitManager;
-
 
 
 ==================================================
@@ -16447,6 +15875,30 @@ export default LoadingSpinner;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\SearchInput.jsx
+==================================================
+// src/components/ui/SearchInput.jsx
+
+import React from 'react';
+import Input from './Input';
+import { Search } from 'lucide-react';
+
+const SearchInput = (props) => {
+  return (
+    <div className="relative w-full">
+      <Input
+        {...props}
+        className={`pl-10 ${props.className || ''}`}
+      />
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+    </div>
+  );
+};
+
+export default SearchInput;
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Textarea.jsx
 ==================================================
 import React from 'react';
@@ -16812,7 +16264,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
       unitWeight: parseFloat(newItem.unitWeight) || 0,
       tareWeight: parseFloat(newItem.tareWeight) || 0,
       associatedSkills: filteredAssociatedSkills,
-      // NEW: Save location data
       location: newItem.location || '',
       shelf_number: newItem.shelf_number || '',
       bin_number: newItem.bin_number || '',
@@ -16845,17 +16296,12 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   };
 
   const handleDelete = (id) => { 
-      toast((t) => React.createElement(
-          'span',
-          null,
-          'Delete this item and all its supplier pricing links?',
-          React.createElement(
-              Button,
-              {
-                  variant: "danger",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => {
+      toast((t) => (
+          <span>
+              Delete this item and all its pricing?
+              <Button
+                  variant="danger" size="sm" className="ml-2"
+                  onClick={() => {
                       api.delete(id)
                           .then(() => {
                               toast.success("Item deleted.");
@@ -16866,21 +16312,18 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                               console.error(err);
                           });
                       toast.dismiss(t.id);
-                  }
-              },
-              'Delete'
-          ),
-          React.createElement(
-              Button,
-              {
-                  variant: "secondary",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => toast.dismiss(t.id)
-              },
-              'Cancel'
-          )
-      ), { icon: 'âš ï¸' });
+                  }}
+              >
+                  Delete
+              </Button>
+              <Button
+                  variant="secondary" size="sm" className="ml-2"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                  Cancel
+              </Button>
+          </span>
+      ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
   };
   
   const handleAddSupplierPrice = async (supplierId, price) => {
@@ -16905,17 +16348,12 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
   };
 
   const handleDeleteSupplierPrice = (priceId) => {
-      toast((t) => React.createElement(
-          'span',
-          null,
-          'Delete this supplier price link?',
-          React.createElement(
-              Button,
-              {
-                  variant: "danger",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => {
+      toast((t) => (
+          <span>
+              Delete this supplier price link?
+              <Button
+                  variant="danger" size="sm" className="ml-2"
+                  onClick={() => {
                       deleteSupplierPrice(priceId)
                           .then(() => {
                               toast.success("Price link deleted.");
@@ -16926,21 +16364,18 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                               console.error(err);
                           });
                       toast.dismiss(t.id);
-                  }
-              },
-              'Delete'
-          ),
-          React.createElement(
-              Button,
-              {
-                  variant: "secondary",
-                  size: "sm",
-                  className: "ml-2",
-                  onClick: () => toast.dismiss(t.id)
-              },
-              'Cancel'
-          )
-      ), { icon: 'âš ï¸' });
+                  }}
+              >
+                  Delete
+              </Button>
+              <Button
+                  variant="secondary" size="sm" className="ml-2"
+                  onClick={() => toast.dismiss(t.id)}
+              >
+                  Cancel
+              </Button>
+          </span>
+      ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
   };
 
   return {
@@ -16952,7 +16387,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };
-
 
 
 ==================================================
@@ -17330,7 +16764,6 @@ const AssetIntelligencePage = () => {
 export default AssetIntelligencePage;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\CalendarPage.jsx
 ==================================================
@@ -17535,7 +16968,6 @@ const CalendarPage = () => {
 };
 
 export default CalendarPage;
-
 
 
 ==================================================
@@ -18187,7 +17619,6 @@ const DashboardPage = () => {
 export default DashboardPage;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\EmployeeIntelligencePage.jsx
 ==================================================
@@ -18656,7 +18087,6 @@ const FloorPlanPage = () => {
 export default FloorPlanPage;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\IssuesPage.jsx
 ==================================================
@@ -18761,7 +18191,7 @@ const IssuesPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     const handleUpdateJob = async (jobDocId, updatedData) => {
@@ -18889,7 +18319,6 @@ const IssuesPage = () => {
 };
 
 export default IssuesPage;
-
 
 
 ==================================================
@@ -19490,7 +18919,6 @@ const KanbanPage = () => {
 export default KanbanPage;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\KpiDashboardPage.jsx
 ==================================================
@@ -19624,7 +19052,6 @@ const KpiDashboardPage = () => {
 };
 
 export default KpiDashboardPage;
-
 
 
 ==================================================
@@ -19971,7 +19398,6 @@ const MarketingPage = () => {
 };
 
 export default MarketingPage;
-
 
 
 ==================================================
@@ -20359,7 +19785,7 @@ const PerformancePage = () => {
 
             <DepartmentPerformanceChart data={performanceData.departmentData} />
             
-             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                 <div className="flex flex-wrap justify-between items-center mb-4 gap-4">
                     <h3 className="text-xl font-bold text-white">
                         Performance Leaderboard
@@ -20371,20 +19797,19 @@ const PerformancePage = () => {
                             onChange={(e) => setLeaderboardDepartmentFilter(e.target.value)}
                             options={[{ id: 'all', name: 'Overall Company' }, ...departments]}
                         />
-                     </div>
+                    </div>
                 </div>
                 <PerformanceLeaderboard
                     employees={leaderboardDepartmentFilter === 'all' ? performanceData.employeePerformanceMetrics : performanceData.employeePerformanceMetrics.filter(e => e.departmentId === leaderboardDepartmentFilter)}
                     activeSortKey={leaderboardSortKey}
                     setActiveSortKey={setLeaderboardSortKey}
-                 />
+                />
             </div>
         </div>
     );
 };
 
 export default PerformancePage;
-
 
 
 ==================================================
@@ -22434,56 +21859,6 @@ export default ScannerPage;
 
 
 ==================================================
-FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsDashboard.jsx
-==================================================
-import React, { useEffect, useState } from 'react';
-import { useData } from '../contexts/DataContext';
-import { logAuditEvent } from '../api/firestore';
-import Input from '../components/ui/Input';
-import Button from '../components/ui/Button';
-import { useAuth } from '../contexts/AuthContext';
-
-const SettingsDashboard = () => {
-  const { roles, productCategories, loading, error } = useData();
-  const { user } = useAuth();
-  const [newRole, setNewRole] = useState('');
-
-  useEffect(() => {
-    // Log access
-    logAuditEvent('settings_accessed', user.uid, user.email, {});
-  }, [user]);
-
-  const addRole = async () => {
-    // Placeholder add role logic
-    console.log('Adding role:', newRole);
-    logAuditEvent('role_added', user.uid, user.email, { newRole });
-    setNewRole('');
-  };
-
-  if (loading) return <p>Loading settings...</p>;
-  if (error) return <p>Error: {error}</p>;
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-3xl font-bold text-white">Settings Dashboard</h2>
-      <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-        <h3>Roles</h3>
-        <ul>{roles.map(r => <li key={r.id}>{r.name}</li>)}</ul>
-        <Input label="New Role" value={newRole} onChange={e => setNewRole(e.target.value)} />
-        <Button onClick={addRole}>Add Role</Button>
-      </div>
-      <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-        <h3>Product Categories</h3>
-        <ul>{productCategories.map(c => <li key={c.id}>{c.name}</li>)}</ul>
-      </div>
-    </div>
-  );
-};
-
-export default SettingsDashboard;
-
-
-==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\SettingsPage.jsx
 ==================================================
 // src/pages/SettingsPage.jsx
@@ -22506,11 +21881,13 @@ import RoutineTasksManager from '../components/features/settings/RoutineTasksMan
 import LearningPathManager from '../components/features/settings/LearningPathManager';
 import KaizenManager from '../components/features/settings/KaizenManager';
 
-// Import individual components from their new files
-import { ProductCategoryManager } from '../components/features/settings/ProductCategoryManager'; // Still imports GenericManager helper
-import MakeManager from '../components/features/settings/MakeManager'; // Now from its own file
-import ModelManager from '../components/features/settings/ModelManager'; // Now from its own file
-import UnitManager from '../components/features/settings/UnitManager'; // Now from its own file
+// Import all consolidated managers from the single updated file
+import { 
+    ProductCategoryManager, 
+    MakeManager, 
+    ModelManager, 
+    UnitManager 
+} from '../components/features/settings/ProductCategoryManager';
 
 import { getProductCategories, getMakes, getModels, getUnits } from '../api/firestore';
 
@@ -22528,7 +21905,6 @@ const TabButton = ({ label, isActive, onClick }) => {
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState('inventory');
   
-  // State for catalog data is now managed here to ensure components refresh
   const [catalogData, setCatalogData] = useState({
     categories: [],
     makes: [],
@@ -22536,7 +21912,6 @@ const SettingsPage = () => {
     units: []
   });
 
-  // This function will be passed down to child components to trigger a data refresh
   const fetchCatalogData = async () => {
     const [cats, mks, mdls, uts] = await Promise.all([
         getProductCategories(),
@@ -22548,9 +21923,10 @@ const SettingsPage = () => {
   };
 
   useEffect(() => {
-    // Fetch data when the component mounts and when the relevant tab is selected
-    fetchCatalogData();
-  }, []);
+    if (activeTab === 'catalog_data') {
+        fetchCatalogData();
+    }
+  }, [activeTab]);
 
 
   const tabs = useMemo(() => ({
@@ -22630,7 +22006,6 @@ const SettingsPage = () => {
 };
 
 export default SettingsPage;
-
 
 
 ==================================================
@@ -23970,7 +23345,6 @@ const ValuationPage = () => {
 export default ValuationPage;
 
 
-
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\utils\jobUtils.js
 ==================================================
@@ -24009,7 +23383,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
                 }
                 if (percentage > 0) {
                     const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Â°C)` });
+                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Ã‚Â°C)` });
                 }
             }
         } else if (consumable.type === 'dimensional') {
@@ -24052,14 +23426,10 @@ export const calculateJobDuration = (job, currentTime) => {
     const hours = Math.floor(totalMinutes / 60);
     const minutes = Math.floor(totalMinutes % 60);
     
-    let text = '';
-    if (hours > 0) text += `${hours}h `;
-    text += `${minutes}m`;
+    const text = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
     return { text, totalMinutes };
 };
-
-
 
 
 ==================================================
