@@ -1,14 +1,15 @@
 // src/components/features/stock/StockCountModal.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
-import { X, CheckCircle } from 'lucide-react';
+import { X, CheckCircle, Hash, Scale } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const StockCountModal = ({ item, onClose, onUpdateCount }) => {
-    const [count, setCount] = useState('');
-    const inputRef = React.useRef(null);
+    const [inputValue, setInputValue] = useState('');
+    const [calculatedQty, setCalculatedQty] = useState(null);
+    const inputRef = useRef(null);
 
     // Focus the input field when the modal opens
     useEffect(() => {
@@ -17,25 +18,41 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
         }
     }, []);
 
-    const handleSubmit = () => {
-        const newCount = parseInt(count, 10);
-        if (isNaN(newCount) || newCount < 0) {
-            return toast.error("Please enter a valid, non-negative quantity.");
+    // Live calculation for weight-based items
+    useEffect(() => {
+        if (item.stockTakeMethod === 'weight' && !isNaN(parseFloat(inputValue))) {
+            const grossWeight = parseFloat(inputValue);
+            const tareWeight = parseFloat(item.tareWeight) || 0;
+            const unitWeight = parseFloat(item.unitWeight) || 1;
+            if (unitWeight > 0) {
+                const netWeight = grossWeight - tareWeight;
+                const finalQty = Math.round(netWeight / unitWeight);
+                // Ensure calculated quantity is not negative
+                setCalculatedQty(finalQty < 0 ? 0 : finalQty);
+            }
+        } else {
+            setCalculatedQty(null);
         }
-        onUpdateCount(item.id, newCount);
+    }, [inputValue, item]);
+
+    const handleSubmit = () => {
+        const finalCount = item.stockTakeMethod === 'weight' ? calculatedQty : parseInt(inputValue, 10);
+        if (finalCount === null || isNaN(finalCount) || finalCount < 0) {
+            return toast.error("Please enter a valid, non-negative value.");
+        }
+        onUpdateCount(item.id, finalCount);
         onClose();
     };
 
     return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in">
             <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md">
                 <div className="p-4 border-b border-gray-700">
                     <h3 className="text-xl font-bold text-white">{item.name}</h3>
-                    <p className="text-sm text-gray-400">P/N: {item.partNumber}</p>
-                    <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
+                    <p className="text-sm text-gray-400">P/N: {item.partNumber || item.itemCode}</p>
+                    <p className="text-sm text-gray-500">System predicts: {item.systemCount || item.currentStock}</p>
                 </div>
                 <div className="p-6 space-y-4">
-                    {/* NEW: Display product image */}
                     <img
                         src={item.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`}
                         alt={item.name}
@@ -43,12 +60,19 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     />
                     <Input 
                         ref={inputRef}
-                        label="Enter Physical Quantity" 
+                        label={item.stockTakeMethod === 'weight' ? 'Enter Gross Weight (grams)' : 'Enter Physical Quantity'}
                         type="number" 
-                        value={count} 
-                        onChange={e => setCount(e.target.value)}
-                        placeholder="Enter count..."
+                        step="any"
+                        value={inputValue} 
+                        onChange={e => setInputValue(e.target.value)}
+                        placeholder={item.stockTakeMethod === 'weight' ? 'e.g., 1500.5' : 'e.g., 250'}
                     />
+                    {calculatedQty !== null && (
+                        <div className="text-center bg-gray-900/50 p-3 rounded-lg">
+                            <p className="text-sm text-gray-400">Calculated Quantity</p>
+                            <p className="text-2xl font-bold text-green-400">{calculatedQty}</p>
+                        </div>
+                    )}
                 </div>
                 <div className="p-4 flex justify-end gap-2 bg-gray-900/50">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>

@@ -160,12 +160,10 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
 export const addKaizenSuggestion = (suggestionData) => addDoc(collection(db, 'kaizenSuggestions'), { ...suggestionData, createdAt: serverTimestamp(), status: 'new' });
 export const addPraise = (praiseData) => addDoc(collection(db, 'praise'), { ...praiseData, createdAt: serverTimestamp() });
 
-// --- FIX: Removed orderBy to prevent index error. Sorting is now done on the client-side. ---
 export const listenToPraiseForEmployee = (employeeId, callback) => {
     const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId));
     return onSnapshot(q, (snapshot) => {
         const praiseItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Sort the results by date here in the client-side code
         praiseItems.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
         callback(praiseItems);
     });

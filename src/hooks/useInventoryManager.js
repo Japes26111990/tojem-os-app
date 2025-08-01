@@ -1,6 +1,6 @@
-// src/hooks/useInventoryManager.js (Upgraded with Toasts & Location Fields)
+// src/hooks/useInventoryManager.js
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
     getSupplierPricingForItem, 
     addSupplierPrice, 
@@ -15,7 +15,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     currentStock: '', reorderLevel: '', standardStockLevel: '',
     requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
     associatedSkills: [],
-    // NEW: Location fields added to initial state
     location: '',
     shelf_number: '',
     bin_number: '',
@@ -72,8 +71,17 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
         case 'name-asc': return a.name.localeCompare(b.name);
         case 'name-desc': return b.name.localeCompare(a.name);
         case 'supplier': return getSupplierName(a.supplierId).localeCompare(getSupplierName(b.supplierId));
-        case 'stock-low-high': return (Number(a.currentStock) / Number(a.reorderLevel)) - (Number(b.currentStock) / Number(b.reorderLevel));
-        case 'stock-high-low': return (Number(b.currentStock) / Number(a.reorderLevel)) - (Number(a.currentStock) / Number(b.reorderLevel));
+        // --- UPDATED SORTING LOGIC TO PREVENT NaN ---
+        case 'stock-low-high': {
+            const levelA = Number(a.reorderLevel) > 0 ? (Number(a.currentStock) || 0) / Number(a.reorderLevel) : Infinity;
+            const levelB = Number(b.reorderLevel) > 0 ? (Number(b.currentStock) || 0) / Number(b.reorderLevel) : Infinity;
+            return levelA - levelB;
+        }
+        case 'stock-high-low': {
+            const levelA = Number(a.reorderLevel) > 0 ? (Number(a.currentStock) || 0) / Number(a.reorderLevel) : -1;
+            const levelB = Number(b.reorderLevel) > 0 ? (Number(b.currentStock) || 0) / Number(b.reorderLevel) : -1;
+            return levelB - levelA;
+        }
         default: return 0;
       }
     });
@@ -185,7 +193,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                   Cancel
               </Button>
           </span>
-      ), { icon: 'âš ï¸ ' });
+      ), { icon: '⚠️' });
   };
   
   const handleAddSupplierPrice = async (supplierId, price) => {
@@ -237,7 +245,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                   Cancel
               </Button>
           </span>
-      ), { icon: 'âš ï¸ ' });
+      ), { icon: '⚠️' });
   };
 
   return {

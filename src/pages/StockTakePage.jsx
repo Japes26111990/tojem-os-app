@@ -9,9 +9,9 @@ import { useStockTakeData } from '../hooks/useStockTakeData';
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
 import ConsignmentStockTake from '../components/features/stock/ConsignmentStockTake';
 import toast from 'react-hot-toast';
-import QrScannerModal from '../components/features/scanner/QrScannerModal'; // <-- NEW IMPORT
-import { findInventoryItemByItemCode } from '../api/firestore'; // <-- NEW IMPORT
-import StockCountModal from '../components/features/stock/StockCountModal'; // <-- CORRECTED IMPORT PATH
+import QrScannerModal from '../components/features/scanner/QrScannerModal';
+import { findInventoryItemByItemCode } from '../api/firestore';
+import StockCountModal from '../components/features/stock/StockCountModal';
 
 const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
@@ -47,20 +47,18 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
     } = useStockTakeData(inventoryTypeFilter);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isScannerOpen, setIsScannerOpen] = useState(false); // <-- NEW STATE FOR SCANNER
-    const [itemToCount, setItemToCount] = useState(null); // <-- NEW: State for modal
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [itemToCount, setItemToCount] = useState(null);
 
-    // UPDATED: Handle successful scan by opening the modal
     const handleScanSuccess = async (scannedPartNumber) => {
         setIsScannerOpen(false);
         try {
             const itemData = await findInventoryItemByItemCode(scannedPartNumber);
-            // Ensure the found item matches the current filter category
             const isProductMatch = inventoryTypeFilter === 'products' && itemData.category === 'Product';
             const isPurchasedMatch = inventoryTypeFilter === 'purchased' && itemData.category !== 'Product';
 
             if (isProductMatch || isPurchasedMatch) {
-                setItemToCount(itemData); // Open the modal with the found item
+                setItemToCount(itemData);
             } else {
                 toast.error("Scanned item not found in the current stock-take category.");
             }
@@ -69,12 +67,10 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
         }
     };
 
-    // NEW: Function to update the count from the modal
     const handleUpdateCountFromModal = (itemId, newCount) => {
-        // This will update the local state in useStockTakeData hook
         handleCountChange(itemId, 'quantity', newCount); 
         toast.success("Count captured.");
-        setItemToCount(null); // Close the modal
+        setItemToCount(null);
     };
 
     const handleReconcile = () => {
@@ -159,7 +155,6 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                             Scan to Count
                         </Button>
                         <div className="relative w-full sm:w-64">
-                            {/* UPDATED: Ensure Input component is used */}
                             <Input
                                 type="text"
                                 placeholder="Search items..."
@@ -186,7 +181,6 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                 />
             )}
 
-            {/* NEW: Render the count input modal */}
             {itemToCount && (
                 <StockCountModal
                     item={itemToCount}

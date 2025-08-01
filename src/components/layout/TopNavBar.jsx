@@ -85,8 +85,8 @@ const TopNavBar = () => {
 
         {(canSee('orders') || canSee('purchasing') || canSee('stockTake')) && (
           <NavGroup title="Inventory" icon={<Package size={18} />}>
-            {canSee('orders') && <NavLinkItem to="/orders" icon={<ShoppingCart size={16} />} text="Sales Orders" />}
-            {canSee('purchasing') && <NavLinkItem to="/stock-hub" icon={<Package size={16} />} text="Stock Hub" />}
+            {canSee('purchasing') && <NavLinkItem to="/stock-hub" icon={<ShoppingCart size={16} />} text="Purchasing Hub" />}
+            {canSee('stockTake') && <NavLinkItem to="/manufactured-stock" icon={<Factory size={16} />} text="Finished Goods Stock" />}
             {canSee('stockTake') && <NavLinkItem to="/stock-take" icon={<ClipboardList size={16} />} text="Stock Take App" />}
             {canSee('settings') && <NavLinkItem to="/product-catalog" icon={<Factory size={16} />} text="Product Catalog" />}
             {canSee('settings') && <NavLinkItem to="/consumables-catalog" icon={<PackageSearch size={16} />} text="Consumables Catalog" />}

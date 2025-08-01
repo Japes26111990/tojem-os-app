@@ -1,9 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../api/firebase';
-import { enableIndexedDbPersistence, collection, query, where, getDocs, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
-import { getEmployees, getTools, getOverheadCategories, getOverheadExpenses, getJobStepDetails, getRoles, getProductCategories } from '../api/firestore';
-import { getAllInventoryItems, getProducts } from '../api/inventoryApi';
-import { listenToJobCards } from '../api/jobApi';
+// --- REMOVED enableIndexedDbPersistence from this import ---
+import { collection, query, getDocs, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
+import { 
+    getEmployees, 
+    getTools, 
+    getOverheadCategories, 
+    getOverheadExpenses, 
+    getJobStepDetails, 
+    getRoles, 
+    getProductCategories,
+    getAllInventoryItems,
+    getProducts,
+    listenToJobCards
+} from '../api/firestore';
 
 const DataContext = createContext();
 
@@ -24,15 +34,7 @@ export const DataProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Enable offline persistence
-    enableIndexedDbPersistence(db)
-      .catch((err) => {
-        if (err.code === 'failed-precondition') {
-          console.warn('Multiple tabs open, persistence can only be enabled in one tab.');
-        } else if (err.code === 'unimplemented') {
-          console.warn('Browser does not support offline persistence.');
-        }
-      });
+    // --- REMOVED: The enableIndexedDbPersistence call was here and has been moved ---
 
     // Offline detection
     const handleOffline = () => setOffline(true);
@@ -44,7 +46,7 @@ export const DataProvider = ({ children }) => {
     const fetchData = async () => {
       try {
         const [emps, tls, ovhCats, recipes, inv, prods, rls, cats] = await Promise.all([
-          getEmployees(),
+           getEmployees(),
           getTools(),
           getOverheadCategories(),
           getJobStepDetails(),

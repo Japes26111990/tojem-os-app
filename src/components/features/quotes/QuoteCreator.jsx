@@ -97,20 +97,20 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     return (
         <>
             <div onClick={onClose} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
+                 <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                     <div className="flex justify-between items-center p-4 border-b border-gray-700">
                         <h2 className="text-xl font-bold text-white flex items-center gap-2"><FileText /> Create New Sales Quote</h2>
                         <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                     </div>
 
                     <div className="p-6 overflow-y-auto space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input label="Customer Name" placeholder="e.g., John Doe" value={customerName} onChange={e => setCustomerName(e.target.value)} />
                             <Input label="Customer Email" type="email" placeholder="e.g., john.doe@example.com" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
                         </div>
 
                         <div className="space-y-3">
-                            <h3 className="font-semibold text-white">Quote Line Items</h3>
+                             <h3 className="font-semibold text-white">Quote Line Items</h3>
                             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                 {lineItems.map((item) => (
                                     <div key={item.id} className="flex items-center gap-2 bg-gray-700/50 p-2 rounded-md">
@@ -128,7 +128,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                                 <Button onClick={handleAddCatalogItem} variant="secondary"><Package size={16} className="mr-2"/>Add Product</Button>
                                 <div className="border-l border-gray-600 h-10 mx-2"></div>
                                 <Button onClick={() => setCustomWorkModalOpen(true)} variant="secondary"><Wrench size={16} className="mr-2"/>Add Custom Work</Button>
-                                <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
+                                 <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
                             </div>
                         </div>
 
@@ -139,7 +139,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                             </div>
                             <div className="bg-gray-900/50 p-4 rounded-lg flex flex-col justify-center">
                                 <Input label="Profit Margin (%)" type="number" value={margin} onChange={e => setMargin(e.target.value)} />
-                            </div>
+                             </div>
                             <div className="bg-green-900/50 p-4 rounded-lg md:col-span-2">
                                 <p className="text-sm text-green-300 flex items-center gap-1"><DollarSign size={14}/> Final Quoted Price</p>
                                 <p className="text-4xl font-bold font-mono text-white">R {totals.total.toFixed(2)}</p>
@@ -173,4 +173,5 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     );
 };
 
-export default QuoteCreator; // --- THIS LINE WAS MISSING ---
+// --- THIS LINE WAS MISSING ---
+export default QuoteCreator;

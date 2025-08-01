@@ -89,7 +89,6 @@ const JobCardScanner = () => {
         if (!employee) return toast.error("Selected employee not found.");
 
         try {
-            // Direct document update is acceptable for assignment as it's a manager-level task
             await updateDocument('createdJobCards', jobData.id, {
                 employeeId: employee.id,
                 employeeName: employee.name
@@ -102,14 +101,13 @@ const JobCardScanner = () => {
         }
     };
 
-    // --- UPDATED: This now calls logScanEvent instead of updateJobStatus ---
     const handleStatusUpdate = async (newStatus) => {
         if (!jobData.employeeId || jobData.employeeId === 'unassigned') {
             return toast.error("Please assign an employee before starting the job.");
         }
-        
+
         const promise = logScanEvent(jobData, newStatus);
-        
+
         toast.promise(promise, {
             loading: 'Logging event...',
             success: `Event logged for status "${newStatus}"!`,
@@ -119,8 +117,7 @@ const JobCardScanner = () => {
         await promise;
         handleCloseModal();
     };
-    
-    // --- UPDATED: This now calls logScanEvent for halting a job ---
+
     const handleFlagIssue = () => {
         if (!jobData) return;
         toast((t) => (
@@ -128,9 +125,9 @@ const JobCardScanner = () => {
                 <span className="font-bold text-white">Halt Job: {jobData.partName}</span>
                 <p className="text-sm text-gray-300">Please provide a reason for halting this job:</p>
                 <Input
-                  id="halt-reason-input"
-                  placeholder="e.g., material defect, tool problem..."
-                  autoFocus
+                    id="halt-reason-input"
+                    placeholder="e.g., material defect, tool problem..."
+                    autoFocus
                 />
                 <div className="flex gap-2 mt-2">
                     <Button variant="danger" size="sm" onClick={() => {
@@ -164,12 +161,12 @@ const JobCardScanner = () => {
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">Job Card Scanner</h3>
                 <p className="text-gray-400 mb-6">Scan a job card's QR code to begin.</p>
-                <Button 
-                    variant="primary" 
+                <Button
+                    variant="primary"
                     className="w-full max-w-xs mx-auto py-4 text-lg"
                     onClick={() => setIsScannerOpen(true)}
                 >
-                    <QrCode size={24} className="mr-2"/>
+                    <QrCode size={24} className="mr-2" />
                     Scan Job Card
                 </Button>
             </div>
@@ -179,7 +176,7 @@ const JobCardScanner = () => {
                     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-lg">
                         <div className="flex justify-between items-center p-4 border-b border-gray-700">
                             <h3 className="text-xl font-bold text-white">{jobData.partName}</h3>
-                            <Button onClick={handleCloseModal} variant="secondary" className="p-2"><X size={20}/></Button>
+                            <Button onClick={handleCloseModal} variant="secondary" className="p-2"><X size={20} /></Button>
                         </div>
 
                         <div className="p-6 space-y-6">
@@ -187,27 +184,27 @@ const JobCardScanner = () => {
                                 <p className="text-sm text-gray-400">Current Status</p>
                                 <p className="text-lg font-bold text-yellow-300">{jobData.status}</p>
                             </div>
-                            
+
                             <div className="bg-gray-900/50 p-4 rounded-lg space-y-4">
                                 <div className="flex items-center gap-3">
-                                    <User size={20} className="text-gray-400"/>
+                                    <User size={20} className="text-gray-400" />
                                     <div>
                                         <p className="text-sm text-gray-400">Assigned To</p>
                                         <p className="font-semibold text-white">{jobData.employeeName || 'Unassigned'}</p>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 items-end">
-                                    <Dropdown label="Department" options={departments} value={selectedDept} onChange={e => setSelectedDept(e.target.value)} placeholder="Select Dept..."/>
-                                    <Dropdown label="Employee" options={filteredEmployees} value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} placeholder="Select Employee..." disabled={!selectedDept}/>
+                                <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                                    <Dropdown label="Department" options={departments} value={selectedDept} onChange={e => setSelectedDept(e.target.value)} placeholder="Select Dept..." />
+                                    <Dropdown label="Employee" options={filteredEmployees} value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} placeholder="Select Employee..." disabled={!selectedDept} />
                                 </div>
                                 <Button onClick={handleAssignment} className="w-full" disabled={!selectedEmp}>Assign / Re-assign</Button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle/><span className="mt-1 text-xs">Start</span></Button>
-                                <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle/><span className="mt-1 text-xs">Pause</span></Button>
-                                <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle/><span className="mt-1 text-xs">Complete</span></Button>
-                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert/><span className="mt-1 text-xs">Halt Job</span></Button>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle /><span className="mt-1 text-xs">Start</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle /><span className="mt-1 text-xs">Pause</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle /><span className="mt-1 text-xs">Complete</span></Button>
+                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert /><span className="mt-1 text-xs">Halt Job</span></Button>
                             </div>
                         </div>
                     </div>
@@ -215,7 +212,7 @@ const JobCardScanner = () => {
             )}
 
             {isScannerOpen && (
-                <QrScannerModal 
+                <QrScannerModal
                     onClose={() => setIsScannerOpen(false)}
                     onScanSuccess={handleScanSuccess}
                 />

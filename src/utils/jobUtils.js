@@ -33,7 +33,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
                 }
                 if (percentage > 0) {
                     const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Â°C)` });
+                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}°C)` });
                 }
             }
         } else if (consumable.type === 'dimensional') {
@@ -52,7 +52,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
-    if (!job.startedAt || typeof job.startedAt.seconds === 'undefined') return null; // Ensure startedAt and its seconds property exist
+    if (!job.startedAt?.seconds) return null;
 
     let durationSeconds;
     const startTime = job.startedAt.seconds * 1000;
@@ -60,11 +60,11 @@ export const calculateJobDuration = (job, currentTime) => {
 
     // Use JOB_STATUSES constants for consistency
     if ([JOB_STATUSES.COMPLETE, JOB_STATUSES.AWAITING_QC, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE].includes(job.status)) {
-        if (!job.completedAt || typeof job.completedAt.seconds === 'undefined') return null; // Ensure completedAt and its seconds property exist
+        if (!job.completedAt?.seconds) return null;
         durationSeconds = (job.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else if (job.status === JOB_STATUSES.IN_PROGRESS) {
         durationSeconds = (currentTime - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt && typeof job.pausedAt.seconds !== 'undefined') {
+    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt?.seconds) {
         durationSeconds = (job.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else {
         return null;
@@ -72,11 +72,17 @@ export const calculateJobDuration = (job, currentTime) => {
     
     if (durationSeconds < 0) return null;
 
-    const totalMinutes = durationSeconds / 60;
+    const totalMinutes = Math.floor(durationSeconds / 60);
     const hours = Math.floor(totalMinutes / 60);
-    const minutes = Math.floor(totalMinutes % 60);
+    const minutes = totalMinutes % 60;
     
-    const text = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    let text = '';
+    if (hours > 0) {
+        text += `${hours}h`;
+    }
+    if (minutes > 0 || hours === 0) {
+        text += ` ${minutes}m`;
+    }
 
-    return { text, totalMinutes };
+    return { text: text.trim(), totalMinutes };
 };

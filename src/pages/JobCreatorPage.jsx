@@ -1,4 +1,4 @@
-// FILE: src/pages/JobCreatorPage.jsx (UPDATED)
+// src/pages/JobCreatorPage.jsx
 
 import React, { useState, useEffect } from 'react';
 import CustomJobCreator from '../components/features/job_cards/CustomJobCreator';

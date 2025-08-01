@@ -1,12 +1,11 @@
 // src/api/firebase.js
 
 import { initializeApp } from 'firebase/app';
-// UPDATED: Import necessary auth functions for persistence
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+// --- UPDATED: Import new functions for modern persistence ---
+import { initializeFirestore, persistentLocalCache, memoryLocalCache } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
-// Your web app's Firebase configuration from the .env file
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -16,25 +15,25 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase services
-const authInstance = getAuth(app);
-const db = getFirestore(app);
+// --- UPDATED: Initialize Firestore with modern persistence settings ---
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    // Heuristically chosen size. Adjust as needed.
+    cacheSizeBytes: 100 * 1024 * 1024, // 100 MB
+  }),
+});
+
+// Initialize other Firebase services
+const auth = getAuth(app);
 const functions = getFunctions(app);
 
-// --- NEW: Set authentication persistence ---
-// This function configures how user sessions are saved.
-// 'browserSessionPersistence' means the user is logged out when the browser tab is closed.
-setPersistence(authInstance, browserSessionPersistence)
+// Set authentication persistence
+setPersistence(auth, browserSessionPersistence)
   .catch((error) => {
-    // Handle errors here, such as if the browser doesn't support session storage.
-    console.error("Firebase Persistence Error: ", error);
+    console.error("Firebase Auth Persistence Error: ", error);
   });
 
-// Export the configured services
-export const auth = authInstance;
-export { db, functions };
-
+export { auth, db, functions };
 export default app;

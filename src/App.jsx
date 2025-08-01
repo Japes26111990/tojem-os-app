@@ -48,6 +48,7 @@ import StockHubPage from './pages/StockHubPage.jsx';
 import ProductCatalogPage from './pages/ProductCatalogPage.jsx';
 import ClientScannerPage from './pages/ClientScannerPage.jsx';
 import ConsumablesCatalogPage from './pages/ConsumablesCatalogPage.jsx';
+import ManufacturedStockPage from './pages/ManufacturedStockPage.jsx';
 
 const StaffLayout = () => (
     <MainLayout>
@@ -101,6 +102,7 @@ function App() {
                         <Route path="/qc" element={<RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute>} />
                         <Route path="/orders" element={<RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
                         <Route path="/stock-hub" element={<RoleBasedRoute permission="purchasing"><StockHubPage /></RoleBasedRoute>} />
+                        <Route path="/manufactured-stock" element={<RoleBasedRoute permission="stockTake"><ManufacturedStockPage /></RoleBasedRoute>} />
                         <Route path="/stock-take" element={<RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
                         <Route path="/creator" element={<RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute>} />
                         <Route path="/issues" element={<RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute>} />

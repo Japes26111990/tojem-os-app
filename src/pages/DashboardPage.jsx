@@ -186,6 +186,7 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
+            {/* --- WIDGET CONSOLIDATION --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ManagerFocusWidget />
                 <RoutineTasksWidget tasks={todaysTasks} onTaskComplete={refreshTasks} />

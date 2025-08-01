@@ -82,7 +82,7 @@ const ProductCatalogPage = () => {
     const filteredProducts = useMemo(() => {
         return products.filter(product => {
             const searchMatch = (
-                 product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
             );
             const categoryMatch = !filters.categoryId || product.categoryId === filters.categoryId;
@@ -143,7 +143,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸ ' });
+        ), { icon: '⚠️' });
     };
 
     const handleOpenModal = (product = null) => {
@@ -182,7 +182,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸ ' });
+        ), { icon: '⚠️' });
     };
 
     const handleFilterChange = (e) => {
@@ -218,7 +218,7 @@ const ProductCatalogPage = () => {
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
                      <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Command Center</h2>
-                    <div className="flex gap-2">
+                     <div className="flex gap-2">
                         {selectedIds.size > 0 && (
                             <Button onClick={handleDeleteSelected} variant="danger">
                                 <Trash2 size={18} className="mr-2" />
@@ -237,7 +237,7 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
+                     {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <SearchInput
                             label="Search by Name or Part Number"
@@ -268,11 +268,11 @@ const ProductCatalogPage = () => {
                                      <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -298,20 +298,20 @@ const ProductCatalogPage = () => {
                                                     className="w-20 h-14 object-cover rounded-md"
                                                 />
                                             </td>
-                                            <td className="p-3 text-white font-medium">{product.name}</td>
+                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
                                             <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
                                             <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
-                                                <div className="flex justify-center gap-2">
+                                                 <div className="flex justify-center gap-2">
                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
-                                        </tr>
+                                         </tr>
                                     ))
                                  )}
                             </tbody>

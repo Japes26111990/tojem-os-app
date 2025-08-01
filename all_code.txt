@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 07/31/2025 16:18:58
+Generated on: 08/01/2025 11:07:51
 
 
 ==================================================
@@ -213,12 +213,10 @@ export const logScanEvent = (jobData, newStatus, options = {}) => {
 export const addKaizenSuggestion = (suggestionData) => addDoc(collection(db, 'kaizenSuggestions'), { ...suggestionData, createdAt: serverTimestamp(), status: 'new' });
 export const addPraise = (praiseData) => addDoc(collection(db, 'praise'), { ...praiseData, createdAt: serverTimestamp() });
 
-// --- FIX: Removed orderBy to prevent index error. Sorting is now done on the client-side. ---
 export const listenToPraiseForEmployee = (employeeId, callback) => {
     const q = query(collection(db, 'praise'), where('recipientId', '==', employeeId));
     return onSnapshot(q, (snapshot) => {
         const praiseItems = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Sort the results by date here in the client-side code
         praiseItems.sort((a, b) => (b.createdAt?.toDate() || 0) - (a.createdAt?.toDate() || 0));
         callback(praiseItems);
     });
@@ -5680,7 +5678,6 @@ const JobCardScanner = () => {
         if (!employee) return toast.error("Selected employee not found.");
 
         try {
-            // Direct document update is acceptable for assignment as it's a manager-level task
             await updateDocument('createdJobCards', jobData.id, {
                 employeeId: employee.id,
                 employeeName: employee.name
@@ -5693,14 +5690,13 @@ const JobCardScanner = () => {
         }
     };
 
-    // --- UPDATED: This now calls logScanEvent instead of updateJobStatus ---
     const handleStatusUpdate = async (newStatus) => {
         if (!jobData.employeeId || jobData.employeeId === 'unassigned') {
             return toast.error("Please assign an employee before starting the job.");
         }
-        
+
         const promise = logScanEvent(jobData, newStatus);
-        
+
         toast.promise(promise, {
             loading: 'Logging event...',
             success: `Event logged for status "${newStatus}"!`,
@@ -5710,8 +5706,7 @@ const JobCardScanner = () => {
         await promise;
         handleCloseModal();
     };
-    
-    // --- UPDATED: This now calls logScanEvent for halting a job ---
+
     const handleFlagIssue = () => {
         if (!jobData) return;
         toast((t) => (
@@ -5719,9 +5714,9 @@ const JobCardScanner = () => {
                 <span className="font-bold text-white">Halt Job: {jobData.partName}</span>
                 <p className="text-sm text-gray-300">Please provide a reason for halting this job:</p>
                 <Input
-                  id="halt-reason-input"
-                  placeholder="e.g., material defect, tool problem..."
-                  autoFocus
+                    id="halt-reason-input"
+                    placeholder="e.g., material defect, tool problem..."
+                    autoFocus
                 />
                 <div className="flex gap-2 mt-2">
                     <Button variant="danger" size="sm" onClick={() => {
@@ -5755,12 +5750,12 @@ const JobCardScanner = () => {
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto text-center">
                 <h3 className="text-2xl font-bold text-white mb-4">Job Card Scanner</h3>
                 <p className="text-gray-400 mb-6">Scan a job card's QR code to begin.</p>
-                <Button 
-                    variant="primary" 
+                <Button
+                    variant="primary"
                     className="w-full max-w-xs mx-auto py-4 text-lg"
                     onClick={() => setIsScannerOpen(true)}
                 >
-                    <QrCode size={24} className="mr-2"/>
+                    <QrCode size={24} className="mr-2" />
                     Scan Job Card
                 </Button>
             </div>
@@ -5770,7 +5765,7 @@ const JobCardScanner = () => {
                     <div className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-lg">
                         <div className="flex justify-between items-center p-4 border-b border-gray-700">
                             <h3 className="text-xl font-bold text-white">{jobData.partName}</h3>
-                            <Button onClick={handleCloseModal} variant="secondary" className="p-2"><X size={20}/></Button>
+                            <Button onClick={handleCloseModal} variant="secondary" className="p-2"><X size={20} /></Button>
                         </div>
 
                         <div className="p-6 space-y-6">
@@ -5778,27 +5773,27 @@ const JobCardScanner = () => {
                                 <p className="text-sm text-gray-400">Current Status</p>
                                 <p className="text-lg font-bold text-yellow-300">{jobData.status}</p>
                             </div>
-                            
+
                             <div className="bg-gray-900/50 p-4 rounded-lg space-y-4">
                                 <div className="flex items-center gap-3">
-                                    <User size={20} className="text-gray-400"/>
+                                    <User size={20} className="text-gray-400" />
                                     <div>
                                         <p className="text-sm text-gray-400">Assigned To</p>
                                         <p className="font-semibold text-white">{jobData.employeeName || 'Unassigned'}</p>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2 items-end">
-                                    <Dropdown label="Department" options={departments} value={selectedDept} onChange={e => setSelectedDept(e.target.value)} placeholder="Select Dept..."/>
-                                    <Dropdown label="Employee" options={filteredEmployees} value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} placeholder="Select Employee..." disabled={!selectedDept}/>
+                                <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+                                    <Dropdown label="Department" options={departments} value={selectedDept} onChange={e => setSelectedDept(e.target.value)} placeholder="Select Dept..." />
+                                    <Dropdown label="Employee" options={filteredEmployees} value={selectedEmp} onChange={e => setSelectedEmp(e.target.value)} placeholder="Select Employee..." disabled={!selectedDept} />
                                 </div>
                                 <Button onClick={handleAssignment} className="w-full" disabled={!selectedEmp}>Assign / Re-assign</Button>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle/><span className="mt-1 text-xs">Start</span></Button>
-                                <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle/><span className="mt-1 text-xs">Pause</span></Button>
-                                <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle/><span className="mt-1 text-xs">Complete</span></Button>
-                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert/><span className="mt-1 text-xs">Halt Job</span></Button>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <Button onClick={() => handleStatusUpdate('In Progress')} disabled={!jobData.employeeId || jobData.employeeId === 'unassigned' || jobData.status === 'In Progress'} className="flex-col h-20"><PlayCircle /><span className="mt-1 text-xs">Start</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Paused')} variant="secondary" className="flex-col h-20"><PauseCircle /><span className="mt-1 text-xs">Pause</span></Button>
+                                <Button onClick={() => handleStatusUpdate('Awaiting QC')} variant="success" className="flex-col h-20"><CheckCircle /><span className="mt-1 text-xs">Complete</span></Button>
+                                <Button onClick={handleFlagIssue} variant="danger" className="flex-col h-20"><ShieldAlert /><span className="mt-1 text-xs">Halt Job</span></Button>
                             </div>
                         </div>
                     </div>
@@ -5806,7 +5801,7 @@ const JobCardScanner = () => {
             )}
 
             {isScannerOpen && (
-                <QrScannerModal 
+                <QrScannerModal
                     onClose={() => setIsScannerOpen(false)}
                     onScanSuccess={handleScanSuccess}
                 />
@@ -6082,54 +6077,61 @@ export default Scanner;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\scanner\StockTakeScanner.jsx
 ==================================================
-// src/components/features/scanner/StockTakeScanner.jsx (Upgraded with Camera Scanning)
+// src/components/features/scanner/StockTakeScanner.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
-import { findInventoryItemByItemCode, updateStockByWeight } from '../../../api/firestore';
+import { findInventoryItemByItemCode, updateStockByWeight, updateStockCount } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
-import { QrCode, Weight, Check, X } from 'lucide-react';
+import { QrCode, Weight, Check, X, Hash } from 'lucide-react';
 import toast from 'react-hot-toast';
-import QrScannerModal from './QrScannerModal'; // --- IMPORT THE SCANNER MODAL ---
+import QrScannerModal from './QrScannerModal';
 
 const StockTakeScanner = () => {
     const [scanInput, setScanInput] = useState('');
     const [scannedItem, setScannedItem] = useState(null);
-    const [weightInput, setWeightInput] = useState('');
+    const [inputValue, setInputValue] = useState(''); // For weight or quantity
     const [loading, setLoading] = useState(false);
-    const [stage, setStage] = useState('scan_item'); // Stages: scan_item, enter_weight, confirm_scan
-    const [isScannerOpen, setIsScannerOpen] = useState(false); // --- STATE FOR MODAL ---
-    const weightInputRef = useRef(null);
-    const scanInputRef = useRef(null);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [calculatedQty, setCalculatedQty] = useState(null);
+    const inputRef = useRef(null);
 
     useEffect(() => {
-        if (stage === 'enter_weight' && weightInputRef.current) {
-            weightInputRef.current.focus();
-        } else if (stage !== 'enter_weight' && scanInputRef.current) {
-            scanInputRef.current.focus();
+        if (scannedItem && inputRef.current) {
+            inputRef.current.focus();
         }
-    }, [stage]);
+    }, [scannedItem]);
+
+    // Live calculation for weight-based items
+    useEffect(() => {
+        if (scannedItem?.stockTakeMethod === 'weight' && !isNaN(parseFloat(inputValue))) {
+            const grossWeight = parseFloat(inputValue);
+            const tareWeight = parseFloat(scannedItem.tareWeight) || 0;
+            const unitWeight = parseFloat(scannedItem.unitWeight) || 1;
+            if (unitWeight > 0) {
+                const netWeight = grossWeight - tareWeight;
+                const finalQty = Math.round(netWeight / unitWeight);
+                setCalculatedQty(finalQty < 0 ? 0 : finalQty);
+            }
+        } else {
+            setCalculatedQty(null);
+        }
+    }, [inputValue, scannedItem]);
 
     const resetState = () => {
         setScanInput('');
         setScannedItem(null);
-        setWeightInput('');
+        setInputValue('');
+        setCalculatedQty(null);
         setLoading(false);
-        setStage('scan_item');
     };
 
-    const handleInitialScan = async (e) => {
-        e.preventDefault();
-        if (!scanInput.trim()) return;
+    const handleFindItem = async (code) => {
+        if (!code.trim()) return;
         setLoading(true);
-
         try {
-            const item = await findInventoryItemByItemCode(scanInput.trim());
-            if (item.stockTakeMethod !== 'weight') {
-                throw new Error(`Item "${item.name}" is not configured for weight-based stock-taking.`);
-            }
+            const item = await findInventoryItemByItemCode(code.trim());
             setScannedItem(item);
-            setStage('enter_weight');
             toast.success(`Found: ${item.name}`);
         } catch (error) {
             toast.error(error.message);
@@ -6139,130 +6141,98 @@ const StockTakeScanner = () => {
         }
     };
 
-    const handleWeightSubmit = (e) => {
-        e.preventDefault();
-        if (isNaN(parseFloat(weightInput))) {
-            return toast.error("Please enter a valid weight.");
-        }
-        setStage('confirm_scan');
-        setScanInput('');
-        toast('Please re-scan the item QR code to confirm.', { icon: 'â„¹ï¸' });
+    const handleScanSuccess = (decodedText) => {
+        setIsScannerOpen(false);
+        setScanInput(decodedText);
+        handleFindItem(decodedText);
     };
 
-    const handleConfirmationScan = async (e) => {
+    const handleSubmitCount = async (e) => {
         e.preventDefault();
-        if (scanInput.trim() !== scannedItem.itemCode) {
-            toast.error("Confirmation scan does not match the original item. Please try again.");
-            return;
-        }
+        if (!scannedItem) return;
+
         setLoading(true);
         try {
-            const { newQuantity } = await updateStockByWeight(scannedItem.id, scannedItem.category, weightInput);
-            toast.success(`Stock for "${scannedItem.name}" updated to ${newQuantity} units.`);
+            if (scannedItem.stockTakeMethod === 'weight') {
+                if (calculatedQty === null || calculatedQty < 0) {
+                    throw new Error("Invalid weight or calculated quantity.");
+                }
+                const { newQuantity } = await updateStockByWeight(scannedItem.id, inputValue);
+                toast.success(`Stock for "${scannedItem.name}" updated to ${newQuantity} units.`);
+            } else {
+                const newCount = parseInt(inputValue, 10);
+                if (isNaN(newCount) || newCount < 0) {
+                    throw new Error("Please enter a valid, non-negative quantity.");
+                }
+                const sessionId = `MANUAL_SCAN-${Date.now()}`;
+                await updateStockCount(scannedItem.id, scannedItem.category, newCount, sessionId);
+                toast.success(`Stock for "${scannedItem.name}" updated to ${newCount} units.`);
+            }
             resetState();
         } catch (error) {
-            toast.error(error.message);
-            console.error(error);
+            toast.error(`Update failed: ${error.message}`);
         } finally {
             setLoading(false);
         }
     };
 
-    // --- HANDLER FOR SUCCESSFUL SCAN ---
-    const handleScanSuccess = (decodedText) => {
-        setScanInput(decodedText);
-        setIsScannerOpen(false);
-        // Automatically submit the form after a successful scan
-        // We add a small delay to allow the state to update before submitting
-        setTimeout(() => {
-            if (scanInputRef.current) {
-                scanInputRef.current.form.requestSubmit();
-            }
-        }, 100);
-    };
-
     return (
         <>
             <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-2xl mx-auto">
-                {stage === 'scan_item' && (
-                    <form onSubmit={handleInitialScan} className="space-y-4">
-                        <h3 className="text-xl font-bold text-white text-center">Scan Item QR Code</h3>
-                        <div className="flex items-center gap-2">
-                            <div className="relative flex-grow">
-                                <Input
-                                    ref={scanInputRef}
-                                    value={scanInput}
-                                    onChange={(e) => setScanInput(e.target.value)}
-                                    placeholder="Scan item to begin..."
-                                    autoFocus
-                                    className="pl-10"
-                                />
-                                <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            </div>
-                            <Button type="button" variant="secondary" onClick={() => setIsScannerOpen(true)}>
-                                Scan
-                            </Button>
-                        </div>
-                        <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-                            {loading ? 'Searching...' : 'Find Item'}
+                {!scannedItem ? (
+                    <div className="space-y-4 text-center">
+                        <h3 className="text-xl font-bold text-white">Scan Item to Begin</h3>
+                        <p className="text-gray-400">Scan the QR code on the item bin or manually enter the item code below.</p>
+                        <Button
+                            variant="primary"
+                            className="w-full max-w-xs mx-auto py-3 text-lg"
+                            onClick={() => setIsScannerOpen(true)}
+                        >
+                            <QrCode size={24} className="mr-2"/>
+                            Scan QR Code
                         </Button>
-                    </form>
-                )}
-
-                {stage === 'enter_weight' && scannedItem && (
-                    <form onSubmit={handleWeightSubmit} className="space-y-4 animate-fade-in">
-                        <h3 className="text-xl font-bold text-white text-center">Enter Weight for:</h3>
-                        <p className="text-2xl font-semibold text-blue-400 text-center">{scannedItem.name}</p>
-                        <div className="flex items-center gap-4">
-                            <Weight size={40} className="text-gray-400"/>
+                        <form onSubmit={(e) => { e.preventDefault(); handleFindItem(scanInput); }} className="flex items-center gap-2 pt-4">
                             <Input
-                                ref={weightInputRef}
-                                type="number"
-                                step="any"
-                                value={weightInput}
-                                onChange={(e) => setWeightInput(e.target.value)}
-                                placeholder="Enter gross weight (e.g., 1500.5)"
-                                autoFocus
+                                value={scanInput}
+                                onChange={(e) => setScanInput(e.target.value)}
+                                placeholder="Or type item code..."
+                                className="text-center"
                             />
+                            <Button type="submit" disabled={loading}>{loading ? 'Searching...' : 'Find'}</Button>
+                        </form>
+                    </div>
+                ) : (
+                    <form onSubmit={handleSubmitCount} className="space-y-4 animate-fade-in">
+                        <h3 className="text-2xl font-semibold text-blue-400 text-center">{scannedItem.name}</h3>
+                        <div className="flex items-center justify-center gap-2 text-gray-400">
+                            {scannedItem.stockTakeMethod === 'weight' ? <Weight size={16}/> : <Hash size={16}/>}
+                            <span>Method: {scannedItem.stockTakeMethod}</span>
                         </div>
-                        <div className="flex gap-4">
-                            <Button type="button" variant="secondary" onClick={resetState} className="w-full">
-                                <X size={18} className="mr-2"/>Cancel
-                            </Button>
-                            <Button type="submit" variant="primary" className="w-full">
-                                <Check size={18} className="mr-2"/>Confirm Weight
-                            </Button>
-                        </div>
-                    </form>
-                )}
+                        <p className="text-center text-gray-500">System predicts: {scannedItem.currentStock || 0} {scannedItem.unit || ''}</p>
+                        
+                        <Input
+                            ref={inputRef}
+                            type="number"
+                            step="any"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            label={scannedItem.stockTakeMethod === 'weight' ? "Enter Gross Weight (grams)" : "Enter Physical Quantity"}
+                            placeholder={scannedItem.stockTakeMethod === 'weight' ? "e.g., 1500.5" : "e.g., 250"}
+                            autoFocus
+                        />
 
-                {stage === 'confirm_scan' && scannedItem && (
-                     <form onSubmit={handleConfirmationScan} className="space-y-4 animate-fade-in">
-                        <h3 className="text-xl font-bold text-white text-center">Confirm Update for:</h3>
-                        <p className="text-2xl font-semibold text-blue-400 text-center">{scannedItem.name}</p>
-                        <p className="text-lg text-white text-center">Weight Entered: <span className="font-bold">{weightInput}g</span></p>
-                        <div className="flex items-center gap-2">
-                            <div className="relative flex-grow">
-                                <Input
-                                    ref={scanInputRef}
-                                    value={scanInput}
-                                    onChange={(e) => setScanInput(e.target.value)}
-                                    placeholder="Re-scan QR code to save..."
-                                    autoFocus
-                                    className="pl-10"
-                                />
-                                <QrCode className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400" size={20} />
-                            </div>
-                            <Button type="button" variant="secondary" onClick={() => setIsScannerOpen(true)}>
-                                Scan
-                            </Button>
-                        </div>
-                        <div className="flex gap-4">
+                        {calculatedQty !== null && (
+                            <p className="text-center text-green-400 text-lg">
+                                Calculated Quantity: <span className="font-bold">{calculatedQty}</span>
+                            </p>
+                        )}
+                        
+                        <div className="flex gap-4 pt-4">
                             <Button type="button" variant="secondary" onClick={resetState} className="w-full">
                                 <X size={18} className="mr-2"/>Cancel
                             </Button>
                             <Button type="submit" variant="primary" className="w-full" disabled={loading}>
-                                {loading ? 'Saving...' : 'Save Stock Count'}
+                                <Check size={18} className="mr-2"/>{loading ? 'Saving...' : 'Save Count'}
                             </Button>
                         </div>
                     </form>
@@ -6270,7 +6240,7 @@ const StockTakeScanner = () => {
             </div>
 
             {isScannerOpen && (
-                <QrScannerModal 
+                <QrScannerModal
                     onClose={() => setIsScannerOpen(false)}
                     onScanSuccess={handleScanSuccess}
                 />
@@ -6280,7 +6250,6 @@ const StockTakeScanner = () => {
 };
 
 export default StockTakeScanner;
-
 
 
 ==================================================
@@ -7118,9 +7087,7 @@ export default FinancialSettings;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\settings\InventoryManager.jsx
 ==================================================
-// src/components/features/settings/InventoryManager.jsx (UNIFIED)
-// This single component now manages all inventory categories (Products, Components, etc.)
-// It replaces the four separate manager components.
+// src/components/features/settings/InventoryManager.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -7129,16 +7096,16 @@ import {
     updateInventoryItem,
     deleteInventoryItem,
     getSuppliers,
-    getSkills,
-    getProductCategories,
+    getSupplierPricingForItem,
+    addSupplierPrice,
+    deleteSupplierPrice
 } from '../../../api/firestore';
 import Input from '../../ui/Input';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Search, Package, Factory, Wrench, Beaker, Save, PlusCircle, Trash2 } from 'lucide-react';
+import { Search, Package, Wrench, Beaker, Save, PlusCircle, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// Reusable component for the category tabs
 const CategoryTab = ({ label, icon, isActive, onClick }) => (
     <button onClick={onClick} className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-md transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
         {icon}
@@ -7146,35 +7113,80 @@ const CategoryTab = ({ label, icon, isActive, onClick }) => (
     </button>
 );
 
+const SupplierPriceManager = ({ suppliers, supplierPrices, onAdd, onDelete }) => {
+    const [selectedSupplier, setSelectedSupplier] = useState('');
+    const [price, setPrice] = useState('');
+
+    const handleAdd = () => {
+        if (!selectedSupplier || !price) {
+            toast.error("Please select a supplier and enter a price.");
+            return;
+        }
+        onAdd(selectedSupplier, price);
+        setSelectedSupplier('');
+        setPrice('');
+    };
+
+    return (
+        <div className="space-y-4 pt-4 mt-4 border-t border-gray-700">
+            <h4 className="text-lg font-semibold text-white">Supplier Pricing</h4>
+            <p className="text-xs text-gray-400">Link suppliers to this item and set their specific price. The "Default Cost Price" above will be used if no supplier price is found.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                <Dropdown
+                    label="Supplier"
+                    value={selectedSupplier}
+                    onChange={(e) => setSelectedSupplier(e.target.value)}
+                    options={suppliers}
+                    placeholder="Select a supplier..."
+                />
+                <Input
+                    label="Price (R)"
+                    type="number"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="e.g., 125.50"
+                />
+                <Button onClick={handleAdd} variant="secondary">Add Price Link</Button>
+            </div>
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-2">
+                {supplierPrices.map(p => (
+                    <div key={p.id} className="flex justify-between items-center bg-gray-900/50 p-2 rounded-md">
+                        <p className="text-gray-300">{p.supplierName}</p>
+                        <div className="flex items-center gap-4">
+                            <p className="font-mono text-green-400">R {p.price.toFixed(2)}</p>
+                            <Button onClick={() => onDelete(p.id)} variant="danger" size="sm" className="p-1 h-7 w-7"><Trash2 size={14}/></Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const InventoryManager = () => {
     const [allItems, setAllItems] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
-    const [skills, setSkills] = useState([]);
-    const [productCategories, setProductCategories] = useState([]); // For the 'Product' form
     const [loading, setLoading] = useState(true);
-    
-    const [activeCategory, setActiveCategory] = useState('Product');
+    const [activeCategory, setActiveCategory] = useState('Component');
     const [searchTerm, setSearchTerm] = useState('');
     const [editingItemId, setEditingItemId] = useState(null);
-
+    const [supplierPrices, setSupplierPrices] = useState([]);
+    
     const initialFormState = {
-        name: '', partNumber: '', sellingPrice: '', categoryId: '', currentStock: '', reorderLevel: '', standardStockLevel: '', unit: '', price: ''
+        name: '', itemCode: '', price: '', unit: '',
+        currentStock: '', reorderLevel: '', standardStockLevel: '',
     };
     const [formData, setFormData] = useState(initialFormState);
-
+    
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [items, supps, skls, prodCats] = await Promise.all([
+            const [items, supps] = await Promise.all([
                 getAllInventoryItems(),
                 getSuppliers(),
-                getSkills(),
-                getProductCategories()
             ]);
-            setAllItems(items);
+            setAllItems(items.filter(item => item.category !== 'Product'));
             setSuppliers(supps);
-            setSkills(skls);
-            setProductCategories(prodCats);
         } catch (error) {
             console.error("Error fetching inventory data:", error);
             toast.error("Failed to load inventory data.");
@@ -7186,21 +7198,32 @@ const InventoryManager = () => {
         fetchData();
     }, []);
 
+    useEffect(() => {
+        if (editingItemId) {
+            const fetchPrices = async () => {
+                const prices = await getSupplierPricingForItem(editingItemId);
+                setSupplierPrices(prices);
+            };
+            fetchPrices();
+        } else {
+            setSupplierPrices([]);
+        }
+    }, [editingItemId]);
+
+    const displayedItems = useMemo(() => {
+        return allItems.filter(item => {
+            const categoryMatch = item.category === activeCategory;
+            const searchMatch = !searchTerm || 
+                item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                (item.itemCode && item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()));
+            return categoryMatch && searchMatch;
+        });
+    }, [allItems, activeCategory, searchTerm]);
+
     const handleCategoryChange = (category) => {
         setActiveCategory(category);
         setSearchTerm('');
-        setEditingItemId(null);
-        setFormData(initialFormState);
-    };
-
-    const handleEdit = (item) => {
-        setEditingItemId(item.id);
-        setFormData({ ...initialFormState, ...item });
-    };
-
-    const handleCancelEdit = () => {
-        setEditingItemId(null);
-        setFormData(initialFormState);
+        cancelEdit();
     };
 
     const handleInputChange = (e) => {
@@ -7208,34 +7231,15 @@ const InventoryManager = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!formData.name.trim()) return toast.error("Item name is required.");
+    const cancelEdit = () => {
+        setEditingItemId(null);
+        setFormData(initialFormState);
+        setSupplierPrices([]);
+    };
 
-        const dataToSave = {
-            ...formData,
-            category: activeCategory, // Set the category based on the active tab
-            price: parseFloat(formData.price) || 0,
-            sellingPrice: parseFloat(formData.sellingPrice) || 0,
-            currentStock: Number(formData.currentStock) || 0,
-            reorderLevel: Number(formData.reorderLevel) || 0,
-            standardStockLevel: Number(formData.standardStockLevel) || 0,
-        };
-
-        try {
-            if (editingItemId) {
-                await updateInventoryItem(editingItemId, dataToSave);
-                toast.success(`${activeCategory} updated successfully!`);
-            } else {
-                await addInventoryItem(dataToSave);
-                toast.success(`${activeCategory} added successfully!`);
-            }
-            handleCancelEdit();
-            fetchData();
-        } catch (error) {
-            console.error(`Error saving ${activeCategory}:`, error);
-            toast.error(`Failed to save ${activeCategory}. ${error.message}`);
-        }
+    const handleEdit = (item) => {
+        setEditingItemId(item.id);
+        setFormData({ ...initialFormState, ...item });
     };
 
     const handleDelete = (itemId) => {
@@ -7247,7 +7251,7 @@ const InventoryManager = () => {
                         .then(() => {
                             toast.success("Item deleted.");
                             fetchData();
-                            handleCancelEdit();
+                            cancelEdit();
                         })
                         .catch(err => toast.error("Failed to delete item."));
                     toast.dismiss(t.id);
@@ -7261,52 +7265,82 @@ const InventoryManager = () => {
         ), { icon: 'âš ï¸' });
     };
 
-    const displayedItems = useMemo(() => {
-        return allItems.filter(item => {
-            const categoryMatch = item.category === activeCategory;
-            const searchMatch = !searchTerm || 
-                item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                (item.partNumber && item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-            return categoryMatch && searchMatch;
-        });
-    }, [allItems, activeCategory, searchTerm]);
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.name.trim()) return toast.error("Item name is required.");
 
-    const renderFormFields = () => {
-        // Common fields for all categories
-        const commonFields = (
-            <>
-                <Input label="Item Name" name="name" value={formData.name} onChange={handleInputChange} required />
-                <Input label="Item Code / Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} />
-                <Input label="Default Cost Price (R)" name="price" type="number" value={formData.price} onChange={handleInputChange} />
-                <Input label="Unit of Measure" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="e.g., each, kg, box"/>
-                <Input label="Current Stock" name="currentStock" type="number" value={formData.currentStock} onChange={handleInputChange} />
-                <Input label="Re-order Level" name="reorderLevel" type="number" value={formData.reorderLevel} onChange={handleInputChange} />
-                <Input label="Standard Stock Level" name="standardStockLevel" type="number" value={formData.standardStockLevel} onChange={handleInputChange} />
-            </>
-        );
+        const dataToSave = {
+            ...formData,
+            category: activeCategory,
+            price: parseFloat(formData.price) || 0,
+            currentStock: Number(formData.currentStock) || 0,
+            reorderLevel: Number(formData.reorderLevel) || 0,
+            standardStockLevel: Number(formData.standardStockLevel) || 0,
+        };
 
-        if (activeCategory === 'Product') {
-            return (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {commonFields}
-                    <Dropdown label="Product Category" name="categoryId" value={formData.categoryId} onChange={handleInputChange} options={productCategories} placeholder="Select category..." />
-                    <Input label="Selling Price (R)" name="sellingPrice" type="number" value={formData.sellingPrice} onChange={handleInputChange} />
-                </div>
-            );
+        try {
+            if (editingItemId) {
+                await updateInventoryItem(editingItemId, dataToSave);
+                toast.success(`${activeCategory} updated successfully!`);
+            } else {
+                await addInventoryItem(dataToSave);
+                toast.success(`${activeCategory} added successfully!`);
+            }
+            cancelEdit();
+            fetchData();
+        } catch (error) {
+            toast.error(`Failed to save ${activeCategory}. ${error.message}`);
         }
-        
-        // Form for Component, Raw Material, Workshop Supply
-        return (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {commonFields}
-            </div>
-        );
+    };
+
+    const handleAddSupplierPrice = async (supplierId, price) => {
+        const supplier = suppliers.find(s => s.id === supplierId);
+        if (!supplier) return;
+
+        const priceData = {
+            itemId: editingItemId,
+            itemName: formData.name,
+            supplierId: supplier.id,
+            supplierName: supplier.name,
+            price: parseFloat(price)
+        };
+        await addSupplierPrice(priceData);
+        const prices = await getSupplierPricingForItem(editingItemId);
+        setSupplierPrices(prices);
+        toast.success("Supplier price added.");
+    };
+
+    const handleDeleteSupplierPrice = (priceId) => {
+        toast((t) => (
+            <span>
+                Delete this price link?
+                <Button
+                    variant="danger" size="sm" className="ml-2"
+                    onClick={() => {
+                        deleteSupplierPrice(priceId)
+                            .then(() => {
+                                toast.success("Price link deleted.");
+                                setSupplierPrices(prev => prev.filter(p => p.id !== priceId));
+                            })
+                            .catch(err => toast.error("Failed to delete price link."));
+                        toast.dismiss(t.id);
+                    }}
+                >
+                    Delete
+                </Button>
+                <Button
+                    variant="secondary" size="sm" className="ml-2"
+                    onClick={() => toast.dismiss(t.id)}
+                >
+                    Cancel
+                </Button>
+            </span>
+        ), { icon: 'âš ï¸' });
     };
 
     return (
         <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-900/50 rounded-lg">
-                <CategoryTab label="Products" icon={<Factory size={16}/>} isActive={activeCategory === 'Product'} onClick={() => handleCategoryChange('Product')} />
                 <CategoryTab label="Components" icon={<Wrench size={16}/>} isActive={activeCategory === 'Component'} onClick={() => handleCategoryChange('Component')} />
                 <CategoryTab label="Raw Materials" icon={<Beaker size={16}/>} isActive={activeCategory === 'Raw Material'} onClick={() => handleCategoryChange('Raw Material')} />
                 <CategoryTab label="Workshop Supplies" icon={<Package size={16}/>} isActive={activeCategory === 'Workshop Supply'} onClick={() => handleCategoryChange('Workshop Supply')} />
@@ -7314,9 +7348,27 @@ const InventoryManager = () => {
 
             <form onSubmit={handleSubmit} className="bg-gray-800 p-4 rounded-lg space-y-4">
                 <h3 className="text-lg font-bold text-white">{editingItemId ? `Editing ${activeCategory}` : `Add New ${activeCategory}`}</h3>
-                {renderFormFields()}
-                <div className="flex justify-end gap-2">
-                    {editingItemId && <Button type="button" variant="secondary" onClick={handleCancelEdit}>Cancel</Button>}
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Input label="Item Name" name="name" value={formData.name} onChange={handleInputChange} required />
+                    <Input label="Item Code / Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} />
+                    <Input label="Default Cost Price (R)" name="price" type="number" value={formData.price} onChange={handleInputChange} />
+                    <Input label="Unit of Measure" name="unit" value={formData.unit} onChange={handleInputChange} placeholder="e.g., each, kg, box"/>
+                    <Input label="Current Stock" name="currentStock" type="number" value={formData.currentStock} onChange={handleInputChange} />
+                    <Input label="Re-order Level" name="reorderLevel" type="number" value={formData.reorderLevel} onChange={handleInputChange} />
+                </div>
+                
+                {editingItemId && (
+                    <SupplierPriceManager 
+                        suppliers={suppliers}
+                        supplierPrices={supplierPrices}
+                        onAdd={handleAddSupplierPrice}
+                        onDelete={handleDeleteSupplierPrice}
+                    />
+                )}
+
+                <div className="flex justify-end gap-2 pt-4 border-t border-gray-700">
+                    {editingItemId && <Button type="button" variant="secondary" onClick={cancelEdit}>Cancel</Button>}
                     <Button type="submit" variant="primary">{editingItemId ? <><Save size={16} className="mr-2"/> Update Item</> : <><PlusCircle size={16} className="mr-2"/> Add Item</>}</Button>
                 </div>
             </form>
@@ -10094,8 +10146,118 @@ export default WeatherApplet;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\ConsignmentReport.jsx
+==================================================
+// src/components/features/stock/ConsignmentReport.jsx
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { getClientUsers, listenToConsignmentStockForClient } from '../../../api/firestore';
+import { Truck, User } from 'lucide-react';
+
+const KpiCard = ({ icon, title, value, color }) => (
+    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div className="flex items-start space-x-4">
+            <div className={`p-3 rounded-full ${color}`}>
+                {icon}
+            </div>
+            <div>
+                <p className="text-gray-400 text-sm">{title}</p>
+                <p className="text-3xl font-bold text-white">{value}</p>
+            </div>
+        </div>
+    </div>
+);
+
+const ConsignmentReport = () => {
+    const [clients, setClients] = useState([]);
+    const [consignmentStock, setConsignmentStock] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const clientUsers = await getClientUsers();
+                const formattedClients = clientUsers.map(c => ({ id: c.id, name: c.companyName || c.email }));
+                setClients(formattedClients);
+
+                const allStock = [];
+                const unsubscribers = formattedClients.map(client => {
+                    return listenToConsignmentStockForClient(client.id, (items) => {
+                        const existingClientIndex = allStock.findIndex(s => s.clientId === client.id);
+                        if (existingClientIndex > -1) {
+                            allStock[existingClientIndex].items = items;
+                        } else {
+                            allStock.push({ clientId: client.id, clientName: client.name, items });
+                        }
+                        setConsignmentStock([...allStock]);
+                    });
+                });
+                setLoading(false);
+                return () => unsubscribers.forEach(unsub => unsub());
+            } catch (error) {
+                console.error("Error fetching consignment data:", error);
+                setLoading(false);
+            }
+        };
+        const unsubPromise = fetchData();
+        return () => { unsubPromise.then(cleanup => cleanup && cleanup()); };
+    }, []);
+
+    const totalConsignmentValue = useMemo(() => {
+        return consignmentStock.flat().reduce((sum, clientData) => {
+            return sum + clientData.items.reduce((clientSum, item) => {
+                return clientSum + ((item.quantity || 0) * (item.sellingPrice || 0));
+            }, 0);
+        }, 0);
+    }, [consignmentStock]);
+
+    return (
+        <div className="space-y-6">
+            <KpiCard
+                icon={<Truck size={24} />}
+                title="Total Value of Consignment Stock"
+                value={`R ${totalConsignmentValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
+                color="bg-purple-500/20 text-purple-400"
+            />
+            {loading ? <p>Loading consignment data...</p> : (
+                consignmentStock.map(clientData => (
+                    <div key={clientData.clientId} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                        <h4 className="font-bold text-white text-lg mb-2 flex items-center gap-2"><User /> {clientData.clientName}</h4>
+                         <div className="overflow-x-auto max-h-72">
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
+                                    <tr>
+                                        <th className="p-2">Product Name</th>
+                                        <th className="p-2 text-center">Quantity on Hand</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {clientData.items.map(item => (
+                                        <tr key={item.id} className="border-b border-gray-700">
+                                            <td className="p-2 text-white">{item.productName}</td>
+                                            <td className="p-2 text-center font-bold">{item.quantity || 0}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+};
+
+export default ConsignmentReport;
+
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\ConsignmentStockTake.jsx
 ==================================================
+// src/components/features/stock/ConsignmentStockTake.jsx
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
     getClientUsers, 
@@ -10107,8 +10269,10 @@ import {
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
-import { User, PackagePlus, Save, ClipboardList, Trash2 } from 'lucide-react';
+import { User, PackagePlus, Save, QrCode, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
+import QrScannerModal from '../scanner/QrScannerModal';
+import StockCountModal from './StockCountModal';
 
 const ConsignmentStockTake = () => {
     const [clients, setClients] = useState([]);
@@ -10117,16 +10281,16 @@ const ConsignmentStockTake = () => {
     const [consignmentStock, setConsignmentStock] = useState([]);
     const [counts, setCounts] = useState({});
     const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
     
-    // State for adding a new item
+    // State for modals
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [itemToCount, setItemToCount] = useState(null);
     const [newItemProductId, setNewItemProductId] = useState('');
-    const [newItemShelf, setNewItemShelf] = useState('');
-    const [newItemInitialCount, setNewItemInitialCount] = useState(0);
 
     useEffect(() => {
         const fetchInitialData = async () => {
             const [clientUsers, allProducts] = await Promise.all([getClientUsers(), getProducts()]);
-            // Format clients for the dropdown
             const formattedClients = clientUsers.map(c => ({ id: c.id, name: c.companyName || c.email }));
             setClients(formattedClients);
             setProducts(allProducts);
@@ -10142,7 +10306,6 @@ const ConsignmentStockTake = () => {
         }
         const unsubscribe = listenToConsignmentStockForClient(selectedClientId, (items) => {
             setConsignmentStock(items);
-            // Initialize counts state from fetched data
             const initialCounts = items.reduce((acc, item) => {
                 acc[item.id] = item.quantity;
                 return acc;
@@ -10155,123 +10318,116 @@ const ConsignmentStockTake = () => {
     const handleCountChange = (itemId, value) => {
         setCounts(prev => ({ ...prev, [itemId]: value }));
     };
-
-    const handleAddNewItem = async () => {
-        if (!newItemProductId || !selectedClientId) {
-            return toast.error("Please select a product to add.");
-        }
-
-        const product = products.find(p => p.id === newItemProductId);
-        if (!product) return toast.error("Selected product not found.");
-        
-        const client = clients.find(c => c.id === selectedClientId);
-
-        const newItemData = {
-            clientId: selectedClientId,
-            clientName: client.name,
-            productId: product.id,
-            productName: product.name,
-            partNumber: product.partNumber || 'N/A',
-            shelfNumber: newItemShelf || null,
-            quantity: Number(newItemInitialCount) || 0,
-        };
-
-        try {
-            await addConsignmentItem(newItemData);
-            toast.success(`${product.name} added to ${client.name}'s consignment stock.`);
-            setNewItemProductId('');
-            setNewItemShelf('');
-            setNewItemInitialCount(0);
-        } catch (error) {
-            console.error("Error adding consignment item:", error);
-            toast.error("Failed to add new item.");
+    
+    const handleScanSuccess = (scannedPartNumber) => {
+        setIsScannerOpen(false);
+        const foundItem = consignmentStock.find(item => item.partNumber === scannedPartNumber);
+        if (foundItem) {
+            // We need to fetch the full product details for the modal
+            const fullProductDetails = products.find(p => p.id === foundItem.productId);
+            setItemToCount({ ...fullProductDetails, ...foundItem, systemCount: foundItem.quantity });
+        } else {
+            toast.error("Scanned item not found in this client's consignment stock.");
         }
     };
     
+    const handleUpdateCountFromModal = (itemId, newCount) => {
+        handleCountChange(itemId, newCount);
+        toast.success("Count captured.");
+        setItemToCount(null);
+    };
+
     const handleReconcile = async () => {
-        const updates = Object.entries(counts).map(([id, newCount]) => ({
-            id,
-            newCount: Number(newCount) || 0,
-        }));
+        const updates = Object.entries(counts)
+            .filter(([id, newCount]) => {
+                const originalItem = consignmentStock.find(item => item.id === id);
+                return originalItem && newCount !== originalItem.quantity;
+            })
+            .map(([id, newCount]) => ({ id, newCount: Number(newCount) || 0 }));
 
         if (updates.length === 0) return toast.error("No counts have been changed.");
         
         try {
             await updateConsignmentStockCounts(updates);
-            toast.success("Consignment stock counts have been updated successfully!");
+            toast.success("Consignment stock counts updated!");
         } catch (error) {
-            console.error("Error reconciling stock:", error);
             toast.error("Failed to update stock levels.");
         }
     };
 
-    // Filter products that are not already in this client's consignment stock
     const availableProducts = useMemo(() => {
         const consignedProductIds = new Set(consignmentStock.map(item => item.productId));
         return products.filter(p => !consignedProductIds.has(p.id));
     }, [products, consignmentStock]);
 
+    const filteredStock = useMemo(() => {
+        if (!searchTerm) return consignmentStock;
+        return consignmentStock.filter(item => 
+            item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (item.partNumber && item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+    }, [consignmentStock, searchTerm]);
 
-    if (loading) return <p className="text-gray-400">Loading clients...</p>;
+
+    if (loading && clients.length === 0) return <p className="text-gray-400">Loading clients...</p>;
 
     return (
-        <div className="space-y-6">
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-lg">
-                <Dropdown
-                    label="Select a Client to Perform Stock Take"
-                    value={selectedClientId}
-                    onChange={(e) => setSelectedClientId(e.target.value)}
-                    options={clients}
-                    placeholder="Choose a client..."
-                />
-            </div>
+        <>
+            <div className="space-y-6">
+                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-lg">
+                    <Dropdown
+                        label="Select a Client to Perform Stock Take"
+                        value={selectedClientId}
+                        onChange={(e) => setSelectedClientId(e.target.value)}
+                        options={clients}
+                        placeholder="Choose a client..."
+                    />
+                </div>
 
-            {selectedClientId && (
-                <>
+                {selectedClientId && (
                     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                        <h3 className="text-xl font-bold text-white mb-4">Add New Product to Consignment</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                            <div className="md:col-span-2">
-                                <Dropdown label="Product" options={availableProducts} value={newItemProductId} onChange={e => setNewItemProductId(e.target.value)} placeholder="Select product to add..." />
-                            </div>
-                            <Input label="Shelf #" value={newItemShelf} onChange={e => setNewItemShelf(e.target.value)} placeholder="Optional"/>
-                            <Input label="Initial Count" type="number" value={newItemInitialCount} onChange={e => setNewItemInitialCount(e.target.value)} />
-                        </div>
-                         <Button onClick={handleAddNewItem} variant="secondary" className="mt-4"><PackagePlus size={16} className="mr-2"/>Add to List</Button>
-                    </div>
-
-                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                         <div className="flex justify-between items-center mb-4">
+                         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                             <h3 className="text-xl font-bold text-white">Stock Count List</h3>
-                            <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save All Counts</Button>
+                            <div className="flex items-center gap-2">
+                                <Button onClick={() => setIsScannerOpen(true)} variant="secondary"><QrCode size={16} className="mr-2"/>Scan to Count</Button>
+                                <div className="relative">
+                                    <Input placeholder="Search items..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                </div>
+                                <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save Counts</Button>
+                            </div>
                          </div>
-                        <div className="space-y-3">
-                            {consignmentStock.map(item => (
-                                <div key={item.id} className="grid grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg">
-                                    <div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                            {filteredStock.map(item => (
+                                <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg">
+                                    <div className="md:col-span-2">
                                         <p className="font-semibold text-white">{item.productName}</p>
                                         <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
                                     </div>
-                                    <p className="text-sm text-gray-300">Shelf: {item.shelfNumber || 'N/A'}</p>
                                     <p className="text-sm text-center font-mono text-gray-400">System: {item.quantity}</p>
                                     <Input 
                                         type="number" 
                                         value={counts[item.id] || ''}
                                         onChange={(e) => handleCountChange(item.id, e.target.value)}
                                         placeholder="Enter count..."
+                                        className="text-center"
                                     />
                                 </div>
                             ))}
-                            {consignmentStock.length === 0 && <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
+                            {filteredStock.length === 0 && <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
                         </div>
                     </div>
-                </>
-            )}
-        </div>
+                )}
+            </div>
+
+            {isScannerOpen && <QrScannerModal onClose={() => setIsScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
+            {itemToCount && <StockCountModal item={itemToCount} onClose={() => setItemToCount(null)} onUpdateCount={handleUpdateCountFromModal} />}
+        </>
     );
 };
 
 export default ConsignmentStockTake;
+
 
 
 ==================================================
@@ -10568,20 +10724,69 @@ export default InTransitOrders;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\PurchaseQueue.jsx
 ==================================================
-// src/components/features/stock/PurchaseQueue.jsx (Upgraded for Dynamic Supplier Quoting)
+// src/components/features/stock/PurchaseQueue.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getPurchaseQueue, getSuppliers, markItemsAsOrdered, getSupplierPricingForItem } from '../../../api/firestore';
+import { markItemsAsOrdered, getSupplierPricingForItem, addSupplier, markOneOffItemsAsOrdered } from '../../../api/firestore';
 import Button from '../../ui/Button';
-import { ThumbsUp, Tag } from 'lucide-react';
+import { ThumbsUp, Package, Wrench, UserPlus, X, Mail } from 'lucide-react';
 import Input from '../../ui/Input';
+import Dropdown from '../../ui/Dropdown';
+import toast from 'react-hot-toast';
 
-const PurchaseQueue = ({ onOrderPlaced }) => {
-  const [queuedItems, setQueuedItems] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
+const AddSupplierModal = ({ onClose, onSupplierAdded }) => {
+    const [newSupplier, setNewSupplier] = useState({ name: '', email: '', estimatedEtaDays: '', minOrderAmount: '' });
+    
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setNewSupplier(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async () => {
+        if (!newSupplier.name || !newSupplier.email) {
+            return toast.error("Supplier Name and Email are required.");
+        }
+        try {
+            const supplierData = {
+                ...newSupplier,
+                estimatedEtaDays: parseInt(newSupplier.estimatedEtaDays, 10) || 0,
+                minOrderAmount: parseFloat(newSupplier.minOrderAmount) || 0,
+            };
+            await addSupplier(supplierData);
+            toast.success("Supplier added successfully!");
+            onSupplierAdded();
+            onClose();
+        } catch (error) {
+            console.error("Error adding supplier:", error);
+            toast.error("Failed to add supplier.");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-900 rounded-xl border border-gray-700 w-full max-w-lg">
+                 <div className="flex justify-between items-center p-4 border-b border-gray-700">
+                    <h2 className="text-xl font-bold text-white">Add New Supplier</h2>
+                    <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <Input label="Supplier Name" name="name" value={newSupplier.name} onChange={handleInputChange} />
+                    <Input label="Email" name="email" type="email" value={newSupplier.email} onChange={handleInputChange} />
+                    <Input label="ETA (days)" name="estimatedEtaDays" type="number" value={newSupplier.estimatedEtaDays} onChange={handleInputChange} />
+                    <Input label="Min. Order (R)" name="minOrderAmount" type="number" value={newSupplier.minOrderAmount} onChange={handleInputChange} />
+                </div>
+                <div className="p-4 bg-gray-800/50 flex justify-end">
+                    <Button onClick={handleSubmit} variant="primary">Save Supplier</Button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PurchaseQueue = ({ stockItems, jobItems, suppliers, onAction }) => {
   const [allPricing, setAllPricing] = useState({});
-  const [orderQuantities, setOrderQuantities] = useState({});
   const [selectedSuppliers, setSelectedSuppliers] = useState({});
+  const [orderQuantities, setOrderQuantities] = useState({});
   const [loadingPricing, setLoadingPricing] = useState(true);
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [sendToAdmin, setSendToAdmin] = useState({});
@@ -10589,101 +10794,132 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
   const ADMIN_EMAIL = "admin@tojem.co.za";
 
   const unifiedQueue = useMemo(() => [
-        ...stockItems.map(item => ({ ...item, type: 'Stock' })),
-        ...jobItems.map(item => ({ ...item, type: 'Job-Specific', itemId: item.id, itemName: item.itemName || item.description }))
+        ...(stockItems || []).map(item => ({ ...item, type: 'Stock' })),
+        ...(jobItems || []).map(item => ({ ...item, type: 'Job-Specific', itemId: item.id, itemName: item.itemName || item.description }))
     ], [stockItems, jobItems]);
 
   useEffect(() => {
     const fetchAllPricing = async () => {
-      setLoadingPricing(true);
-      const pricingMap = {};
-      const pricingPromises = unifiedQueue.map(async (item) => {
-        if (!item.itemId) return;
-        const prices = await getSupplierPricingForItem(item.itemId);
-        pricingMap[item.itemId] = prices;
-      });
-      await Promise.all(pricingPromises);
-      setAllPricing(pricingMap);
+        setLoadingPricing(true);
+        const pricingMap = {};
+        const pricingPromises = unifiedQueue.map(async (item) => {
+            if (!item.itemId) return;
+            const prices = await getSupplierPricingForItem(item.itemId);
+            pricingMap[item.itemId] = prices;
+        });
+        await Promise.all(pricingPromises);
+        setAllPricing(pricingMap);
 
-      const initialSelections = {};
-      unifiedQueue.forEach(item => {
-        if (!item.itemId) return;
-        const prices = allPricing[item.itemId] || []; // Use allPricing here
-        if (prices.length > 0) {
-          const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
-          initialSelections[item.itemId] = cheapest.supplierId;
-        }
-      });
-      setSelectedSuppliers(initialSelections);
-      setLoadingPricing(false);
+        const initialSelections = {};
+        unifiedQueue.forEach(item => {
+            if (!item.itemId) return;
+            const prices = pricingMap[item.itemId] || [];
+            if (prices.length > 0) {
+                const cheapest = prices.reduce((min, p) => p.price < min.price ? p : min, prices[0]);
+                initialSelections[item.itemId] = cheapest.supplierId;
+            }
+        });
+        setSelectedSuppliers(initialSelections);
+        setLoadingPricing(false);
     };
 
     if (unifiedQueue.length > 0) {
-      fetchAllPricing();
+        fetchAllPricing();
     } else {
-      setLoadingPricing(false);
+        setLoadingPricing(false);
     }
-  }, [unifiedQueue, allPricing]); // Added allPricing to dependencies
+  }, [unifiedQueue]);
+
+  const handleSupplierSelection = (itemId, supplierId) => {
+    setSelectedSuppliers(prev => ({ ...prev, [itemId]: supplierId }));
+  };
 
   const handleQuantityChange = (itemId, qty) => {
     setOrderQuantities(prev => ({ ...prev, [itemId]: qty }));
   };
-
-  const handleSupplierSelection = (itemId, supplierId) => {
-    setSelectedSuppliers(prev => ({...prev, [itemId]: supplierId}));
+  
+  const handleSendToAdminToggle = (itemId) => {
+    setSendToAdmin(prev => ({...prev, [itemId]: !prev[itemId]}));
   };
 
-  // Group items by the *currently selected* supplier
-  const groupedBySelectedSupplier = useMemo(() => {
-    const groups = { admin: { supplierDetails: { name: 'Admin Purchase Request', email: ADMIN_EMAIL }, stockItems: [], jobItems: [] } };
+  const groupedOrders = useMemo(() => {
+    const groups = {};
     
     unifiedQueue.forEach(item => {
-      if (!item.itemId) return;
-      const isForAdmin = sendToAdmin[item.itemId];
-      const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
+        if (!item.itemId) return;
+        const isForAdmin = sendToAdmin[item.itemId];
+        const supplierId = isForAdmin ? 'admin' : selectedSuppliers[item.itemId];
 
-      if (!supplierId) return;
+        if (!supplierId) return;
 
-      if (!groups[supplierId]) {
-        const supplierDetails = suppliers.find(s => s.id === supplierId);
-        if(supplierDetails) {
-            groups[supplierId] = { supplierDetails: supplierDetails, items: [] };
+        if (!groups[supplierId]) {
+            const supplierDetails = supplierId === 'admin' 
+                ? { id: 'admin', name: 'Admin Purchase Request', email: ADMIN_EMAIL }
+                : suppliers.find(s => s.id === supplierId);
+            
+            if (supplierDetails) {
+                groups[supplierId] = { supplierDetails, stockItems: [], jobItems: [] };
+            }
         }
-      }
-      if(groups[supplierId]) {
-        groups[supplierId].items.push(item);
-      }
+        if (groups[supplierId]) {
+            if (item.type === 'Stock') {
+                groups[supplierId].stockItems.push(item);
+            } else {
+                groups[supplierId].jobItems.push(item);
+            }
+        }
     });
     
-    return Object.values(groups).sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
-  }, [unifiedQueue, suppliers, selectedSuppliers, sendToAdmin]);
+    return Object.values(groups)
+        .filter(group => group.stockItems.length > 0 || group.jobItems.length > 0)
+        .sort((a, b) => a.supplierDetails.name.localeCompare(b.supplierDetails.name));
 
-  const handleGenerateEmail = (group) => {
-    const supplierEmail = group.supplierDetails.email || '';
-    const subject = encodeURIComponent(`Purchase Order - TOJEM`);
-    let body = `Hi ${group.supplierDetails.contactPerson || group.supplierDetails.name},\n\nPlease supply the following items:\n\n`;
+  }, [unifiedQueue, suppliers, selectedSuppliers, sendToAdmin]);
+  
+  const handleGenerateEmail = async (group) => {
+    const { supplierDetails, stockItems, jobItems } = group;
+    const supplierEmail = supplierDetails.email || '';
+    const subject = `Purchase Order - TOJEM - ${supplierDetails.name}`;
+    let body = `Hi ${supplierDetails.contactPerson || supplierDetails.name},\n\nPlease supply the following items:\n\n`;
+
+    if(stockItems.length > 0) {
+        body += "--- For Stock ---\n";
+        stockItems.forEach(item => {
+            const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
+            const orderQty = orderQuantities[item.itemId] || recommendedQty;
+            if (orderQty > 0) body += `- ${item.itemName} (Code: ${item.itemCode || 'N/A'}) --- Qty: ${orderQty}\n`;
+        });
+        body += "\n";
+    }
     
-    group.items.forEach(item => {
-      const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
-      const orderQty = orderQuantities[item.id] || recommendedQty;
-      if (orderQty > 0) {
-        body += `- ${item.itemName} (Code: ${item.itemCode || 'N/A'}) --- Qty: ${orderQty}\n`;
-      }
-    });
+    if(jobItems.length > 0) {
+        body += "--- For Specific Jobs ---\n";
+        jobItems.forEach(item => {
+             const orderQty = orderQuantities[item.itemId] || item.quantity;
+             if(orderQty > 0) body += `- ${item.itemName} (For SO: ${item.salesOrderId}) --- Qty: ${orderQty}\n`;
+        });
+    }
 
     body += `\nThank you,\nTojem`;
-    const encodedBody = encodeURIComponent(body);
-    window.location.href = `mailto:${supplierEmail}?subject=${subject}&body=${encodedBody}`;
+    window.location.href = `mailto:${supplierEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-    markItemsAsOrdered(group.supplierDetails, group.items, orderQuantities).then(() => {
-        toast.success("Items have been marked as ordered and removed from the queue.");
-        fetchData();
-        if(onOrderPlaced) onOrderPlaced();
-    });
-  };
-  
-  const getItemPricingOptions = (itemId) => {
-      return allPricing[itemId] || [];
+    if (supplierDetails.id !== 'admin') {
+        try {
+            if (stockItems.length > 0) {
+                await markItemsAsOrdered(supplierDetails, stockItems, orderQuantities);
+            }
+            if (jobItems.length > 0) {
+                await markOneOffItemsAsOrdered(jobItems.map(item => item.id));
+            }
+            toast.success("Items marked as ordered and moved to 'In-Transit'.");
+            onAction();
+        } catch(error) {
+            console.error("Error marking items as ordered:", error);
+            toast.error("Failed to mark items as ordered.");
+        }
+    } else {
+        toast.success("Admin purchase request email has been generated.");
+    }
   };
 
   if (loadingPricing) return <p className="text-center p-8 text-gray-400">Analyzing purchasing requirements...</p>;
@@ -10691,93 +10927,82 @@ const PurchaseQueue = ({ onOrderPlaced }) => {
 
   return (
     <div className="space-y-6">
-      {queuedItems.length === 0 && <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 text-center text-gray-400">Your purchase queue is empty.</div>}
-      
-      {/* Items to be ordered, now listed individually */}
-       {queuedItems.length > 0 && (
-            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <h3 className="text-xl font-bold text-white mb-4">Items Requiring Purchase</h3>
-                <div className="space-y-4">
-                    {queuedItems.map(item => {
-                        const pricingOptions = getItemPricingOptions(item.itemId);
-                        const cheapestOption = pricingOptions.length > 0 ? pricingOptions.reduce((min, p) => p.price < min.price ? p : min) : null;
-                        const recommendedQty = Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
-                        return (
-                            <div key={item.id} className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center bg-gray-900/50 p-4 rounded-lg">
-                                <div>
-                                    <p className="font-semibold text-white">{item.itemName}</p>
-                                    <p className="text-xs text-gray-400">{item.itemCode || 'No Code'}</p>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 block mb-1">Select Supplier</label>
-                                    <select 
-                                        value={selectedSuppliers[item.itemId] || ''}
-                                        onChange={(e) => handleSupplierSelection(item.itemId, e.target.value)}
-                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm"
-                                    >
-                                        <option value="" disabled>Choose...</option>
-                                        {pricingOptions.map(p => (
-                                            <option key={p.id} value={p.supplierId}>
-                                                {p.supplierName} - R{p.price.toFixed(2)} {p.supplierId === cheapestOption?.supplierId ? ' (Best Price)' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div>
-                                    <p className="text-xs text-gray-400 text-center">Current: {item.currentStock}</p>
-                                    <p className="text-xs text-green-400 text-center">Recommended to order: {recommendedQty}</p>
-                                </div>
-                                <div>
-                                    <Input 
-                                        label="Order Qty"
-                                        type="number"
-                                        value={orderQuantities[item.id] || recommendedQty}
-                                        onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                                    />
-                                </div>
+        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-white">Items Requiring Purchase ({unifiedQueue.length})</h3>
+                 <Button onClick={() => setAddSupplierModalOpen(true)} variant="secondary"><UserPlus size={16} className="mr-2"/>Add New Supplier</Button>
+            </div>
+            <div className="space-y-4">
+                {unifiedQueue.map(item => {
+                    const pricingOptions = allPricing[item.itemId] || [];
+                    const cheapestOption = pricingOptions.length > 0 ? pricingOptions.reduce((min, p) => p.price < min.price ? p : min) : null;
+                    const recommendedQty = item.type === 'Stock' ? Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0)) : item.quantity;
+                    
+                    return (
+                        <div key={item.id} className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-center bg-gray-900/50 p-4 rounded-lg">
+                            <div>
+                                <p className="font-semibold text-white flex items-center gap-2">
+                                   {item.type === 'Stock' ? <Package size={16} className="text-blue-400"/> : <Wrench size={16} className="text-purple-400"/>}
+                                   {item.itemName}
+                                </p>
+                                <p className="text-xs text-gray-400 ml-8">{item.type === 'Stock' ? (item.itemCode || 'No Code') : `For SO: ${item.salesOrderId}`}</p>
                             </div>
-                        );
-                    })}
+                            <div>
+                                 <Dropdown 
+                                    label="Select Supplier"
+                                    value={selectedSuppliers[item.itemId] || ''}
+                                    onChange={(e) => handleSupplierSelection(item.itemId, e.target.value)}
+                                    options={pricingOptions.map(p => ({ id: p.supplierId, name: `${p.supplierName} - R${p.price.toFixed(2)} ${p.supplierId === cheapestOption?.supplierId ? ' (Best)' : ''}` }))}
+                                    placeholder="Choose supplier..."
+                                />
+                            </div>
+                            <div className="text-center">
+                                {item.type === 'Stock' && <p className="text-xs text-gray-400">Current: {item.currentStock || 0}</p>}
+                                <p className="text-xs text-green-400">Recommended: {recommendedQty}</p>
+                            </div>
+                            <div className="w-32 mx-auto">
+                                 <Input 
+                                    label="Order Qty"
+                                    type="number"
+                                    value={orderQuantities[item.itemId] === undefined ? recommendedQty : orderQuantities[item.itemId]}
+                                    onChange={(e) => handleQuantityChange(item.itemId, e.target.value)}
+                                />
+                             </div>
+                            <div className="text-center">
+                                <label className="flex items-center justify-center gap-2 text-sm text-gray-300 cursor-pointer">
+                                     <input type="checkbox" checked={!!sendToAdmin[item.itemId]} onChange={() => handleSendToAdminToggle(item.itemId)} className="h-4 w-4 rounded bg-gray-700 text-blue-600 focus:ring-blue-500"/>
+                                    Send to Admin
+                                </label>
+                             </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+
+        {groupedOrders.length > 0 && (
+            <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <h3 className="text-xl font-bold text-white mb-4">Draft Purchase Orders</h3>
+                <div className="space-y-4">
+                    {groupedOrders.map((group) => (
+                        <div key={group.supplierDetails.id} className={`${group.supplierDetails.id === 'admin' ? 'bg-yellow-900/20 border-yellow-500/50' : 'bg-blue-900/20 border-blue-500/50'} p-4 rounded-xl border`}>
+                             <div className="flex justify-between items-center mb-4">
+                                 <div>
+                                     <h3 className="text-lg font-bold text-white flex items-center gap-2"><ThumbsUp/> PO for: {group.supplierDetails.name}</h3>
+                                     <p className="text-sm text-gray-400">{group.supplierDetails.email}</p>
+                                 </div>
+                                 <Button onClick={() => handleGenerateEmail(group)}>
+                                    <Mail size={16} className="mr-2"/>
+                                    Generate Email & Mark Ordered
+                                </Button>
+                             </div>
+                             {/* You can add a table of items here if needed */}
+                        </div>
+                    ))}
                 </div>
             </div>
         )}
-
-      {/* Grouped orders ready to be generated */}
-      {groupedBySelectedSupplier.map(({ supplierDetails, items }) => (
-        <div key={supplierDetails.id} className="bg-blue-900/20 p-6 rounded-xl border border-blue-500/50">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2"><ThumbsUp/> Order for: {supplierDetails.name}</h3>
-              <p className="text-sm text-gray-400">{supplierDetails.email}</p>
-            </div>
-            <Button onClick={() => handleGenerateEmail({ supplierDetails, items })}>Generate Email & Mark as Ordered</Button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-blue-400/30">
-                <tr>
-                  <th className="p-2 font-semibold text-gray-300">Item</th>
-                  <th className="p-2 font-semibold text-gray-300 text-center">Order Qty</th>
-                  <th className="p-2 font-semibold text-gray-300 text-right">Price</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(item => {
-                    const pricing = allPricing[item.itemId]?.find(p => p.supplierId === supplierDetails.id);
-                    const orderQty = orderQuantities[item.id] || Math.max(0, (item.standardStockLevel || 0) - (item.currentStock || 0));
-                  return (
-                    <tr key={item.id} className="border-b border-blue-400/20">
-                      <td className="p-2 text-gray-200">{item.itemName}</td>
-                      <td className="p-2 text-white font-bold text-center">{orderQty}</td>
-                      <td className="p-2 text-green-400 font-mono text-right">R {pricing ? pricing.price.toFixed(2) : 'N/A'}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
+         {isAddSupplierModalOpen && <AddSupplierModal onClose={() => setAddSupplierModalOpen(false)} onSupplierAdded={onAction}/>}
     </div>
   );
 };
@@ -11002,15 +11227,16 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockCountM
 ==================================================
 // src/components/features/stock/StockCountModal.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Button from '../../ui/Button';
 import Input from '../../ui/Input';
-import { X, CheckCircle } from 'lucide-react';
+import { X, CheckCircle, Hash, Scale } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const StockCountModal = ({ item, onClose, onUpdateCount }) => {
-    const [count, setCount] = useState('');
-    const inputRef = React.useRef(null);
+    const [inputValue, setInputValue] = useState('');
+    const [calculatedQty, setCalculatedQty] = useState(null);
+    const inputRef = useRef(null);
 
     // Focus the input field when the modal opens
     useEffect(() => {
@@ -11019,25 +11245,41 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
         }
     }, []);
 
-    const handleSubmit = () => {
-        const newCount = parseInt(count, 10);
-        if (isNaN(newCount) || newCount < 0) {
-            return toast.error("Please enter a valid, non-negative quantity.");
+    // Live calculation for weight-based items
+    useEffect(() => {
+        if (item.stockTakeMethod === 'weight' && !isNaN(parseFloat(inputValue))) {
+            const grossWeight = parseFloat(inputValue);
+            const tareWeight = parseFloat(item.tareWeight) || 0;
+            const unitWeight = parseFloat(item.unitWeight) || 1;
+            if (unitWeight > 0) {
+                const netWeight = grossWeight - tareWeight;
+                const finalQty = Math.round(netWeight / unitWeight);
+                // Ensure calculated quantity is not negative
+                setCalculatedQty(finalQty < 0 ? 0 : finalQty);
+            }
+        } else {
+            setCalculatedQty(null);
         }
-        onUpdateCount(item.id, newCount);
+    }, [inputValue, item]);
+
+    const handleSubmit = () => {
+        const finalCount = item.stockTakeMethod === 'weight' ? calculatedQty : parseInt(inputValue, 10);
+        if (finalCount === null || isNaN(finalCount) || finalCount < 0) {
+            return toast.error("Please enter a valid, non-negative value.");
+        }
+        onUpdateCount(item.id, finalCount);
         onClose();
     };
 
     return (
-        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+        <div onClick={onClose} className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 animate-fade-in">
             <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md">
                 <div className="p-4 border-b border-gray-700">
                     <h3 className="text-xl font-bold text-white">{item.name}</h3>
-                    <p className="text-sm text-gray-400">P/N: {item.partNumber}</p>
-                    <p className="text-sm text-gray-500">System predicts: {item.systemCount}</p>
+                    <p className="text-sm text-gray-400">P/N: {item.partNumber || item.itemCode}</p>
+                    <p className="text-sm text-gray-500">System predicts: {item.systemCount || item.currentStock}</p>
                 </div>
                 <div className="p-6 space-y-4">
-                    {/* NEW: Display product image */}
                     <img
                         src={item.photoUrl || `https://placehold.co/400x300/1f2937/9ca3af?text=No+Image`}
                         alt={item.name}
@@ -11045,12 +11287,19 @@ const StockCountModal = ({ item, onClose, onUpdateCount }) => {
                     />
                     <Input 
                         ref={inputRef}
-                        label="Enter Physical Quantity" 
+                        label={item.stockTakeMethod === 'weight' ? 'Enter Gross Weight (grams)' : 'Enter Physical Quantity'}
                         type="number" 
-                        value={count} 
-                        onChange={e => setCount(e.target.value)}
-                        placeholder="Enter count..."
+                        step="any"
+                        value={inputValue} 
+                        onChange={e => setInputValue(e.target.value)}
+                        placeholder={item.stockTakeMethod === 'weight' ? 'e.g., 1500.5' : 'e.g., 250'}
                     />
+                    {calculatedQty !== null && (
+                        <div className="text-center bg-gray-900/50 p-3 rounded-lg">
+                            <p className="text-sm text-gray-400">Calculated Quantity</p>
+                            <p className="text-2xl font-bold text-green-400">{calculatedQty}</p>
+                        </div>
+                    )}
                 </div>
                 <div className="p-4 flex justify-end gap-2 bg-gray-900/50">
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -11383,7 +11632,7 @@ export default StockTakeApp;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\stock\StockTakeComponents.jsx
 ==================================================
-// src/components/features/stock/StockTakeComponents.jsx (Whitespace Fixed)
+// src/components/features/stock/StockTakeComponents.jsx
 
 import React from 'react';
 import Input from '../../ui/Input';
@@ -11391,36 +11640,37 @@ import { CheckCircle, AlertCircle, XCircle, Hash, Scale } from 'lucide-react';
 
 export const Summary = ({ data }) => {
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 text-center">
                 <h4 className="text-sm text-gray-400 font-medium">Total Items</h4>
                 <p className="text-2xl font-bold text-white">{data.totalItems}</p>
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><CheckCircle size={16} className="text-green-500" />Counted</h4>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 text-center">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center justify-center gap-1"><CheckCircle size={16} className="text-green-500" />Counted</h4>
                 <p className="text-2xl font-bold text-white">{data.counted}</p>
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><XCircle size={16} className="text-yellow-500" />Uncounted</h4>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 text-center">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center justify-center gap-1"><XCircle size={16} className="text-yellow-500" />Uncounted</h4>
                 <p className="text-2xl font-bold text-white">{data.uncounted}</p>
             </div>
-            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
-                <h4 className="text-sm text-gray-400 font-medium flex items-center gap-1"><AlertCircle size={16} className="text-red-500" />Discrepancies</h4>
+            <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 text-center">
+                <h4 className="text-sm text-gray-400 font-medium flex items-center justify-center gap-1"><AlertCircle size={16} className="text-red-500" />Discrepancies</h4>
                 <p className="text-2xl font-bold text-white">{data.discrepancies}</p>
             </div>
         </div>
     );
 };
 
+// This component is now fully responsive. It renders as a list of cards on mobile
+// and a full table on larger screens.
 export const StockCountList = ({ items, onCountChange }) => {
     return (
         <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
-                    <thead className="bg-gray-900/50">
+                    <thead className="bg-gray-900/50 hidden md:table-header-group">
                         <tr>
                             <th className="p-3 text-sm font-semibold text-gray-400">Item Name</th>
-                            <th className="p-3 text-sm font-semibold text-gray-400">Category</th>
                             <th className="p-3 text-sm font-semibold text-gray-400">Method</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center">System Count</th>
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center w-64">Physical Count Input</th>
@@ -11428,29 +11678,30 @@ export const StockCountList = ({ items, onCountChange }) => {
                             <th className="p-3 text-sm font-semibold text-gray-400 text-center">Variance</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-700">
                         {items.map(item => (
-                            <tr key={item.id} className="border-t border-gray-700 hover:bg-gray-700/50">
-                                <td className="p-2 text-white font-medium">{item.name}</td>
-                                <td className="p-2 text-gray-400">{item.category}</td>
-                                <td className="p-2 text-gray-400 font-mono">
+                            <tr key={item.id} className="block md:table-row p-2 md:p-0">
+                                <td className="p-2 md:p-3 text-white font-medium block md:table-cell" data-label="Item Name">
+                                    <span className="md:hidden font-bold text-gray-400">Item: </span>{item.name}
+                                </td>
+                                <td className="p-2 md:p-3 text-gray-400 font-mono block md:table-cell" data-label="Method">
                                     <div className="flex items-center gap-2" title={`Unit Weight: ${item.unitWeight}g, Tare: ${item.tareWeight}g`}>
                                         {item.stockTakeMethod === 'weight' ? <Scale size={16}/> : <Hash size={16}/>}
                                         <span>{item.stockTakeMethod === 'weight' ? 'Weight' : 'Quantity'}</span>
                                     </div>
                                 </td>
-                                <td className="p-2 text-gray-300 font-mono text-center">{item.systemCount}</td>
-                                <td className="p-2">
+                                <td className="p-2 md:p-3 text-gray-300 font-mono text-right md:text-center block md:table-cell" data-label="System Count">
+                                    <span className="md:hidden font-bold text-gray-400">System Count: </span>{item.systemCount}
+                                </td>
+                                <td className="p-2 md:p-3 block md:table-cell" data-label="Physical Count Input">
                                     {item.stockTakeMethod === 'weight' ? (
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                type="number"
-                                                value={item.countedValues?.grossWeight || ''}
-                                                onChange={(e) => onCountChange(item.id, 'grossWeight', e.target.value)}
-                                                className="text-center bg-gray-900"
-                                                placeholder="Gross Wt. (g)"
-                                            />
-                                        </div>
+                                        <Input
+                                            type="number"
+                                            value={item.countedValues?.grossWeight || ''}
+                                            onChange={(e) => onCountChange(item.id, 'grossWeight', e.target.value)}
+                                            className="text-center bg-gray-900"
+                                            placeholder="Gross Wt. (g)"
+                                        />
                                     ) : (
                                         <Input
                                             type="number"
@@ -11461,11 +11712,11 @@ export const StockCountList = ({ items, onCountChange }) => {
                                         />
                                     )}
                                 </td>
-                                <td className="p-2 font-bold text-lg font-mono text-center text-blue-400">
-                                     {item.hasBeenCounted ? item.physicalCount : '-'}
+                                <td className="p-2 md:p-3 font-bold text-lg font-mono text-right md:text-center text-blue-400 block md:table-cell" data-label="Calculated Qty">
+                                    <span className="md:hidden font-bold text-gray-400">Calculated Qty: </span>{item.hasBeenCounted ? item.physicalCount : '-'}
                                 </td>
-                                <td className={`p-2 font-bold text-lg font-mono text-center ${item.variance > 0 ? 'text-green-400' : item.variance < 0 ? 'text-red-400' : 'text-gray-500'}`}>
-                                    {item.hasBeenCounted ? (item.variance > 0 ? `+${item.variance}` : item.variance) : '-'}
+                                <td className={`p-2 md:p-3 font-bold text-lg font-mono text-right md:text-center block md:table-cell ${item.variance > 0 ? 'text-green-400' : item.variance < 0 ? 'text-red-400' : 'text-gray-500'}`} data-label="Variance">
+                                    <span className="md:hidden font-bold text-gray-400">Variance: </span>{item.hasBeenCounted ? (item.variance > 0 ? `+${item.variance}` : item.variance) : '-'}
                                 </td>
                             </tr>
                         ))}
@@ -11475,6 +11726,7 @@ export const StockCountList = ({ items, onCountChange }) => {
         </div>
     );
 };
+
 
 
 ==================================================
@@ -15641,8 +15893,8 @@ const TopNavBar = () => {
 
         {(canSee('orders') || canSee('purchasing') || canSee('stockTake')) && (
           <NavGroup title="Inventory" icon={<Package size={18} />}>
-            {canSee('orders') && <NavLinkItem to="/orders" icon={<ShoppingCart size={16} />} text="Sales Orders" />}
-            {canSee('purchasing') && <NavLinkItem to="/stock-hub" icon={<Package size={16} />} text="Stock Hub" />}
+            {canSee('purchasing') && <NavLinkItem to="/stock-hub" icon={<ShoppingCart size={16} />} text="Purchasing Hub" />}
+            {canSee('stockTake') && <NavLinkItem to="/manufactured-stock" icon={<Factory size={16} />} text="Finished Goods Stock" />}
             {canSee('stockTake') && <NavLinkItem to="/stock-take" icon={<ClipboardList size={16} />} text="Stock Take App" />}
             {canSee('settings') && <NavLinkItem to="/product-catalog" icon={<Factory size={16} />} text="Product Catalog" />}
             {canSee('settings') && <NavLinkItem to="/consumables-catalog" icon={<PackageSearch size={16} />} text="Consumables Catalog" />}
@@ -15813,9 +16065,14 @@ export default Dropdown;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Input.jsx
 ==================================================
+// src/components/ui/Input.jsx
+
 import React from 'react';
 
-const Input = React.forwardRef(({ label, name, type = "text", value, onChange, placeholder, ...props }, ref) => {
+const Input = React.forwardRef(({ label, name, type = "text", value, onChange, placeholder, className = '', ...props }, ref) => {
+  // Define base styles separately
+  const baseStyles = "w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  
   return (
     <div className="w-full">
       {label && (
@@ -15830,8 +16087,9 @@ const Input = React.forwardRef(({ label, name, type = "text", value, onChange, p
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        ref={ref} // Forward the ref to the input element
+        // Combine the base styles with any custom className passed in props
+        className={`${baseStyles} ${className}`}
+        ref={ref}
         {...props}
       />
     </div>
@@ -15839,7 +16097,6 @@ const Input = React.forwardRef(({ label, name, type = "text", value, onChange, p
 });
 
 export default Input;
-
 
 
 ==================================================
@@ -15901,9 +16158,14 @@ export default SearchInput;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\components\ui\Textarea.jsx
 ==================================================
+// src/components/ui/Textarea.jsx
+
 import React from 'react';
 
-const Textarea = ({ label, name, value, onChange, placeholder, rows = 3 }) => {
+const Textarea = ({ label, name, value, onChange, placeholder, rows = 3, className = '' }) => {
+  // Define base styles separately
+  const baseStyles = "w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
+  
   return (
     <div className="w-full">
       {label && (
@@ -15918,7 +16180,8 @@ const Textarea = ({ label, name, value, onChange, placeholder, rows = 3 }) => {
         onChange={onChange}
         placeholder={placeholder}
         rows={rows}
-        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        // Combine the base styles with any custom className
+        className={`${baseStyles} ${className}`}
       />
     </div>
   );
@@ -16136,9 +16399,9 @@ export const useData = () => useContext(DataContext);
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\hooks\useInventoryManager.js
 ==================================================
-// src/hooks/useInventoryManager.js (Upgraded with Toasts & Location Fields)
+// src/hooks/useInventoryManager.js
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
     getSupplierPricingForItem, 
     addSupplierPrice, 
@@ -16153,7 +16416,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     currentStock: '', reorderLevel: '', standardStockLevel: '',
     requiresCatalyst: false, stockTakeMethod: 'quantity', unitWeight: '', tareWeight: '',
     associatedSkills: [],
-    // NEW: Location fields added to initial state
     location: '',
     shelf_number: '',
     bin_number: '',
@@ -16323,7 +16585,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                   Cancel
               </Button>
           </span>
-      ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
+      ), { icon: 'âš ï¸' });
   };
   
   const handleAddSupplierPrice = async (supplierId, price) => {
@@ -16375,7 +16637,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
                   Cancel
               </Button>
           </span>
-      ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
+      ), { icon: 'âš ï¸' });
   };
 
   return {
@@ -16387,6 +16649,7 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };
+
 
 
 ==================================================
@@ -19190,6 +19453,148 @@ export default LoginPage;
 
 
 ==================================================
+FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ManufacturedStockPage.jsx
+==================================================
+// src/pages/ManufacturedStockPage.jsx
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { getAllInventoryItems } from '../api/firestore';
+import Input from '../components/ui/Input';
+import { Search, Factory, Truck } from 'lucide-react';
+import toast from 'react-hot-toast';
+import ConsignmentReport from '../components/features/stock/ConsignmentReport';
+
+// Internal Stock Component
+const InternalStockDashboard = ({ products, loading }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredProducts = useMemo(() => {
+        if (!searchTerm) return products;
+        return products.filter(product =>
+            product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+    }, [products, searchTerm]);
+
+    const totalStockValue = useMemo(() => {
+        return filteredProducts.reduce((sum, item) => sum + (item.currentStock || 0) * (item.sellingPrice || 0), 0);
+    }, [filteredProducts]);
+
+    return (
+        <div className="space-y-6">
+            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center">
+                <p className="text-sm text-gray-400">Total Internal Stock Value (Selling Price)</p>
+                <p className="text-2xl font-bold text-green-400">R {totalStockValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</p>
+            </div>
+
+            <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                <div className="relative w-full sm:w-1/3">
+                    <Input
+                        type="text"
+                        placeholder="Search by name or part number..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                    />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead className="bg-gray-900/50">
+                            <tr>
+                                <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400 text-right">Total Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-400">Loading stock...</td></tr>
+                            ) : filteredProducts.length === 0 ? (
+                                <tr><td colSpan="6" className="text-center p-8 text-gray-400">No manufactured products found.</td></tr>
+                            ) : (
+                                filteredProducts.map(product => (
+                                    <tr key={product.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                        <td className="p-2">
+                                            <img 
+                                                src={product.photoUrl || `https://placehold.co/100x75/1f2937/9ca3af?text=No+Image`} 
+                                                alt={product.name}
+                                                className="w-20 h-14 object-cover rounded-md"
+                                            />
+                                        </td>
+                                        <td className="p-3 text-white font-medium">{product.name}</td>
+                                        <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
+                                        <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
+                                        <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
+                                        <td className="p-3 text-green-400 font-mono text-right font-semibold">R {((product.currentStock || 0) * (product.sellingPrice || 0)).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const ManufacturedStockPage = () => {
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState('internal');
+
+    useEffect(() => {
+        const fetchProducts = async () => {
+            setLoading(true);
+            try {
+                const allItems = await getAllInventoryItems();
+                setProducts(allItems.filter(item => item.category === 'Product'));
+            } catch (error) {
+                toast.error("Failed to load manufactured stock.");
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchProducts();
+    }, []);
+
+    return (
+        <div className="space-y-6">
+            <h2 className="text-3xl font-bold text-white">Finished Goods Stock</h2>
+            
+            <div className="flex border-b border-gray-700">
+                <button 
+                    onClick={() => setActiveTab('internal')} 
+                    className={`px-4 py-2 font-semibold flex items-center gap-2 ${activeTab === 'internal' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}
+                >
+                    <Factory size={16} /> Internal Stock
+                </button>
+                <button 
+                    onClick={() => setActiveTab('consignment')} 
+                    className={`px-4 py-2 font-semibold flex items-center gap-2 ${activeTab === 'consignment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}
+                >
+                    <Truck size={16} /> Consignment Report
+                </button>
+            </div>
+
+            {activeTab === 'internal' && <InternalStockDashboard products={products} loading={loading} />}
+            {activeTab === 'consignment' && <ConsignmentReport />}
+        </div>
+    );
+};
+
+export default ManufacturedStockPage;
+
+
+
+==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\MarketingPage.jsx
 ==================================================
 // FILE: src/pages/MarketingPage.jsx (Upgraded with Toasts)
@@ -20132,7 +20537,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ProductCatalogPage.jsx
 // src/pages/ProductCatalogPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore'; // Import getUnits
+import { getAllInventoryItems, deleteInventoryItem, getMakes, getModels, getProductCategories, getUnits } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
@@ -20144,6 +20549,7 @@ import ProductImportModal from '../components/features/catalog/ProductImportModa
 import { writeBatch, doc,
          collection, query, where, getDocs, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../api/firebase';
+import SearchInput from '../components/ui/SearchInput';
 
 const ProductCatalogPage = () => {
     const [products, setProducts] = useState([]);
@@ -20273,7 +20679,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     const handleOpenModal = (product = null) => {
@@ -20312,7 +20718,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'âš ï¸' });
+        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
     };
 
     const handleFilterChange = (e) => {
@@ -20367,17 +20773,15 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div className="relative">
-                            <Input
-                                type="text"
-                                placeholder="Search by name or part number..."
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                                className="pl-10"
-                            />
-                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        </div>
+                    {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <SearchInput
+                            label="Search by Name or Part Number"
+                            type="text"
+                            placeholder="Search..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
                         <Dropdown label="Filter by Category" name="categoryId" value={filters.categoryId} onChange={handleFilterChange} options={productCategories} placeholder="All Categories" />
                         <Dropdown label="Filter by Make" name="make" value={filters.make} onChange={handleFilterChange} options={filteredMakesForDropdown} placeholder="All Makes" disabled={!filters.categoryId} />
                         <Dropdown label="Filter by Model" name="model" value={filters.model} onChange={handleFilterChange} options={filteredModelsForDropdown} placeholder="All Models" disabled={!filters.make} />
@@ -20409,11 +20813,11 @@ const ProductCatalogPage = () => {
                             </thead>
                             <tbody>
                                  {loading ? (
-                                    <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
+                                     <tr><td colSpan="11" className="text-center p-8 text-gray-400">Loading products...</td></tr>
                                  ) : filteredProducts.length === 0 ? (
                                      <tr><td colSpan="11" className="text-center p-8 text-gray-400">No products match your filters.</td></tr>
                                  ) : (
-                                    filteredProducts.map(product => (
+                                     filteredProducts.map(product => (
                                         <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
                                             <td className="p-3">
                                                 <input
@@ -20432,9 +20836,7 @@ const ProductCatalogPage = () => {
                                             </td>
                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                            {/* Display actual make name using makeMap */}
                                             <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
-                                            {/* Display actual model name using modelMap */}
                                             <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
@@ -20447,7 +20849,7 @@ const ProductCatalogPage = () => {
                                             </td>
                                         </tr>
                                     ))
-                                )}
+                                 )}
                             </tbody>
                         </table>
                     </div>
@@ -20479,7 +20881,6 @@ const ProductCatalogPage = () => {
 };
 
 export default ProductCatalogPage;
-
 
 
 ==================================================
@@ -21052,15 +21453,15 @@ export default PurchasingPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\QcPage.jsx
 ==================================================
-// src/pages/QcPage.jsx (Upgraded with Toasts & Rejection Modal)
+// src/pages/QcPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore';
+import { listenToJobCards, processQcDecision, getReworkReasons, getEmployees } from '../api/firestore'; // CORRECTED PATH
 import Button from '../components/ui/Button';
 import Dropdown from '../components/ui/Dropdown';
 import { X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import ConfirmationModal from '../components/ui/ConfirmationModal'; // --- IMPORT NEW COMPONENT ---
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 const RejectionModal = ({ job, reasons, onReject, onClose }) => {
     const [rejectionReasonId, setRejectionReasonId] = useState('');
@@ -21102,18 +21503,18 @@ const RejectionModal = ({ job, reasons, onReject, onClose }) => {
                     <Button onClick={onClose} variant="secondary" className="p-2"><X size={20}/></Button>
                 </div>
                 <div className="p-6 space-y-4">
-                    <Dropdown 
-                        label="Reason for Rejection" 
-                        options={reasons} 
-                        value={rejectionReasonId} 
-                        onChange={(e) => setRejectionReasonId(e.target.value)} 
-                        placeholder="Select a failure mode..." 
+                    <Dropdown
+                        label="Reason for Rejection"
+                        options={reasons}
+                        value={rejectionReasonId}
+                        onChange={(e) => setRejectionReasonId(e.target.value)}
+                        placeholder="Select a failure mode..."
                     />
-                    <textarea 
-                        value={notes} 
-                        onChange={(e) => setNotes(e.target.value)} 
-                        placeholder="Add optional specific notes here..." 
-                        className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                    <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Add optional specific notes here..."
+                        className="w-full p-3 bg-gray-900 border border-gray-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         rows="3"
                     ></textarea>
                     
@@ -21152,7 +21553,7 @@ const QcPage = () => {
   const [loading, setLoading] = useState(true);
   const [rejectionReasons, setRejectionReasons] = useState([]);
   const [jobToReject, setJobToReject] = useState(null);
-  const [jobToApprove, setJobToApprove] = useState(null); // --- NEW STATE for approval confirmation ---
+  const [jobToApprove, setJobToApprove] = useState(null);
 
   useEffect(() => {
     const fetchReasons = async () => {
@@ -21161,8 +21562,8 @@ const QcPage = () => {
     };
     fetchReasons();
 
-    const unsubscribe = listenToJobCards((fetchedJobs) => {
-       setAllJobs(fetchedJobs);
+    const unsubscribe = listenToJobCards(({ jobs: fetchedJobs }) => {
+       setAllJobs(Array.isArray(fetchedJobs) ? fetchedJobs : []);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -21181,7 +21582,7 @@ const QcPage = () => {
         success: 'Job approved and stock updated!',
         error: 'Failed to process approval.'
     });
-    setJobToApprove(null); // Close modal after initiating
+    setJobToApprove(null);
   };
 
   const handleReject = async (job, options) => {
@@ -21195,7 +21596,7 @@ const QcPage = () => {
 
     try {
         await promise;
-        setJobToReject(null); // Close the modal on success
+        setJobToReject(null);
     } catch (err) {
         console.error(err);
     }
@@ -21220,13 +21621,13 @@ const QcPage = () => {
                         </thead>
                         <tbody>
                             {(qcJobs || []).map(job => (
-                                 <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                <tr key={job.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 text-gray-400 text-xs font-mono">{job.jobId}</td>
                                     <td className="p-3 text-gray-300">{job.partName}</td>
-                                     <td className="p-3 text-gray-300">{job.employeeName}</td>
+                                    <td className="p-3 text-gray-300">{job.employeeName}</td>
                                     <td className="p-3 flex space-x-2">
                                         <Button onClick={() => setJobToApprove(job)} variant="primary" className="bg-green-600 hover:bg-green-700 py-1 px-3 text-sm">Approve</Button>
-                                         <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
+                                        <Button onClick={() => setJobToReject(job)} variant="danger" className="py-1 px-3 text-sm">Reject</Button>
                                     </td>
                                 </tr>
                             ))}
@@ -21246,7 +21647,6 @@ const QcPage = () => {
             />
         )}
 
-        {/* --- NEW: Confirmation Modal for Approval --- */}
         <ConfirmationModal
             isOpen={!!jobToApprove}
             onClose={() => setJobToApprove(null)}
@@ -21261,7 +21661,6 @@ const QcPage = () => {
 };
 
 export default QcPage;
-
 
 
 ==================================================
@@ -21795,61 +22194,25 @@ export default SalesOrderPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\ScannerPage.jsx
 ==================================================
-// src/pages/ScannerPage.jsx (Reworked as a Hub)
+// src/pages/ScannerPage.jsx (Simplified)
 
-import React, { useState } from 'react';
+import React from 'react';
 import JobCardScanner from '../components/features/scanner/JobCardScanner';
-import StockTakeApp from '../components/features/stock/StockTakeApp'; // We will create this next
-import { ScanLine, ClipboardCheck } from 'lucide-react';
-
-const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
-    const isActive = activeTab === id;
-    return (
-      <button
-        onClick={() => setActiveTab(id)}
-        className={`flex-1 px-5 py-3 text-lg font-semibold flex items-center justify-center gap-3 transition-colors ${
-          isActive 
-            ? 'bg-gray-800 text-white border-b-2 border-blue-500' 
-            : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
-        }`}
-      >
-        {icon}
-        {label}
-      </button>
-    );
-};
+import { ScanLine } from 'lucide-react';
 
 const ScannerPage = () => {
-    // Ensure 'job_scanner' is the default active tab
-    const [activeTab, setActiveTab] = useState('job_scanner');
-
     return (
         <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-white">Workshop Scanners</h2>
+            <div className="flex items-center gap-3">
+                <ScanLine size={32} className="text-blue-400" />
+                <div>
+                    <h2 className="text-3xl font-bold text-white">Workshop Scanner</h2>
+                    <p className="text-gray-400">Scan job cards to update status, assign employees, and manage live production tasks.</p>
+                </div>
+            </div>
             
-            <div className="flex rounded-t-lg overflow-hidden border-b border-gray-700">
-                <TabButton 
-                    id="job_scanner"
-                    label="Job Card Scanner"
-                    icon={<ScanLine size={22} />}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                />
-                <TabButton 
-                    id="stock_scanner"
-                    label="Stock Take Scanner"
-                    icon={<ClipboardCheck size={22} />}
-                    activeTab={activeTab}
-                    setActiveTab={setActiveTab}
-                />
-            </div>
-
-            <div>
-                {/* Render JobCardScanner directly if it's the active tab */}
-                {activeTab === 'job_scanner' && <JobCardScanner />}
-                {/* Render StockTakeApp if it's the active tab */}
-                {activeTab === 'stock_scanner' && <StockTakeApp />}
-            </div>
+            {/* The page now only renders the Job Card Scanner */}
+            <JobCardScanner />
         </div>
     );
 };
@@ -22172,11 +22535,22 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\StockHubPage.jsx
 // src/pages/StockHubPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { getAllInventoryItems, getClientUsers, listenToConsignmentStockForClient } from '../api/firestore';
-import { Package, Factory, Truck, DollarSign, Search, User } from 'lucide-react';
+import { 
+    getAllInventoryItems, 
+    listenToPurchaseQueue,
+    getSuppliers,
+    listenToOneOffPurchases,
+    updateStockCount
+} from '../api/firestore';
+import { Package, DollarSign, Search, Edit, Save, XCircle } from 'lucide-react';
 import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
+import PurchaseQueue from '../components/features/stock/PurchaseQueue';
+import InTransitOrders from '../components/features/stock/InTransitOrders';
+import FutureDemandAnalyzer from '../components/features/stock/FutureDemandAnalyzer';
+import { BrainCircuit } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-// KPI Card for displaying stock values
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
         <div className="flex items-start space-x-4">
@@ -22191,58 +22565,90 @@ const KpiCard = ({ icon, title, value, color }) => (
     </div>
 );
 
-// Component for the main inventory valuation and list
-const InventoryValuationDashboard = ({ items, loading }) => {
+const StockLevelIndicator = ({ currentStock, reorderLevel, standardStockLevel }) => {
+    const stock = Number(currentStock) || 0;
+    const reorder = Number(reorderLevel) || 0;
+    const standard = Number(standardStockLevel) || 0;
+
+    if (standard <= 0) return <div className="text-xs text-gray-500 italic">Not tracked</div>;
+
+    const isLowStock = stock < reorder;
+    const percentage = Math.max(0, Math.min((stock / standard) * 100, 100));
+
+    return (
+        <div className="w-full">
+            <div className="flex justify-between text-xs mb-1">
+                <span className="font-semibold text-gray-300">{stock} / {standard}</span>
+                <span className={`font-bold ${isLowStock ? 'text-red-400' : 'text-green-400'}`}>{isLowStock ? `Low (Reorder at ${reorder})` : 'In Stock'}</span>
+            </div>
+            <div className="w-full bg-gray-600 rounded-full h-2">
+                <div className={`h-2 rounded-full ${isLowStock ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${percentage}%` }}></div>
+            </div>
+        </div>
+    );
+};
+
+const PurchasedItemsDashboard = ({ items, loading, onStockUpdate }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState('manufactured');
+    const [editingItem, setEditingItem] = useState(null);
 
-    const { manufactured, rawMaterials, manufacturedValue, rawMaterialsValue } = useMemo(() => {
-        const manufacturedItems = items.filter(item => item.category === 'Product');
-        const rawItems = items.filter(item => item.category !== 'Product');
+    const handleEditClick = (item) => {
+        setEditingItem({ id: item.id, newCount: item.currentStock });
+    };
 
-        const manufacturedVal = manufacturedItems.reduce((sum, item) => sum + (item.currentStock || 0) * (item.sellingPrice || 0), 0);
-        const rawMaterialsVal = rawItems.reduce((sum, item) => sum + (item.currentStock || 0) * (item.price || 0), 0);
+    const handleCancelEdit = () => {
+        setEditingItem(null);
+    };
 
-        return {
-            manufactured: manufacturedItems,
-            rawMaterials: rawItems,
-            manufacturedValue: manufacturedVal,
-            rawMaterialsValue: rawMaterialsVal
-        };
+    const handleSaveEdit = async () => {
+        if (!editingItem) return;
+        
+        const newCount = parseFloat(editingItem.newCount);
+        if (isNaN(newCount) || newCount < 0) {
+            toast.error("Please enter a valid stock quantity.");
+            return;
+        }
+
+        const itemToUpdate = items.find(i => i.id === editingItem.id);
+        const sessionId = `MANUAL_ADJ-${Date.now()}`;
+
+        try {
+            await updateStockCount(editingItem.id, itemToUpdate.category, newCount, sessionId);
+            toast.success(`${itemToUpdate.name} stock updated!`);
+            setEditingItem(null);
+            onStockUpdate();
+        } catch (error) {
+            console.error("Error updating stock:", error);
+            toast.error("Failed to update stock.");
+        }
+    };
+
+    const { purchasedItems, totalValue } = useMemo(() => {
+        const filteredItems = items.filter(item => item.category !== 'Product');
+        const value = filteredItems.reduce((sum, item) => sum + (item.currentStock || 0) * (item.price || 0), 0);
+        return { purchasedItems: filteredItems, totalValue: value };
     }, [items]);
 
     const displayedItems = useMemo(() => {
-        const itemsToDisplay = activeTab === 'manufactured' ? manufactured : rawMaterials;
-        if (!searchTerm) return itemsToDisplay;
-        return itemsToDisplay.filter(item => 
+        if (!searchTerm) return purchasedItems;
+        return purchasedItems.filter(item => 
             item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (item.itemCode && item.itemCode.toLowerCase().includes(searchTerm.toLowerCase()))
         );
-    }, [activeTab, manufactured, rawMaterials, searchTerm]);
+    }, [purchasedItems, searchTerm]);
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <KpiCard 
-                    icon={<Factory size={24} />}
-                    title="Value of Manufactured Goods in Stock"
-                    value={`R ${manufacturedValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
-                    color="bg-teal-500/20 text-teal-400"
-                />
-                <KpiCard 
-                    icon={<Package size={24} />}
-                    title="Value of Raw Materials & Consumables"
-                    value={`R ${rawMaterialsValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
-                    color="bg-blue-500/20 text-blue-400"
-                />
-            </div>
+            <KpiCard 
+                icon={<DollarSign size={24} />}
+                title="Value of Raw Materials & Consumables"
+                value={`R ${totalValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
+                color="bg-blue-500/20 text-blue-400"
+            />
 
             <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                 <div className="flex justify-between items-center mb-4">
-                    <div className="flex border-b border-gray-600">
-                        <button onClick={() => setActiveTab('manufactured')} className={`px-4 py-2 font-semibold ${activeTab === 'manufactured' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Manufactured Goods ({manufactured.length})</button>
-                        <button onClick={() => setActiveTab('rawMaterials')} className={`px-4 py-2 font-semibold ${activeTab === 'rawMaterials' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Raw Materials ({rawMaterials.length})</button>
-                    </div>
+                    <h3 className="text-lg font-bold text-white">Purchased Item Stock</h3>
                     <div className="relative w-1/3">
                         <Input placeholder="Search items..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
@@ -22254,10 +22660,10 @@ const InventoryValuationDashboard = ({ items, loading }) => {
                         <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
                             <tr>
                                 <th className="p-2">Item Name</th>
-                                <th className="p-2">Item Code</th>
-                                <th className="p-2 text-center">In Stock</th>
-                                <th className="p-2 text-right">Unit Price</th>
-                                <th className="p-2 text-right">Total Value</th>
+                                <th className="p-2">Category</th>
+                                <th className="p-2 w-1/3">Stock Level</th>
+                                <th className="p-2 text-right">Unit Cost</th>
+                                <th className="p-2 text-right">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -22266,10 +22672,35 @@ const InventoryValuationDashboard = ({ items, loading }) => {
                             ) : displayedItems.map(item => (
                                 <tr key={item.id} className="border-b border-gray-700">
                                     <td className="p-2 text-white font-medium">{item.name}</td>
-                                    <td className="p-2">{item.itemCode || 'N/A'}</td>
-                                    <td className="p-2 text-center">{item.currentStock}</td>
-                                    <td className="p-2 text-right font-mono">R {(activeTab === 'manufactured' ? item.sellingPrice : item.price || 0).toFixed(2)}</td>
-                                    <td className="p-2 text-right font-mono font-semibold text-green-400">R {((item.currentStock || 0) * (activeTab === 'manufactured' ? item.sellingPrice : item.price || 0)).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</td>
+                                    <td className="p-2 text-gray-400">{item.category}</td>
+                                    <td className="p-2">
+                                        {editingItem?.id === item.id ? (
+                                            <Input 
+                                                type="number"
+                                                value={editingItem.newCount}
+                                                onChange={(e) => setEditingItem({...editingItem, newCount: e.target.value})}
+                                                className="text-center"
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <StockLevelIndicator 
+                                                currentStock={item.currentStock}
+                                                reorderLevel={item.reorderLevel}
+                                                standardStockLevel={item.standardStockLevel}
+                                            />
+                                        )}
+                                    </td>
+                                    <td className="p-2 text-right font-mono">R {(item.price || 0).toFixed(2)}</td>
+                                    <td className="p-2 text-right">
+                                        {editingItem?.id === item.id ? (
+                                            <div className="flex gap-2 justify-end">
+                                                <Button onClick={handleSaveEdit} variant="success" size="sm" className="p-2"><Save size={16}/></Button>
+                                                <Button onClick={handleCancelEdit} variant="secondary" size="sm" className="p-2"><XCircle size={16}/></Button>
+                                            </div>
+                                        ) : (
+                                            <Button onClick={() => handleEditClick(item)} variant="secondary" size="sm" className="p-2"><Edit size={16}/></Button>
+                                        )}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -22280,114 +22711,73 @@ const InventoryValuationDashboard = ({ items, loading }) => {
     );
 };
 
-// Component for the consignment stock report
-const ConsignmentReport = () => {
-    const [clients, setClients] = useState([]);
-    const [consignmentStock, setConsignmentStock] = useState([]);
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        const fetchData = async () => {
-            setLoading(true);
-            const clientUsers = await getClientUsers();
-            const formattedClients = clientUsers.map(c => ({ id: c.id, name: c.companyName || c.email }));
-            setClients(formattedClients);
-            
-            // Fetch all consignment stock at once
-            const allStock = [];
-            const unsubscribers = formattedClients.map(client => {
-                return listenToConsignmentStockForClient(client.id, (items) => {
-                    // This is a bit tricky with live updates, but for a report it's okay.
-                    // A more robust solution might query all at once, not listen.
-                    const existingClientIndex = allStock.findIndex(s => s.clientId === client.id);
-                    if (existingClientIndex > -1) {
-                        allStock[existingClientIndex].items = items;
-                    } else {
-                        allStock.push({ clientId: client.id, clientName: client.name, items });
-                    }
-                    // A simple way to trigger a re-render
-                    setConsignmentStock([...allStock]);
-                });
-            });
-            setLoading(false);
-            return () => unsubscribers.forEach(unsub => unsub());
-        };
-        const unsubPromise = fetchData();
-        return () => { unsubPromise.then(cleanup => cleanup && cleanup()); };
-    }, []);
-
-    const totalConsignmentValue = useMemo(() => {
-        // This assumes price is stored on the consignment item, which might need adjustment
-        // For now, we'll assume a placeholder price or fetch it.
-        return consignmentStock.flat().reduce((sum, clientData) => {
-            return sum + clientData.items.reduce((clientSum, item) => {
-                // We need a price source. Let's assume it's on the item for now.
-                return clientSum + ((item.quantity || 0) * (item.sellingPrice || 0));
-            }, 0);
-        }, 0);
-    }, [consignmentStock]);
-
-    return (
-        <div className="space-y-6">
-            <KpiCard 
-                icon={<Truck size={24} />}
-                title="Total Value of Consignment Stock"
-                value={`R ${totalConsignmentValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
-                color="bg-purple-500/20 text-purple-400"
-            />
-            {loading ? <p>Loading consignment data...</p> : (
-                consignmentStock.map(clientData => (
-                    <div key={clientData.clientId} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <h4 className="font-bold text-white text-lg mb-2 flex items-center gap-2"><User /> {clientData.clientName}</h4>
-                         <div className="overflow-x-auto max-h-72">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
-                                    <tr>
-                                        <th className="p-2">Product Name</th>
-                                        <th className="p-2 text-center">Quantity on Hand</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {clientData.items.map(item => (
-                                        <tr key={item.id} className="border-b border-gray-700">
-                                            <td className="p-2 text-white">{item.productName}</td>
-                                            <td className="p-2 text-center font-bold">{item.quantity}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                ))
-            )}
-        </div>
-    );
-};
-
-// Main Page Component
 const StockHubPage = () => {
-    const [activeTab, setActiveTab] = useState('internal');
+    const [activeTab, setActiveTab] = useState('overview');
     const [inventoryItems, setInventoryItems] = useState([]);
+    const [purchaseQueue, setPurchaseQueue] = useState([]);
+    const [jobQueue, setJobQueue] = useState([]);
+    const [suppliers, setSuppliers] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isAnalyzerOpen, setAnalyzerOpen] = useState(false);
+
+    const fetchData = () => {
+        setLoading(true);
+        getAllInventoryItems().then(setInventoryItems);
+        getSuppliers().then(setSuppliers);
+        
+        const unsubscribeStock = listenToPurchaseQueue(setPurchaseQueue);
+        const unsubscribeJobs = listenToOneOffPurchases(items => {
+            setJobQueue(items.filter(item => item.status === 'Pending Purchase'));
+        });
+
+        setLoading(false);
+        return () => {
+            unsubscribeStock();
+            unsubscribeJobs();
+        };
+    };
 
     useEffect(() => {
-        getAllInventoryItems().then(items => {
-            setInventoryItems(items);
-            setLoading(false);
-        });
+        const unsubscribe = fetchData();
+        return () => unsubscribe();
     }, []);
+    
+    const { pendingStockItems, inTransitItems } = useMemo(() => {
+        return {
+            pendingStockItems: purchaseQueue.filter(i => i.status === 'pending'),
+            inTransitItems: purchaseQueue.filter(i => i.status === 'ordered')
+        }
+    }, [purchaseQueue]);
 
     return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-white">Stock Hub</h2>
-            <div className="flex border-b border-gray-700">
-                <button onClick={() => setActiveTab('internal')} className={`px-4 py-2 font-semibold ${activeTab === 'internal' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Internal Stock & Valuation</button>
-                <button onClick={() => setActiveTab('consignment')} className={`px-4 py-2 font-semibold ${activeTab === 'consignment' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Consignment Report</button>
+        <>
+            <div className="space-y-6">
+                 <div className="flex justify-between items-center">
+                    <h2 className="text-3xl font-bold text-white">Purchasing Hub</h2>
+                    <Button onClick={() => setAnalyzerOpen(true)} variant="secondary">
+                        <BrainCircuit size={18} className="mr-2"/>
+                        Predictive Analyzer
+                    </Button>
+                </div>
+                <div className="flex border-b border-gray-700">
+                    <button onClick={() => setActiveTab('overview')} className={`px-4 py-2 font-semibold ${activeTab === 'overview' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>Stock Overview</button>
+                    <button onClick={() => setActiveTab('purchase_queue')} className={`px-4 py-2 font-semibold flex items-center gap-2 ${activeTab === 'purchase_queue' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>
+                        Purchase Queue 
+                        <span className="bg-yellow-500/20 text-yellow-300 text-xs font-bold px-2 py-0.5 rounded-full">{pendingStockItems.length + jobQueue.length}</span>
+                    </button>
+                    <button onClick={() => setActiveTab('in_transit')} className={`px-4 py-2 font-semibold flex items-center gap-2 ${activeTab === 'in_transit' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400'}`}>
+                        In-Transit Orders
+                        <span className="bg-blue-500/20 text-blue-300 text-xs font-bold px-2 py-0.5 rounded-full">{inTransitItems.length}</span>
+                    </button>
+                </div>
+
+                {activeTab === 'overview' && <PurchasedItemsDashboard items={inventoryItems} loading={loading} onStockUpdate={fetchData} />}
+                {activeTab === 'purchase_queue' && <PurchaseQueue stockItems={pendingStockItems} jobItems={jobQueue} suppliers={suppliers} onAction={fetchData} />}
+                {activeTab === 'in_transit' && <InTransitOrders items={inTransitItems} suppliers={suppliers} onStockReceived={fetchData} />}
             </div>
 
-            {activeTab === 'internal' && <InventoryValuationDashboard items={inventoryItems} loading={loading} />}
-            {activeTab === 'consignment' && <ConsignmentReport />}
-        </div>
+            {isAnalyzerOpen && <FutureDemandAnalyzer onClose={() => setAnalyzerOpen(false)} />}
+        </>
     );
 };
 
@@ -22409,9 +22799,9 @@ import { useStockTakeData } from '../hooks/useStockTakeData';
 import { Summary, StockCountList } from '../components/features/stock/StockTakeComponents';
 import ConsignmentStockTake from '../components/features/stock/ConsignmentStockTake';
 import toast from 'react-hot-toast';
-import QrScannerModal from '../components/features/scanner/QrScannerModal'; // <-- NEW IMPORT
-import { findInventoryItemByItemCode } from '../api/firestore'; // <-- NEW IMPORT
-import StockCountModal from '../components/features/stock/StockCountModal'; // <-- CORRECTED IMPORT PATH
+import QrScannerModal from '../components/features/scanner/QrScannerModal';
+import { findInventoryItemByItemCode } from '../api/firestore';
+import StockCountModal from '../components/features/stock/StockCountModal';
 
 const TabButton = ({ id, label, icon, activeTab, setActiveTab }) => {
     const isActive = activeTab === id;
@@ -22447,20 +22837,18 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
     } = useStockTakeData(inventoryTypeFilter);
 
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [isScannerOpen, setIsScannerOpen] = useState(false); // <-- NEW STATE FOR SCANNER
-    const [itemToCount, setItemToCount] = useState(null); // <-- NEW: State for modal
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
+    const [itemToCount, setItemToCount] = useState(null);
 
-    // UPDATED: Handle successful scan by opening the modal
     const handleScanSuccess = async (scannedPartNumber) => {
         setIsScannerOpen(false);
         try {
             const itemData = await findInventoryItemByItemCode(scannedPartNumber);
-            // Ensure the found item matches the current filter category
             const isProductMatch = inventoryTypeFilter === 'products' && itemData.category === 'Product';
             const isPurchasedMatch = inventoryTypeFilter === 'purchased' && itemData.category !== 'Product';
 
             if (isProductMatch || isPurchasedMatch) {
-                setItemToCount(itemData); // Open the modal with the found item
+                setItemToCount(itemData);
             } else {
                 toast.error("Scanned item not found in the current stock-take category.");
             }
@@ -22469,12 +22857,10 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
         }
     };
 
-    // NEW: Function to update the count from the modal
     const handleUpdateCountFromModal = (itemId, newCount) => {
-        // This will update the local state in useStockTakeData hook
         handleCountChange(itemId, 'quantity', newCount); 
         toast.success("Count captured.");
-        setItemToCount(null); // Close the modal
+        setItemToCount(null);
     };
 
     const handleReconcile = () => {
@@ -22559,7 +22945,6 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                             Scan to Count
                         </Button>
                         <div className="relative w-full sm:w-64">
-                            {/* UPDATED: Ensure Input component is used */}
                             <Input
                                 type="text"
                                 placeholder="Search items..."
@@ -22586,7 +22971,6 @@ const StockTakeContent = ({ inventoryTypeFilter }) => {
                 />
             )}
 
-            {/* NEW: Render the count input modal */}
             {itemToCount && (
                 <StockCountModal
                     item={itemToCount}
@@ -23607,6 +23991,7 @@ import StockHubPage from './pages/StockHubPage.jsx';
 import ProductCatalogPage from './pages/ProductCatalogPage.jsx';
 import ClientScannerPage from './pages/ClientScannerPage.jsx';
 import ConsumablesCatalogPage from './pages/ConsumablesCatalogPage.jsx';
+import ManufacturedStockPage from './pages/ManufacturedStockPage.jsx';
 
 const StaffLayout = () => (
     <MainLayout>
@@ -23660,6 +24045,7 @@ function App() {
                         <Route path="/qc" element={<RoleBasedRoute permission="qc"><QcPage /></RoleBasedRoute>} />
                         <Route path="/orders" element={<RoleBasedRoute permission="orders"><SalesOrderPage /></RoleBasedRoute>} />
                         <Route path="/stock-hub" element={<RoleBasedRoute permission="purchasing"><StockHubPage /></RoleBasedRoute>} />
+                        <Route path="/manufactured-stock" element={<RoleBasedRoute permission="stockTake"><ManufacturedStockPage /></RoleBasedRoute>} />
                         <Route path="/stock-take" element={<RoleBasedRoute permission="stockTake"><StockTakePage /></RoleBasedRoute>} />
                         <Route path="/creator" element={<RoleBasedRoute permission="jobCreator"><JobCreatorPage /></RoleBasedRoute>} />
                         <Route path="/issues" element={<RoleBasedRoute permission="issues"><IssuesPage /></RoleBasedRoute>} />
@@ -23901,6 +24287,23 @@ input[type=number] {
     color: #9ca3af !important; 
 }
 
+/* --- Standardize input placeholder text color to be more subtle --- */
+input::placeholder,
+textarea::placeholder {
+  color: #4B5563; /* This is Tailwind's gray-600 */
+  opacity: 1; /* Override browser defaults */
+}
+
+/* --- NEW: Override browser autofill styles for a consistent dark theme --- */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+    -webkit-text-fill-color: #FFFFFF !important; /* Set text color to white */
+    -webkit-box-shadow: 0 0 0px 1000px #374151 inset !important; /* Set background color (Tailwind gray-700) using a box shadow trick */
+    transition: background-color 5000s ease-in-out 0s; /* Delay browser style apply */
+    caret-color: #FFFFFF !important; /* Ensure the text cursor is white */
+}
 
 
 ==================================================

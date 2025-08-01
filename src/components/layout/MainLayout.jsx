@@ -2,23 +2,33 @@
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useData } from '../../contexts/DataContext';
 import Button from '../ui/Button';
 import TopNavBar from './TopNavBar';
 import NotificationBell from './NotificationBell';
 import TojemLogo from '../../assets/TOJEM 2024.png';
-import AppletSidebar from './AppletSidebar'; // <-- NEW IMPORT
+import AppletSidebar from './AppletSidebar';
+import { WifiOff } from 'lucide-react';
 
 const MainLayout = ({ children }) => {
+  // --- FIX: Destructure signOut from the useAuth hook ---
   const { user, signOut } = useAuth();
+  const { offline } = useData();
 
   if (user?.hideSidebar) {
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">
             <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50 flex-shrink-0">
                 <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
+                {offline && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-yellow-500/20 text-yellow-300 font-semibold text-sm">
+                        <WifiOff size={16} />
+                        Offline Mode
+                    </div>
+                )}
                 <div className="flex items-center space-x-4">
                     <div className="text-right">
-                        <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p>
+                         <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p>
                         <p className="text-xs text-gray-500 font-semibold">{user?.role || 'No Role'}</p>
                     </div>
                     <Button onClick={signOut} variant="secondary" className="py-1 px-3 text-sm">
@@ -40,6 +50,12 @@ const MainLayout = ({ children }) => {
             <TopNavBar />
         </div>
         <div className="flex items-center space-x-4 pr-2">
+            {offline && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-yellow-500/20 text-yellow-300 font-semibold text-sm">
+                    <WifiOff size={16} />
+                    Offline Mode
+                </div>
+            )}
             <div className="w-px h-8 bg-gray-700"></div>
             <NotificationBell />
             <div className="text-right">
@@ -53,10 +69,10 @@ const MainLayout = ({ children }) => {
       </header>
       
       <div className="flex-1 flex">
-        <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto mr-16"> {/* <-- ADDED MARGIN FOR APPLET BAR */}
+        <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto mr-16">
             {children}
         </main>
-        <AppletSidebar /> {/* <-- ADDED THE NEW APPLET SIDEBAR */}
+        <AppletSidebar />
       </div>
     </div>
   );
