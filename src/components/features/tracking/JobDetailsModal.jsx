@@ -14,8 +14,9 @@ import toast from 'react-hot-toast';
 import QRCode from 'qrcode';
 import PraiseModal from '../../intelligence/PraiseModal';
 
-// Base64 encoded logo to ensure it prints correctly
-const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
+// --- FIX: Replaced the broken Base64 string with a valid placeholder. ---
+// You can generate a new Base64 string for your actual logo and replace this one.
+const tojemLogoBase64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iNTAiIHZpZXdCb3g9IjAgMCAyMDAgNTAiPjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iNTAiIGZpbGw9IiMyNTYzZWIiLz48dGV4dCB4PSIxMDAiIHk9IjMwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5UT0pFTTwvdGV4dD48L3N2Zz4=";
 
 const DetailRow = ({ label, value, className = 'text-gray-300' }) => (
   <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
@@ -132,8 +133,10 @@ const JobDetailsModal = ({
 
   const handleReprint = async () => {
     const qrCodeDataUrl = await QRCode.toDataURL(job.jobId, { width: 80 });
+    const imageSection = job.photoUrl
+        ? `<img src="${job.photoUrl}" alt="${job.partName}" style="width: 100%; height: 150px; border-radius: 8px; object-fit: cover; margin-bottom: 15px; border: 1px solid #ddd;" />`
+        : `<div style="border-radius: 8px; width: 100%; height: 150px; margin-bottom: 15px; background-color: #f5f5f5; display: flex; align-items: center; justify-content: center; color: #aaa; border: 1px solid #ddd;"><span>No Image</span></div>`;
 
-    // --- UPDATED: Using base64 logo ---
     const printContents = `
         <div style="font-family: sans-serif; padding: 20px; color: #333;">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 15px; border-bottom: 1px solid #eee;">
@@ -150,10 +153,13 @@ const JobDetailsModal = ({
                 </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
-                <div style="font-size: 13px; line-height: 1.6;">
-                    <p style="margin: 0;"><b>Employee:</b> ${job.employeeName}</p>
-                    <p style="margin: 0;"><b>Est. Time:</b> ${job.estimatedTime || 'N/A'} mins</p>
-                    <p style="margin: 0;"><b>Description:</b> ${job.description || 'No description.'}</p>
+                <div>
+                    ${imageSection}
+                    <div style="font-size: 13px; line-height: 1.6;">
+                        <p style="margin: 0;"><b>Employee:</b> ${job.employeeName}</p>
+                        <p style="margin: 0;"><b>Est. Time:</b> ${job.estimatedTime || 'N/A'} mins</p>
+                        <p style="margin: 0;"><b>Description:</b> ${job.description || 'No description.'}</p>
+                    </div>
                 </div>
                 <div style="font-size: 13px; line-height: 1.6;">
                     <div>
@@ -161,6 +167,12 @@ const JobDetailsModal = ({
                         <ul style="list-style: disc; padding-left: 20px; margin: 0;">
                             ${job.tools?.length > 0 ? job.tools.map(tool => `<li>${tool.name}</li>`).join('') : '<li>No tools specified.</li>'}
                             ${job.accessories?.length > 0 ? job.accessories.map(acc => `<li style="margin-left: 15px;">${acc.name}</li>`).join('') : ''}
+                        </ul>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <h3 style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">Required Consumables</h3>
+                        <ul style="list-style: disc; padding-left: 20px; margin: 0;">
+                            ${job.processedConsumables?.length > 0 ? job.processedConsumables.map(c => `<li><span style="font-weight: 600;">${c.name}</span>: ${c.quantity.toFixed(2)} ${c.unit}</li>`).join('') : '<li>No consumables required.</li>'}
                         </ul>
                     </div>
                 </div>
@@ -177,7 +189,11 @@ const JobDetailsModal = ({
     if (printWindow) {
         printWindow.document.write(`<html><head><title>Job Card ${job.jobId}</title></head><body>${printContents}</body></html>`);
         printWindow.document.close();
-        printWindow.onload = () => { setTimeout(() => printWindow.print(), 500); };
+        setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.addEventListener('afterprint', () => printWindow.close());
+        }, 500);
     } else {
         toast("The print window was blocked. Please allow popups.", { icon: 'ℹ️' });
     }

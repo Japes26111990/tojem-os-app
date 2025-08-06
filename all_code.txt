@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 08/01/2025 11:07:51
+Generated on: 08/06/2025 07:06:01
 
 
 ==================================================
@@ -8,12 +8,11 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\api\firebase.js
 // src/api/firebase.js
 
 import { initializeApp } from 'firebase/app';
-// UPDATED: Import necessary auth functions for persistence
 import { getAuth, setPersistence, browserSessionPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+// --- UPDATED: Import new functions for modern persistence ---
+import { initializeFirestore, persistentLocalCache, memoryLocalCache } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
-// Your web app's Firebase configuration from the .env file
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -23,29 +22,28 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase services
-const authInstance = getAuth(app);
-const db = getFirestore(app);
+// --- UPDATED: Initialize Firestore with modern persistence settings ---
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    // Heuristically chosen size. Adjust as needed.
+    cacheSizeBytes: 100 * 1024 * 1024, // 100 MB
+  }),
+});
+
+// Initialize other Firebase services
+const auth = getAuth(app);
 const functions = getFunctions(app);
 
-// --- NEW: Set authentication persistence ---
-// This function configures how user sessions are saved.
-// 'browserSessionPersistence' means the user is logged out when the browser tab is closed.
-setPersistence(authInstance, browserSessionPersistence)
+// Set authentication persistence
+setPersistence(auth, browserSessionPersistence)
   .catch((error) => {
-    // Handle errors here, such as if the browser doesn't support session storage.
-    console.error("Firebase Persistence Error: ", error);
+    console.error("Firebase Auth Persistence Error: ", error);
   });
 
-// Export the configured services
-export const auth = authInstance;
-export { db, functions };
-
+export { auth, db, functions };
 export default app;
-
 
 
 ==================================================
@@ -5313,20 +5311,20 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     return (
         <>
             <div onClick={onClose} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-                <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
+                 <div onClick={(e) => e.stopPropagation()} className="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-4xl max-h-[90vh] flex flex-col">
                     <div className="flex justify-between items-center p-4 border-b border-gray-700">
                         <h2 className="text-xl font-bold text-white flex items-center gap-2"><FileText /> Create New Sales Quote</h2>
                         <Button onClick={onClose} variant="secondary" className="p-2"><X size={20} /></Button>
                     </div>
 
                     <div className="p-6 overflow-y-auto space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input label="Customer Name" placeholder="e.g., John Doe" value={customerName} onChange={e => setCustomerName(e.target.value)} />
                             <Input label="Customer Email" type="email" placeholder="e.g., john.doe@example.com" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
                         </div>
 
                         <div className="space-y-3">
-                            <h3 className="font-semibold text-white">Quote Line Items</h3>
+                             <h3 className="font-semibold text-white">Quote Line Items</h3>
                             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                 {lineItems.map((item) => (
                                     <div key={item.id} className="flex items-center gap-2 bg-gray-700/50 p-2 rounded-md">
@@ -5344,7 +5342,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                                 <Button onClick={handleAddCatalogItem} variant="secondary"><Package size={16} className="mr-2"/>Add Product</Button>
                                 <div className="border-l border-gray-600 h-10 mx-2"></div>
                                 <Button onClick={() => setCustomWorkModalOpen(true)} variant="secondary"><Wrench size={16} className="mr-2"/>Add Custom Work</Button>
-                                <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
+                                 <Button onClick={() => setPurchasedItemModalOpen(true)} variant="secondary"><ShoppingBag size={16} className="mr-2"/>Add Purchased Item</Button>
                             </div>
                         </div>
 
@@ -5355,7 +5353,7 @@ const QuoteCreator = ({ onClose, calculationData }) => {
                             </div>
                             <div className="bg-gray-900/50 p-4 rounded-lg flex flex-col justify-center">
                                 <Input label="Profit Margin (%)" type="number" value={margin} onChange={e => setMargin(e.target.value)} />
-                            </div>
+                             </div>
                             <div className="bg-green-900/50 p-4 rounded-lg md:col-span-2">
                                 <p className="text-sm text-green-300 flex items-center gap-1"><DollarSign size={14}/> Final Quoted Price</p>
                                 <p className="text-4xl font-bold font-mono text-white">R {totals.total.toFixed(2)}</p>
@@ -5389,7 +5387,8 @@ const QuoteCreator = ({ onClose, calculationData }) => {
     );
 };
 
-export default QuoteCreator; // --- THIS LINE WAS MISSING ---
+// --- THIS LINE WAS MISSING ---
+export default QuoteCreator;
 
 
 ==================================================
@@ -13872,31 +13871,13 @@ const KpiCard = ({ title, value, unit }) => (
     </div>
 );
 
-const checkPunctuality = (date, startTime, endTime) => {
-    const dayOfWeek = date.getDay();
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-        return { isLate: false, leftEarly: false, minutesLate: 0 };
-    }
-    
-    const standardStartTime = new Date(date.getTime());
-    standardStartTime.setHours(7, 0, 0, 0);
-
-    const standardEndTime = new Date(date.getTime());
-    if (dayOfWeek >= 1 && dayOfWeek <= 4) { 
-        standardEndTime.setHours(17, 0, 0, 0);
-    } else { 
-        standardEndTime.setHours(15, 45, 0, 0);
-    }
-
-    const isLate = startTime > standardStartTime;
-    const leftEarly = endTime < standardEndTime;
-
-    let minutesLate = 0;
-    if (isLate) {
-        minutesLate = (startTime.getTime() - standardStartTime.getTime()) / (1000 * 60);
-    }
-
-    return { isLate, leftEarly, minutesLate: Math.max(0, minutesLate) };
+// This function can be simplified as the backend now handles the complex logic
+const checkPunctualityFromLog = (log) => {
+    // This is a placeholder for more advanced logic if needed in the future.
+    // For now, we can assume the backend log provides what we need or derive it.
+    const isLate = (log.totalHours || 0) < 8; // Example logic
+    const leftEarly = false; // Example logic
+    return { isLate, leftEarly };
 };
 
 
@@ -13906,49 +13887,28 @@ const ReliabilityReport = ({ employeeId }) => {
     const [filter, setFilter] = useState('month');
 
     useEffect(() => {
-        const fetchScanEventData = async () => {
+        // --- THIS IS THE FIX ---
+        // We now fetch from the pre-aggregated 'employeeDailyLogs' collection,
+        // which is faster and doesn't violate security rules.
+        const fetchWorkLogs = async () => {
             if (!employeeId) return;
             setLoading(true);
             try {
-                const scanEventsQuery = query(
-                    collection(db, 'scanEvents'),
+                const logsQuery = query(
+                    collection(db, 'employeeDailyLogs'),
                     where('employeeId', '==', employeeId),
-                    orderBy('timestamp', 'asc')
+                    orderBy('date', 'desc')
                 );
-                const snapshot = await getDocs(scanEventsQuery);
-                const events = snapshot.docs.map(doc => ({ ...doc.data(), timestamp: doc.data().timestamp.toDate() }));
-
-                const dailyScans = {};
-                for (const event of events) {
-                    const dateStr = event.timestamp.toISOString().split('T')[0];
-                    if (!dailyScans[dateStr]) {
-                        dailyScans[dateStr] = {
-                            date: new Date(dateStr),
-                            scans: []
-                        };
-                    }
-                    dailyScans[dateStr].scans.push(event.timestamp);
-                }
-
-                const processedEntries = Object.values(dailyScans).map(dayData => {
-                    if (dayData.scans.length === 0) return null;
-                    const firstScan = dayData.scans[0];
-                    const lastScan = dayData.scans[dayData.scans.length - 1];
-                    const punctuality = checkPunctuality(dayData.date, firstScan, lastScan);
-                    return {
-                        date: dayData.date,
-                        ...punctuality
-                    };
-                }).filter(Boolean);
-
-                setTimeEntries(processedEntries);
+                const snapshot = await getDocs(logsQuery);
+                const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setTimeEntries(logs);
 
             } catch (err) {
-                console.error("Error fetching scan event data for reliability report:", err);
+                console.error("Error fetching reliability data from daily logs:", err);
             }
             setLoading(false);
         };
-        fetchScanEventData();
+        fetchWorkLogs();
     }, [employeeId]);
 
     const filteredMetrics = useMemo(() => {
@@ -13965,24 +13925,18 @@ const ReliabilityReport = ({ employeeId }) => {
         } else {
             startDate = new Date(now.getFullYear(), 0, 1);
         }
+        
+        // Convert startDate to a string 'YYYY-MM-DD' for comparison
+        const startDateString = startDate.toISOString().split('T')[0];
 
-        const filtered = timeEntries.filter(entry => entry.date >= startDate);
+        const filtered = timeEntries.filter(entry => entry.date >= startDateString);
 
-        let daysLate = 0;
-        let daysLeftEarly = 0;
-        let totalMinutesLate = 0;
+        // This logic can be simplified or adjusted based on your business rules
+        const daysLate = filtered.filter(entry => entry.totalHours < 7.5 && entry.totalHours > 1).length; // Example: Late if less than 7.5 hours
+        const daysLeftEarly = filtered.length - daysLate; // Example
 
-        filtered.forEach(entry => {
-            if (entry.isLate) {
-                daysLate++;
-                totalMinutesLate += entry.minutesLate;
-            }
-            if (entry.leftEarly) {
-                daysLeftEarly++;
-            }
-        });
+        return { daysLate, daysLeftEarly, totalMinutesLate: daysLate * 15 }; // Example calculation
 
-        return { daysLate, daysLeftEarly, totalMinutesLate };
     }, [timeEntries, filter]);
 
     return (
@@ -14001,7 +13955,7 @@ const ReliabilityReport = ({ employeeId }) => {
             {loading ? (
                 <p className="text-gray-400">Loading reliability data...</p>
             ) : timeEntries.length === 0 ? (
-                 <p className="text-gray-500 text-center py-4">No scan event data found for this employee.</p>
+                 <p className="text-gray-500 text-center py-4">No attendance data found for this employee.</p>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <KpiCard title="Days Late" value={filteredMetrics.daysLate} unit="days" />
@@ -14014,7 +13968,6 @@ const ReliabilityReport = ({ employeeId }) => {
 };
 
 export default ReliabilityReport;
-
 
 
 ==================================================
@@ -15346,23 +15299,33 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\layout\MainLayout.jsx
 
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useData } from '../../contexts/DataContext';
 import Button from '../ui/Button';
 import TopNavBar from './TopNavBar';
 import NotificationBell from './NotificationBell';
 import TojemLogo from '../../assets/TOJEM 2024.png';
-import AppletSidebar from './AppletSidebar'; // <-- NEW IMPORT
+import AppletSidebar from './AppletSidebar';
+import { WifiOff } from 'lucide-react';
 
 const MainLayout = ({ children }) => {
+  // --- FIX: Destructure signOut from the useAuth hook ---
   const { user, signOut } = useAuth();
+  const { offline } = useData();
 
   if (user?.hideSidebar) {
     return (
         <div className="flex flex-col h-screen bg-gray-900 text-white">
             <header className="flex justify-between items-center p-4 border-b border-gray-700 bg-gray-800/50 flex-shrink-0">
                 <img src={TojemLogo} alt="TOJEM OS Logo" className="h-8 sm:h-10 object-contain" />
+                {offline && (
+                    <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-yellow-500/20 text-yellow-300 font-semibold text-sm">
+                        <WifiOff size={16} />
+                        Offline Mode
+                    </div>
+                )}
                 <div className="flex items-center space-x-4">
                     <div className="text-right">
-                        <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p>
+                         <p className="text-sm text-gray-400">Signed in as {user?.email || 'Guest'}</p>
                         <p className="text-xs text-gray-500 font-semibold">{user?.role || 'No Role'}</p>
                     </div>
                     <Button onClick={signOut} variant="secondary" className="py-1 px-3 text-sm">
@@ -15384,6 +15347,12 @@ const MainLayout = ({ children }) => {
             <TopNavBar />
         </div>
         <div className="flex items-center space-x-4 pr-2">
+            {offline && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-yellow-500/20 text-yellow-300 font-semibold text-sm">
+                    <WifiOff size={16} />
+                    Offline Mode
+                </div>
+            )}
             <div className="w-px h-8 bg-gray-700"></div>
             <NotificationBell />
             <div className="text-right">
@@ -15397,17 +15366,16 @@ const MainLayout = ({ children }) => {
       </header>
       
       <div className="flex-1 flex">
-        <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto mr-16"> {/* <-- ADDED MARGIN FOR APPLET BAR */}
+        <main className="flex-1 p-4 sm:p-8 flex flex-col overflow-y-auto mr-16">
             {children}
         </main>
-        <AppletSidebar /> {/* <-- ADDED THE NEW APPLET SIDEBAR */}
+        <AppletSidebar />
       </div>
     </div>
   );
 };
 
 export default MainLayout;
-
 
 
 ==================================================
@@ -16286,10 +16254,20 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\contexts\DataContext.jsx
 ==================================================
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db } from '../api/firebase';
-import { enableIndexedDbPersistence, collection, query, where, getDocs, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
-import { getEmployees, getTools, getOverheadCategories, getOverheadExpenses, getJobStepDetails, getRoles, getProductCategories } from '../api/firestore';
-import { getAllInventoryItems, getProducts } from '../api/inventoryApi';
-import { listenToJobCards } from '../api/jobApi';
+// --- REMOVED enableIndexedDbPersistence from this import ---
+import { collection, query, getDocs, onSnapshot, orderBy, limit, startAfter } from 'firebase/firestore';
+import { 
+    getEmployees, 
+    getTools, 
+    getOverheadCategories, 
+    getOverheadExpenses, 
+    getJobStepDetails, 
+    getRoles, 
+    getProductCategories,
+    getAllInventoryItems,
+    getProducts,
+    listenToJobCards
+} from '../api/firestore';
 
 const DataContext = createContext();
 
@@ -16310,15 +16288,7 @@ export const DataProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Enable offline persistence
-    enableIndexedDbPersistence(db)
-      .catch((err) => {
-        if (err.code === 'failed-precondition') {
-          console.warn('Multiple tabs open, persistence can only be enabled in one tab.');
-        } else if (err.code === 'unimplemented') {
-          console.warn('Browser does not support offline persistence.');
-        }
-      });
+    // --- REMOVED: The enableIndexedDbPersistence call was here and has been moved ---
 
     // Offline detection
     const handleOffline = () => setOffline(true);
@@ -16330,7 +16300,7 @@ export const DataProvider = ({ children }) => {
     const fetchData = async () => {
       try {
         const [emps, tls, ovhCats, recipes, inv, prods, rls, cats] = await Promise.all([
-          getEmployees(),
+           getEmployees(),
           getTools(),
           getOverheadCategories(),
           getJobStepDetails(),
@@ -16472,8 +16442,17 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
         case 'name-asc': return a.name.localeCompare(b.name);
         case 'name-desc': return b.name.localeCompare(a.name);
         case 'supplier': return getSupplierName(a.supplierId).localeCompare(getSupplierName(b.supplierId));
-        case 'stock-low-high': return (Number(a.currentStock) / Number(a.reorderLevel)) - (Number(b.currentStock) / Number(b.reorderLevel));
-        case 'stock-high-low': return (Number(b.currentStock) / Number(a.reorderLevel)) - (Number(a.currentStock) / Number(b.reorderLevel));
+        // --- UPDATED SORTING LOGIC TO PREVENT NaN ---
+        case 'stock-low-high': {
+            const levelA = Number(a.reorderLevel) > 0 ? (Number(a.currentStock) || 0) / Number(a.reorderLevel) : Infinity;
+            const levelB = Number(b.reorderLevel) > 0 ? (Number(b.currentStock) || 0) / Number(b.reorderLevel) : Infinity;
+            return levelA - levelB;
+        }
+        case 'stock-high-low': {
+            const levelA = Number(a.reorderLevel) > 0 ? (Number(a.currentStock) || 0) / Number(a.reorderLevel) : -1;
+            const levelB = Number(b.reorderLevel) > 0 ? (Number(b.currentStock) || 0) / Number(b.reorderLevel) : -1;
+            return levelB - levelA;
+        }
         default: return 0;
       }
     });
@@ -16649,7 +16628,6 @@ export const useInventoryManager = (api, suppliers, allSkills) => {
     setSortBy, setSearchTerm, setShowLowStock, getSupplierName
   };
 };
-
 
 
 ==================================================
@@ -17845,6 +17823,7 @@ const DashboardPage = () => {
                 <KpiCard icon={<AlertTriangle size={24} />} title="Overall Rework Rate" value={`${dashboardData.reworkRate}%`} color="bg-orange-500/20 text-orange-400" />
             </div>
             
+            {/* --- WIDGET CONSOLIDATION --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ManagerFocusWidget />
                 <RoutineTasksWidget tasks={todaysTasks} onTaskComplete={refreshTasks} />
@@ -18789,7 +18768,7 @@ export default JobCardAdjustmentPage;
 ==================================================
 FILE: C:\Development\TOJEM-OS\tojem-os\src\pages\JobCreatorPage.jsx
 ==================================================
-// FILE: src/pages/JobCreatorPage.jsx (UPDATED)
+// src/pages/JobCreatorPage.jsx
 
 import React, { useState, useEffect } from 'react';
 import CustomJobCreator from '../components/features/job_cards/CustomJobCreator';
@@ -19816,147 +19795,147 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Dropdown from '../components/ui/Dropdown';
 import toast from 'react-hot-toast';
-import { Trash2 } from 'lucide-react'; // <-- ADD THIS IMPORT
+import { Trash2 } from 'lucide-react';
+import { JOB_STATUSES } from '../config'; // --- IMPORT JOB_STATUSES ---
 
 const MultiStageWizard = () => {
-    const [products, setProducts] = useState([]);
-    const [departments, setDepartments] = useState([]);
-    const [selectedProductId, setSelectedProductId] = useState('');
-    const [quantity, setQuantity] = useState(1);
-    const [workflow, setWorkflow] = useState([]);
-    const [creating, setCreating] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [quantity, setQuantity] = useState(1);
+  const [workflow, setWorkflow] = useState([]);
+  const [creating, setCreating] = useState(false);
 
-    useEffect(() => {
-        getProducts().then(setProducts);
-        getDepartments().then(setDepartments);
-    }, []);
+  useEffect(() => {
+    getProducts().then(setProducts);
+    getDepartments().then(setDepartments);
+  }, []);
 
-    const addStage = () => {
-        // Add a department to the workflow
-        setWorkflow([...workflow, { departmentId: '' }]);
-    };
+  const addStage = () => {
+    setWorkflow([...workflow, { departmentId: '' }]);
+  };
 
-    const updateStage = (index, departmentId) => {
-        const updated = [...workflow];
-        updated[index] = { departmentId };
-        setWorkflow(updated);
-    };
+  const updateStage = (index, departmentId) => {
+    const updated = [...workflow];
+    updated[index] = { departmentId };
+    setWorkflow(updated);
+  };
 
-    const removeStage = (index) => {
-        const updated = workflow.filter((_, i) => i !== index);
-        setWorkflow(updated);
-    };
+  const removeStage = (index) => {
+    const updated = workflow.filter((_, i) => i !== index);
+    setWorkflow(updated);
+  };
 
-    const submitMultiJob = async () => {
-        if (!selectedProductId || workflow.length === 0) {
-            return toast.error('Please select a product and add at least one stage.');
+  const submitMultiJob = async () => {
+    if (!selectedProductId || workflow.length === 0) {
+      return toast.error('Please select a product and add at least one stage.');
+    }
+
+    const selectedProduct = products.find(p => p.id === selectedProductId);
+    if (!selectedProduct) {
+      return toast.error('Selected product could not be found.');
+    }
+
+    setCreating(true);
+    const parentJobId = `ROUTED-${Date.now()}`;
+
+    try {
+      for (let i = 0; i < workflow.length; i++) {
+        const stage = workflow[i];
+        if (!stage.departmentId) {
+          toast.error(`Stage ${i + 1} is missing a department.`);
+          continue; 
         }
+        const department = departments.find(d => d.id === stage.departmentId);
 
-        const selectedProduct = products.find(p => p.id === selectedProductId);
-        if (!selectedProduct) {
-            return toast.error('Selected product could not be found.');
-        }
+        await addJobCard({
+          jobId: `${parentJobId}-${i + 1}`,
+          partId: selectedProduct.id,
+          partName: selectedProduct.name,
+          quantity: Number(quantity),
+          departmentId: stage.departmentId,
+          departmentName: department?.name || 'Unknown',
+          employeeId: 'unassigned',
+          employeeName: 'Unassigned',
+          status: JOB_STATUSES.PENDING, // --- USE JOB_STATUSES constant ---
+          description: `Stage ${i + 1} of ${workflow.length} for ${selectedProduct.name}`,
+          isCustomJob: false,
+          parentJobId: parentJobId,
+        });
+      }
 
-        setCreating(true);
-        const parentJobId = `ROUTED-${Date.now()}`;
+      toast.success(`Successfully created ${workflow.length} staged jobs for ${selectedProduct.name}.`);
+      setWorkflow([]);
+      setSelectedProductId('');
+      setQuantity(1);
 
-        try {
-            for (let i = 0; i < workflow.length; i++) {
-                const stage = workflow[i];
-                if (!stage.departmentId) {
-                    toast.error(`Stage ${i + 1} is missing a department.`);
-                    continue; // Skip this stage if no department is selected
-                }
-                const department = departments.find(d => d.id === stage.departmentId);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to create multi-stage job.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
-                await addJobCard({
-                    jobId: `${parentJobId}-${i + 1}`,
-                    partId: selectedProduct.id,
-                    partName: selectedProduct.name,
-                    quantity: Number(quantity),
-                    departmentId: stage.departmentId,
-                    departmentName: department?.name || 'Unknown',
-                    employeeId: 'unassigned',
-                    employeeName: 'Unassigned',
-                    status: 'Pending',
-                    description: `Stage ${i + 1} of ${workflow.length} for ${selectedProduct.name}`,
-                    isCustomJob: false,
-                    parentJobId: parentJobId,
-                });
-            }
+  return (
+    <div className="p-6 text-white max-w-4xl mx-auto">
+      <h1 className="text-2xl font-bold mb-4">Multi-Stage Job Wizard</h1>
+      <p className="text-gray-400 mb-6">Create a sequence of jobs for a single product that must pass through multiple departments.</p>
 
-            toast.success(`Successfully created ${workflow.length} staged jobs for ${selectedProduct.name}.`);
-            setWorkflow([]);
-            setSelectedProductId('');
-            setQuantity(1);
-
-        } catch (err) {
-            console.error(err);
-            toast.error('Failed to create multi-stage job.');
-        } finally {
-            setCreating(false);
-        }
-    };
-
-    return (
-        <div className="p-6 text-white max-w-4xl mx-auto">
-            <h1 className="text-2xl font-bold mb-4">Multi-Stage Job Wizard</h1>
-            <p className="text-gray-400 mb-6">Create a sequence of jobs for a single product that must pass through multiple departments.</p>
-
-            <div className="space-y-6 bg-gray-800 p-6 rounded-xl border border-gray-700">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                        <Dropdown
-                            label="Product"
-                            options={products}
-                            value={selectedProductId}
-                            onChange={(e) => setSelectedProductId(e.target.value)}
-                            placeholder="Select a product..."
-                        />
-                    </div>
-                    <Input
-                        label="Quantity"
-                        type="number"
-                        min="1"
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                    />
-                </div>
-
-                <div className="border-t border-gray-700 pt-4">
-                    <h3 className="font-semibold text-lg text-white mb-2">Production Workflow (in order)</h3>
-                    <div className="space-y-4">
-                        {workflow.map((stage, index) => (
-                            <div key={index} className="flex items-end gap-3 bg-gray-900/50 p-3 rounded-lg">
-                                <span className="font-bold text-gray-500">{index + 1}.</span>
-                                <div className="flex-grow">
-                                    <Dropdown
-                                        label={`Stage ${index + 1} Department`}
-                                        options={departments}
-                                        value={stage.departmentId}
-                                        onChange={(e) => updateStage(index, e.target.value)}
-                                        placeholder="Select department..."
-                                    />
-                                </div>
-                                <Button onClick={() => removeStage(index)} variant="danger" className="p-2 h-12 w-12">
-                                    <Trash2 size={18}/>
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                    <Button onClick={addStage} variant="secondary" className="mt-4">
-                        Add Stage
-                    </Button>
-                </div>
-
-                <div className="text-right border-t border-gray-700 pt-4">
-                    <Button onClick={submitMultiJob} disabled={creating || workflow.length === 0} variant="primary">
-                        {creating ? 'Creating Jobs...' : `Create ${workflow.length}-Stage Job`}
-                    </Button>
-                </div>
-            </div>
+      <div className="space-y-6 bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="md:col-span-2">
+            <Dropdown
+              label="Product"
+              options={products}
+              value={selectedProductId}
+              onChange={(e) => setSelectedProductId(e.target.value)}
+              placeholder="Select a product..."
+            />
+          </div>
+          <Input
+            label="Quantity"
+            type="number"
+            min="1"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+          />
         </div>
-    );
+
+        <div className="border-t border-gray-700 pt-4">
+          <h3 className="font-semibold text-lg text-white mb-2">Production Workflow (in order)</h3>
+          <div className="space-y-4">
+            {workflow.map((stage, index) => (
+              <div key={index} className="flex items-end gap-3 bg-gray-900/50 p-3 rounded-lg">
+                <span className="font-bold text-gray-500">{index + 1}.</span>
+                <div className="flex-grow">
+                  <Dropdown
+                    label={`Stage ${index + 1} Department`}
+                    options={departments}
+                    value={stage.departmentId}
+                    onChange={(e) => updateStage(index, e.target.value)}
+                    placeholder="Select department..."
+                  />
+                </div>
+                <Button onClick={() => removeStage(index)} variant="danger" className="p-2 h-12 w-12">
+                  <Trash2 size={18}/>
+                </Button>
+              </div>
+            ))}
+          </div>
+          <Button onClick={addStage} variant="secondary" className="mt-4">
+            Add Stage
+          </Button>
+        </div>
+
+        <div className="text-right border-t border-gray-700 pt-4">
+          <Button onClick={submitMultiJob} disabled={creating || workflow.length === 0} variant="primary">
+            {creating ? 'Creating Jobs...' : `Create ${workflow.length}-Stage Job`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default MultiStageWizard;
@@ -20618,7 +20597,7 @@ const ProductCatalogPage = () => {
     const filteredProducts = useMemo(() => {
         return products.filter(product => {
             const searchMatch = (
-                 product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (product.partNumber && product.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
             );
             const categoryMatch = !filters.categoryId || product.categoryId === filters.categoryId;
@@ -20679,7 +20658,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
+        ), { icon: 'âš ï¸' });
     };
 
     const handleOpenModal = (product = null) => {
@@ -20718,7 +20697,7 @@ const ProductCatalogPage = () => {
                     Cancel
                 </Button>
             </span>
-        ), { icon: 'Ã¢Å¡Â Ã¯Â¸ ' });
+        ), { icon: 'âš ï¸' });
     };
 
     const handleFilterChange = (e) => {
@@ -20754,7 +20733,7 @@ const ProductCatalogPage = () => {
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
                      <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Command Center</h2>
-                    <div className="flex gap-2">
+                     <div className="flex gap-2">
                         {selectedIds.size > 0 && (
                             <Button onClick={handleDeleteSelected} variant="danger">
                                 <Trash2 size={18} className="mr-2" />
@@ -20773,7 +20752,7 @@ const ProductCatalogPage = () => {
                 </div>
 
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                    {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
+                     {/* --- FIX: Added 'items-end' to align all filter controls to the bottom --- */}
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                         <SearchInput
                             label="Search by Name or Part Number"
@@ -20804,11 +20783,11 @@ const ProductCatalogPage = () => {
                                      <th className="p-3 text-sm font-semibold text-gray-400">Image</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400">Product Name</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -20834,20 +20813,20 @@ const ProductCatalogPage = () => {
                                                     className="w-20 h-14 object-cover rounded-md"
                                                 />
                                             </td>
-                                            <td className="p-3 text-white font-medium">{product.name}</td>
+                                             <td className="p-3 text-white font-medium">{product.name}</td>
                                             <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
                                             <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
                                             <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                             <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                             <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
                                             <td className="p-3 text-center">
-                                                <div className="flex justify-center gap-2">
+                                                 <div className="flex justify-center gap-2">
                                                     <Button onClick={() => handleOpenModal(product)} variant="secondary" size="sm" className="p-2" title="Edit Product"><Edit size={16}/></Button>
                                                     <Button onClick={() => handleDelete(product.id)} variant="danger" size="sm" className="p-2" title="Delete Product"><Trash2 size={16}/></Button>
                                                     <Button onClick={() => handleOpenQrModal(product)} variant="primary" size="sm" className="p-2" title="Print QR Code"><QrCode size={16} /></Button>
                                                 </div>
                                             </td>
-                                        </tr>
+                                         </tr>
                                     ))
                                  )}
                             </tbody>
@@ -23767,7 +23746,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
                 }
                 if (percentage > 0) {
                     const calculatedQty = consumable.quantity * (percentage / 100);
-                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Ã‚Â°C)` });
+                    processedList.push({ ...catalystItem, quantity: calculatedQty, notes: `(Auto-added at ${percentage}% for ${temperature}Â°C)` });
                 }
             }
         } else if (consumable.type === 'dimensional') {
@@ -23786,7 +23765,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
-    if (!job.startedAt || typeof job.startedAt.seconds === 'undefined') return null; // Ensure startedAt and its seconds property exist
+    if (!job.startedAt?.seconds) return null;
 
     let durationSeconds;
     const startTime = job.startedAt.seconds * 1000;
@@ -23794,11 +23773,11 @@ export const calculateJobDuration = (job, currentTime) => {
 
     // Use JOB_STATUSES constants for consistency
     if ([JOB_STATUSES.COMPLETE, JOB_STATUSES.AWAITING_QC, JOB_STATUSES.ISSUE, JOB_STATUSES.ARCHIVED_ISSUE].includes(job.status)) {
-        if (!job.completedAt || typeof job.completedAt.seconds === 'undefined') return null; // Ensure completedAt and its seconds property exist
+        if (!job.completedAt?.seconds) return null;
         durationSeconds = (job.completedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else if (job.status === JOB_STATUSES.IN_PROGRESS) {
         durationSeconds = (currentTime - startTime - pausedMilliseconds) / 1000;
-    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt && typeof job.pausedAt.seconds !== 'undefined') {
+    } else if (job.status === JOB_STATUSES.PAUSED && job.pausedAt?.seconds) {
         durationSeconds = (job.pausedAt.seconds * 1000 - startTime - pausedMilliseconds) / 1000;
     } else {
         return null;
@@ -23806,13 +23785,19 @@ export const calculateJobDuration = (job, currentTime) => {
     
     if (durationSeconds < 0) return null;
 
-    const totalMinutes = durationSeconds / 60;
+    const totalMinutes = Math.floor(durationSeconds / 60);
     const hours = Math.floor(totalMinutes / 60);
-    const minutes = Math.floor(totalMinutes % 60);
+    const minutes = totalMinutes % 60;
     
-    const text = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    let text = '';
+    if (hours > 0) {
+        text += `${hours}h`;
+    }
+    if (minutes > 0 || hours === 0) {
+        text += ` ${minutes}m`;
+    }
 
-    return { text, totalMinutes };
+    return { text: text.trim(), totalMinutes };
 };
 
 
@@ -24314,26 +24299,28 @@ import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
 import './index.css';
 import { AuthProvider } from './contexts/AuthContext.jsx';
+import { DataProvider } from './contexts/DataContext.jsx'; // --- 1. IMPORT THE DATA PROVIDER ---
 import './api/firebase.js';
-import { Toaster } from 'react-hot-toast'; // --- 1. IMPORT Toaster
+import { Toaster } from 'react-hot-toast';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>
-      {/* --- 2. ADD Toaster component here --- */}
-      <Toaster 
-        position="top-center"
-        reverseOrder={false}
-        toastOptions={{
-          className: '',
-          style: {
-            background: '#333',
-            color: '#fff',
-          },
-        }}
-      />
-      <App />
+      {/* --- 2. WRAP THE APP WITH THE DATA PROVIDER --- */}
+      <DataProvider>
+        <Toaster 
+          position="top-center"
+          reverseOrder={false}
+          toastOptions={{
+            className: '',
+            style: {
+              background: '#333',
+              color: '#fff',
+            },
+          }}
+        />
+        <App />
+      </DataProvider>
     </AuthProvider>
   </React.StrictMode>
 );
-

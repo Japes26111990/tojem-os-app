@@ -309,7 +309,8 @@ const InventoryManager = () => {
                                 <tr key={item.id} className="border-b border-gray-700">
                                     <td className="p-2 text-white font-medium">{item.name}</td>
                                     <td className="p-2">{item.partNumber || 'N/A'}</td>
-                                    <td className="p-2">{item.currentStock}</td>
+                                    {/* --- FIX: Added a fallback to prevent rendering NaN --- */}
+                                    <td className="p-2">{item.currentStock || 0}</td>
                                     <td className="p-2 flex gap-2">
                                         <Button onClick={() => handleEdit(item)} size="sm">Edit</Button>
                                         <Button onClick={() => handleDelete(item.id)} variant="danger" size="sm">Delete</Button>

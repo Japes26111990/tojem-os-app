@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
-import { ChevronDown, ChevronRight, GraduationCap } from 'lucide-react'; // Import GraduationCap
+import { ChevronDown, ChevronRight, GraduationCap } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Button from '../../ui/Button';
 
+// Badge component to visually represent the job status
 const StatusBadge = ({ status }) => {
     const statusColors = {
         'Pending': 'bg-yellow-500/20 text-yellow-300',
@@ -22,6 +23,7 @@ const StatusBadge = ({ status }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full whitespace-nowrap ${statusColors[status] || 'bg-gray-500/20 text-gray-300'}`}>{status}</span>;
 };
 
+// Badge component to show job efficiency percentage
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0 || !estimatedMinutes) {
         return <span className="text-xs text-gray-500">N/A</span>;
@@ -33,10 +35,11 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{Math.round(efficiency)}%</span>
 };
 
+// Component for a single row in the jobs table
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPerHour }) => {
     const liveDuration = calculateJobDuration(job, currentTime);
 
-    // --- NEW: Logic to determine if training is recommended ---
+    // Logic to determine if training is recommended for the assigned employee
     const isTrainingRecommended = useMemo(() => {
         if (!job.requiredSkills || !job.employeeSkills) return false;
         return job.requiredSkills.some(reqSkill => {
@@ -45,6 +48,7 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         });
     }, [job.requiredSkills, job.employeeSkills]);
 
+    // Calculates the live cost of the job, including labor and overheads
     const calculateLiveCost = (j, cTime, rates, overheadRate) => {
         if (j.status === 'Complete' && typeof j.totalCost === 'number') {
             return `R ${j.totalCost.toFixed(2)}`;
@@ -77,7 +81,6 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
             <td className="p-3 text-gray-300">
                 <div className="flex items-center gap-2">
                     {job.partName}
-                    {/* --- NEW: Display training icon if recommended --- */}
                     {isTrainingRecommended && (
                         <span title="Training recommended for this job">
                             <GraduationCap size={16} className="text-yellow-400" />
@@ -94,7 +97,9 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
     );
 };
 
+// Main component for the live tracking table
 const LiveTrackingTable = ({ overheadCostPerHour }) => {
+    // State management for component data
     const [allJobs, setAllJobs] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [allInventoryItems, setAllInventoryItems] = useState([]);
@@ -106,14 +111,17 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
     const [showCompleted, setShowCompleted] = useState(false);
     const [currentTime, setCurrentTime] = useState(Date.now());
     
+    // State for pagination
     const [lastVisibleDoc, setLastVisibleDoc] = useState(null);
     const [hasMoreJobs, setHasMoreJobs] = useState(true);
 
+    // Hooks for routing and URL parameters
     const [searchParams, setSearchParams] = useSearchParams();
     const navigate = useNavigate();
 
     const JOBS_PER_PAGE = 25;
 
+    // Fetches initial static data like employees, inventory, etc.
     const fetchInitialData = async () => {
         setLoading(true);
         try {
@@ -132,6 +140,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }
     };
     
+    // Effect to fetch data and set up listeners when the component mounts
     useEffect(() => {
         fetchInitialData();
         
@@ -142,14 +151,17 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
             setLoading(false);
         }, { limit: JOBS_PER_PAGE });
 
+        // Set up an interval to update the current time for live duration calculations
         const intervalId = setInterval(() => setCurrentTime(Date.now()), 1000);
 
+        // Cleanup function to unsubscribe from listeners and clear intervals
         return () => {
             unsubscribe();
             clearInterval(intervalId);
         };
     }, []);
     
+    // Effect to check for a jobId in the URL and open the corresponding modal
     useEffect(() => {
         const jobIdFromUrl = searchParams.get('jobId');
         if (jobIdFromUrl && !loading && allJobs.length > 0) {
@@ -160,6 +172,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }
     }, [searchParams, loading, allJobs]);
 
+    // Handles loading more jobs for pagination
     const handleLoadMore = () => {
         if (!hasMoreJobs || loadingMore) return;
         setLoadingMore(true);
@@ -173,6 +186,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }, { limit: JOBS_PER_PAGE, startAfter: lastVisibleDoc });
     };
 
+    // Memoized calculation of employee hourly rates to prevent recalculation on every render
     const employeeHourlyRates = useMemo(() => {
         return employees.reduce((acc, emp) => {
             acc[emp.id] = emp.hourlyRate || 0;
@@ -180,7 +194,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }, {});
     }, [employees]);
 
-    // --- NEW: Enrich jobs with employee skill data for the check ---
+    // Memoized enrichment of job data with employee skills for performance analysis
     const enrichedJobs = useMemo(() => {
         const employeesMap = new Map(employees.map(e => [e.id, e]));
         return allJobs.map(job => {
@@ -192,6 +206,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         });
     }, [allJobs, employees]);
 
+    // Memoized separation of jobs into active and completed lists
     const { activeJobs, completedAndArchivedJobs } = useMemo(() => {
         const statusOrder = { 'In Progress': 1, 'Paused': 2, 'Awaiting QC': 3, 'Pending': 4 };
         
@@ -211,6 +226,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         return { activeJobs: active, completedAndArchivedJobs: completed };
     }, [enrichedJobs]);
 
+    // Handlers for updating and deleting jobs from the details modal
     const handleUpdateJob = async (jobId, updatedData) => {
         try {
             await updateDocument('createdJobCards', jobId, updatedData);
@@ -229,6 +245,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
         }
     };
 
+    // Closes the details modal and removes the jobId from the URL
     const handleCloseModal = () => {
         setSelectedJob(null);
         navigate('/tracking', { replace: true });
@@ -313,7 +330,8 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                         currentTime={Date.now()}
                         employeeHourlyRates={employeeHourlyRates}
                         overheadCostPerHour={overheadCostPerHour}
-                        allEmployees={allEmployees}
+                        // --- FIX: Pass the correct 'employees' state variable ---
+                        allEmployees={employees} 
                         allInventoryItems={allInventoryItems}
                         allTools={allTools}
                         allToolAccessories={allToolAccessories}
