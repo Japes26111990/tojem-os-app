@@ -28,8 +28,8 @@ describe('calculateJobDuration', () => {
             completedAt: createTimestamp(1720364400) // 15:00:00Z
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation to match function output
-        expect(duration.text).toBe('60m'); 
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('60m 0s'); 
         expect(duration.totalMinutes).toBe(60);
     });
 
@@ -39,8 +39,8 @@ describe('calculateJobDuration', () => {
             startedAt: createTimestamp(1720366800) // 15:40:00Z
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation
-        expect(duration.text).toBe('20m'); 
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('20m 0s'); 
         expect(duration.totalMinutes).toBe(20);
     });
 
@@ -52,8 +52,8 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 600000 // 10 minutes pause
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation (60 - 10 = 50)
-        expect(duration.text).toBe('50m');
+        // --- MODIFICATION: Updated expectation (60 - 10 = 50) ---
+        expect(duration.text).toBe('50m 0s');
         expect(duration.totalMinutes).toBe(50);
     });
     
@@ -65,8 +65,8 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 0 
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation
-        expect(duration.text).toBe('30m');
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('30m 0s');
         expect(duration.totalMinutes).toBe(30);
     });
 

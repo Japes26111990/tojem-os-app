@@ -49,7 +49,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * Calculates the duration of a job, accounting for pauses.
  * @param {Object} job - The job object from Firestore.
  * @param {number} currentTime - The current time (Date.now()) for live calculation.
- * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
+ * @returns {{text: string, totalMinutes: number, totalSeconds: number} | null} - The formatted duration, total minutes, and total seconds, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
     if (!job.startedAt?.seconds) return null;
@@ -75,14 +75,17 @@ export const calculateJobDuration = (job, currentTime) => {
     const totalMinutes = Math.floor(durationSeconds / 60);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
+    const seconds = Math.floor(durationSeconds % 60);
     
+    // --- MODIFICATION: Updated text output to include seconds for live feedback ---
     let text = '';
     if (hours > 0) {
-        text += `${hours}h`;
+        text += `${hours}h `;
     }
-    if (minutes > 0 || hours === 0) {
-        text += ` ${minutes}m`;
+    if (minutes > 0 || hours > 0) {
+        text += `${minutes}m `;
     }
+    text += `${seconds}s`;
 
-    return { text: text.trim(), totalMinutes };
+    return { text: text.trim(), totalMinutes, totalSeconds: durationSeconds };
 };

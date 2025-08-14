@@ -2,9 +2,9 @@
  * TOJEM OS - Autopilot Engine (Firebase Cloud Functions)
  * This file contains all the necessary backend logic for the TOJEM OS.
  *
- * @version 3.0
- * @description Added secure, auditable callable functions for job adjustments
- * and customer orders. Implemented the real-time bottleneck analysis engine.
+ * @version 3.2
+ * @description Integrated the Kaizen Autopilot agent to automatically detect and suggest
+ * process improvements based on real-world job performance.
  */
 
 const functions = require("firebase-functions");
@@ -107,6 +107,7 @@ exports.calculateJobCostOnCompletion = functions.firestore
     const { employeeId, tools, processedConsumables, startedAt, completedAt, totalPausedMilliseconds } = newData;
     const materialCost = (processedConsumables || []).reduce((sum, c) => sum + (c.price || 0) * (c.quantity || 0), 0);
     let laborCost = 0;
+
     const employeeDoc = await db.collection("employees").doc(employeeId).get();
     if (employeeDoc.exists) {
         const directRate = employeeDoc.data().hourlyRate || 0;
@@ -138,7 +139,7 @@ exports.calculateJobCostOnCompletion = functions.firestore
   });
 
 // =================================================================================================
-// AUTOPILOT AGENT 3: SECURE CALLABLE FUNCTIONS (NEW)
+// AUTOPILOT AGENT 3: SECURE CALLABLE FUNCTIONS
 // =================================================================================================
 
 /**
@@ -160,17 +161,14 @@ exports.updateJobCardWithAdjustments = functions.https.onCall(async (data, conte
         const jobDoc = await transaction.get(jobRef);
         const jobData = jobDoc.data();
         
-        // Time Adjustment
         const newEstimatedTime = (jobData.estimatedTime || 0) + timeAdjustment;
         
-        // Consumable Adjustment
         const newConsumables = [...(jobData.processedConsumables || [])];
         Object.entries(consumableAdjustments).forEach(([itemId, qtyChange]) => {
             const index = newConsumables.findIndex(c => c.id === itemId);
             if (index > -1) {
                 newConsumables[index].quantity += qtyChange;
             } else {
-                // This would require fetching item details; simplified for now.
                 console.warn(`Cannot add new consumable '${itemId}' via adjustment yet.`);
             }
         });
@@ -180,7 +178,6 @@ exports.updateJobCardWithAdjustments = functions.https.onCall(async (data, conte
             processedConsumables: newConsumables.filter(c => c.quantity > 0),
         });
 
-        // Audit Log
         const auditLogRef = db.collection("auditLogs").doc();
         transaction.set(auditLogRef, {
             action: "job_adjustment",
@@ -210,7 +207,6 @@ exports.submitCustomerOrder = functions.https.onCall(async (data, context) => {
     const userData = userDoc.data();
     const discountPercentage = userData.discountPercentage || 0;
 
-    // Calculate totals on the server to ensure accuracy
     const subtotal = items.reduce((sum, item) => sum + item.sellingPrice * item.quantity, 0);
     const discountAmount = subtotal * (discountPercentage / 100);
     const total = subtotal - discountAmount;
@@ -218,7 +214,7 @@ exports.submitCustomerOrder = functions.https.onCall(async (data, context) => {
     const batch = db.batch();
     const salesOrderRef = db.collection("salesOrders").doc();
     const pickingListRef = db.collection("pickingLists").doc();
-    
+
     const salesOrderData = {
         salesOrderId: `SO-${Date.now()}`,
         customerName: userData.companyName,
@@ -233,9 +229,8 @@ exports.submitCustomerOrder = functions.https.onCall(async (data, context) => {
     };
     batch.set(salesOrderRef, salesOrderData);
 
-    // Create a picking list for items that are in stock
     const itemsToPick = items
-        .filter(item => item.isCatalogItem) // Assuming catalog items are picked
+        .filter(item => item.isCatalogItem)
         .map(item => ({ id: item.id, name: item.name, quantity: item.quantity, location: item.location || "N/A" }));
 
     if (itemsToPick.length > 0) {
@@ -252,10 +247,8 @@ exports.submitCustomerOrder = functions.https.onCall(async (data, context) => {
     return { success: true, salesOrderId: salesOrderData.salesOrderId };
 });
 
-
 // =================================================================================================
-// AUTOPILOT AGENT 4: SYSTEM BOTTLENECK ANALYSIS (NEW)
-// Runs periodically to analyze the workshop floor and identify the primary constraint.
+// AUTOPILOT AGENT 4: SYSTEM BOTTLENECK ANALYSIS
 // =================================================================================================
 exports.updateSystemStatus = functions.pubsub.schedule("every 5 minutes").onRun(async (context) => {
     console.log("Running system bottleneck analysis...");
@@ -289,7 +282,6 @@ exports.updateSystemStatus = functions.pubsub.schedule("every 5 minutes").onRun(
         const job = doc.data();
         (job.tools || []).forEach(toolInUse => {
             if (toolCapacity.has(toolInUse.id)) {
-                // Approximate remaining time for utilization calculation
                 const remainingTime = job.estimatedTime - ((new Date() - job.startedAt.toDate()) / 60000);
                 toolCapacity.get(toolInUse.id).assignedMinutes += Math.max(0, remainingTime);
             }
@@ -314,42 +306,86 @@ exports.updateSystemStatus = functions.pubsub.schedule("every 5 minutes").onRun(
     });
 });
 
-// =================================================================================================
-// SECTION 5: PAYROLL & ATTENDANCE AUTOMATION (PRESERVED)
-// =================================================================================================
 
-exports.processScanEventForPayroll = functions.firestore.document("scanEvents/{eventId}").onCreate(async (snap) => {
-    const eventData = snap.data();
-    const { employeeId, employeeName, timestamp } = eventData;
-    if (!employeeId || !timestamp) return null;
-    const dateString = timestamp.toDate().toISOString().split("T")[0];
-    const logDocRef = db.collection("employeeDailyLogs").doc(`${employeeId}_${dateString}`);
-    const logDoc = await logDocRef.get();
-    if (!logDoc.exists) {
-        return logDocRef.set({ date: dateString, employeeId, employeeName, startTime: timestamp, endTime: timestamp, totalHours: 0, status: "pending" });
-    } else {
-        return logDocRef.update({ endTime: timestamp });
+// =================================================================================================
+// SECTION 5: AUTOMATED TIME & ATTENDANCE
+// Replaces the old per-scan and 10pm finalizer functions with a single, accurate nightly process.
+// =================================================================================================
+exports.dailyAttendanceProcessor = functions.pubsub.schedule("every day 00:10").timeZone("Africa/Johannesburg").onRun(async (context) => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+    const startOfDay = new Date(yesterdayStr + "T00:00:00.000Z");
+    const endOfDay = new Date(yesterdayStr + "T23:59:59.999Z");
+
+    console.log(`Processing scan events for attendance on: ${yesterdayStr}`);
+
+    const scanEventsSnapshot = await db.collection("scanEvents")
+        .where("timestamp", ">=", startOfDay)
+        .where("timestamp", "<=", endOfDay)
+        .get();
+
+    if (scanEventsSnapshot.empty) {
+        console.log("No scan events found for yesterday. Exiting attendance processing.");
+        return null;
     }
-});
 
-exports.finalizeDailyLogs = functions.pubsub.schedule("every day 22:00").timeZone("Africa/Johannesburg").onRun(async () => {
-    const dateString = new Date().toISOString().split("T")[0];
-    const q = db.collection("employeeDailyLogs").where("date", "==", dateString).where("status", "==", "pending");
-    const snapshot = await q.get();
-    if (snapshot.empty) return null;
-    const batch = db.batch();
-    snapshot.forEach((doc) => {
-        const log = doc.data();
-        if (!log.startTime || !log.endTime) return;
-        const totalHours = calculateWorkdayHours(log.startTime.toDate(), log.endTime.toDate());
-        const status = totalHours < 1 ? "needs_review" : "finalized";
-        batch.update(doc.ref, { totalHours, status });
+    // Group scans by employee to find first and last scan
+    const scansByEmployee = {};
+    scanEventsSnapshot.forEach(doc => {
+        const event = doc.data();
+        if (!event.employeeId) return;
+
+        if (!scansByEmployee[event.employeeId]) {
+            scansByEmployee[event.employeeId] = {
+                employeeId: event.employeeId,
+                employeeName: event.employeeName,
+                scans: [],
+            };
+        }
+        scansByEmployee[event.employeeId].scans.push(event.timestamp.toDate());
     });
-    return batch.commit();
+
+    const batch = db.batch();
+
+    for (const employeeId in scansByEmployee) {
+        const employeeData = scansByEmployee[employeeId];
+        // We need at least two scans (a start and an end) to calculate a duration
+        if (employeeData.scans.length < 2) continue;
+
+        employeeData.scans.sort((a, b) => a - b); // Sort timestamps chronologically
+
+        const startTime = employeeData.scans[0];
+        const endTime = employeeData.scans[employeeData.scans.length - 1];
+        
+        // Use the existing helper function to calculate the hours worked
+        const totalHours = calculateWorkdayHours(startTime, endTime);
+
+        // Create or update a document in the `employeeDailyLogs` collection
+        const logDocId = `${employeeId}_${yesterdayStr}`;
+        const logDocRef = db.collection("employeeDailyLogs").doc(logDocId);
+
+        const logData = {
+            employeeId: employeeId,
+            employeeName: employeeData.employeeName,
+            date: yesterdayStr,
+            startTime: admin.firestore.Timestamp.fromDate(startTime),
+            endTime: admin.firestore.Timestamp.fromDate(endTime),
+            totalHours: totalHours,
+            status: "finalized", // Mark this log as complete
+        };
+        
+        batch.set(logDocRef, logData, { merge: true });
+    }
+
+    await batch.commit();
+    console.log(`Successfully processed attendance for ${Object.keys(scansByEmployee).length} employees.`);
+    return null;
 });
 
 // =================================================================================================
-// SECTION 6: OTHER AUTOPILOT AGENTS (PRESERVED)
+// SECTION 6: OTHER AUTOPILOT AGENTS
 // =================================================================================================
 
 exports.generatePutAwayJobCard = functions.firestore.document("createdJobCards/{jobId}").onUpdate(() => {
@@ -399,3 +435,90 @@ exports.processPickingListCompletion = functions.firestore.document("pickingList
     }
     return { success: true };
 });
+
+// =================================================================================================
+// AUTOPILOT AGENT 7: KAIZEN AUTOPILOT (NEW)
+// Automatically analyzes completed jobs to find opportunities for improving standard recipes.
+// =================================================================================================
+exports.analyzeCompletedJobForKaizen = functions.firestore
+  .document("createdJobCards/{docId}")
+  .onUpdate(async (change, context) => {
+    const newData = change.after.data();
+    const oldData = change.before.data();
+
+    // Trigger only when a job is marked as "Complete"
+    if (newData.status !== "Complete" || oldData.status === "Complete") {
+      return null;
+    }
+
+    // Ensure the job has the necessary data for analysis
+    if (!newData.partId || !newData.departmentId || !newData.estimatedTime || !newData.startedAt || !newData.completedAt) {
+      console.log(`Job ${newData.jobId} is missing data for Kaizen analysis.`);
+      return null;
+    }
+
+    // Calculate actual duration in minutes
+    const durationMillis = newData.completedAt.toMillis() - newData.startedAt.toMillis() - (newData.totalPausedMilliseconds || 0);
+    const actualMinutes = durationMillis / 60000;
+
+    if (actualMinutes <= 0) return null;
+
+    // Check for significant improvement (e.g., more than 15% faster)
+    const efficiencyRatio = newData.estimatedTime / actualMinutes;
+    if (efficiencyRatio < 1.15) {
+      console.log(`Job ${newData.jobId} did not show significant time improvement (${efficiencyRatio.toFixed(2)}x). No action needed.`);
+      return null;
+    }
+
+    // --- Verification Step ---
+    // Check the last 3 completed jobs for the same part to ensure this isn't a one-off fluke.
+    const recentJobsSnapshot = await db.collection("createdJobCards")
+      .where("partId", "==", newData.partId)
+      .where("departmentId", "==", newData.departmentId)
+      .where("status", "==", "Complete")
+      .orderBy("completedAt", "desc")
+      .limit(3)
+      .get();
+
+    if (recentJobsSnapshot.size < 3) {
+        console.log(`Not enough historical data for ${newData.partName} to confirm a trend.`);
+        return null;
+    }
+
+    let consistentImprovement = true;
+    recentJobsSnapshot.forEach(doc => {
+        const job = doc.data();
+        if(!job.startedAt || !job.completedAt || !job.estimatedTime) {
+            consistentImprovement = false;
+            return;
+        }
+        const pastDurationMillis = job.completedAt.toMillis() - job.startedAt.toMillis() - (job.totalPausedMilliseconds || 0);
+        const pastActualMinutes = pastDurationMillis / 60000;
+        if (pastActualMinutes <= 0 || (job.estimatedTime / pastActualMinutes) < 1.10) {
+            consistentImprovement = false;
+        }
+    });
+
+    if (!consistentImprovement) {
+        console.log(`Improvement for ${newData.partName} is not consistent. Holding off on suggestion.`);
+        return null;
+    }
+
+    // Create a new, system-generated Kaizen suggestion
+    const suggestionText = `Consistently completing this job faster than the standard. Standard time is ${newData.estimatedTime} min, but recent jobs averaged ~${Math.round(actualMinutes)} min. Recommend updating the standard recipe.`;
+
+    await db.collection("kaizenSuggestions").add({
+        jobId: change.after.id,
+        jobIdentifier: newData.jobId,
+        partName: newData.partName,
+        suggestionText: suggestionText,
+        submittedBy: "Kaizen Autopilot",
+        userId: "system",
+        status: "new",
+        type: "system_generated", // Differentiates it from manual suggestions
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`Kaizen Autopilot created an improvement suggestion for ${newData.partName}.`);
+    return { success: true };
+  });

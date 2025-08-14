@@ -7,7 +7,7 @@ import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase
 import { db } from '../../../api/firebase';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Lightbulb, Check, X, Archive } from 'lucide-react';
+import { Lightbulb, Check, X, Archive, Cpu } from 'lucide-react'; // --- IMPORT Cpu ICON ---
 import toast from 'react-hot-toast';
 
 const StatusBadge = ({ status }) => {
@@ -92,15 +92,21 @@ const KaizenManager = () => {
                     <p className="text-center text-gray-500 py-8">No {filter} suggestions found.</p>
                 ) : (
                     filteredSuggestions.map(suggestion => (
-                        <div key={suggestion.id} className="bg-gray-900/50 p-4 rounded-lg">
+                        // --- MODIFICATION: Added border color for system-generated suggestions ---
+                        <div key={suggestion.id} className={`bg-gray-900/50 p-4 rounded-lg border-l-4 ${suggestion.type === 'system_generated' ? 'border-purple-500' : 'border-transparent'}`}>
                             <div className="flex justify-between items-start gap-4">
                                 <div className="flex-grow">
                                     <p className="text-sm text-gray-400">
                                         Suggestion for: <span className="font-semibold text-gray-300">{suggestion.partName}</span> ({suggestion.jobIdentifier})
                                     </p>
                                     <p className="text-white my-2 italic">"{suggestion.suggestionText}"</p>
-                                    <p className="text-xs text-gray-500">
-                                        Submitted by: {suggestion.submittedBy} on {suggestion.createdAt?.toDate().toLocaleDateString()}
+                                    <p className="text-xs text-gray-500 flex items-center gap-2">
+                                        {/* --- MODIFICATION: Show "Kaizen Autopilot" for system suggestions --- */}
+                                        {suggestion.type === 'system_generated' ? (
+                                            <><Cpu size={14} className="text-purple-400"/> {suggestion.submittedBy}</>
+                                        ) : (
+                                            <>Submitted by: {suggestion.submittedBy} on {suggestion.createdAt?.toDate().toLocaleDateString()}</>
+                                        )}
                                     </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2 w-48">

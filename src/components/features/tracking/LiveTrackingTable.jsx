@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
-import { ChevronDown, ChevronRight, GraduationCap } from 'lucide-react';
+import { ChevronDown, ChevronRight, GraduationCap, Clock } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Button from '../../ui/Button';
@@ -25,7 +25,7 @@ const StatusBadge = ({ status }) => {
 
 // Badge component to show job efficiency percentage
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
-    if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0 || !estimatedMinutes) {
+    if (!estimatedMinutes || estimatedMinutes <= 0 || actualMinutes === null || actualMinutes === 0) {
         return <span className="text-xs text-gray-500">N/A</span>;
     }
     const efficiency = (estimatedMinutes / actualMinutes) * 100;
@@ -35,11 +35,60 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{Math.round(efficiency)}%</span>
 };
 
+// --- NEW: Status-Dependent Cell for dynamic, contextual information ---
+const StatusDependentCell = ({ job, currentTime }) => {
+    switch (job.status) {
+        case 'In Progress': {
+            const liveDuration = calculateJobDuration(job, currentTime);
+            const estimatedMinutes = job.estimatedTime;
+            const actualMinutes = liveDuration?.totalMinutes;
+            if (!estimatedMinutes || estimatedMinutes <= 0 || actualMinutes === null) {
+                return <span className="text-xs text-gray-500">No Estimate</span>;
+            }
+            const remaining = estimatedMinutes - actualMinutes;
+            if (remaining >= 0) {
+                const percentage = (actualMinutes / estimatedMinutes) * 100;
+                return (
+                    <div className="w-full bg-gray-600 rounded-full h-2.5" title={`${Math.ceil(remaining)} minutes remaining`}>
+                        <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                );
+            } else {
+                return <span className="text-xs font-bold text-red-500">Overdue by {Math.abs(Math.floor(remaining))}m</span>;
+            }
+        }
+        case 'Awaiting QC': {
+            if (!job.completedAt?.seconds) return <span className="text-xs text-gray-500">Waiting...</span>;
+            const waitMillis = currentTime - job.completedAt.toDate().getTime();
+            const waitMinutes = Math.floor(waitMillis / 60000);
+            
+            let color = 'text-purple-400';
+            if (waitMinutes > 120) color = 'text-red-500';
+            else if (waitMinutes > 60) color = 'text-yellow-400';
+            
+            return (
+                <span className={`flex items-center gap-1 text-xs font-semibold ${color}`}>
+                    <Clock size={14} /> In Queue: {waitMinutes}m
+                </span>
+            );
+        }
+        case 'Pending': {
+            if (job.scheduledDate?.seconds) {
+                return <span className="text-xs font-semibold text-blue-400">🗓️ Starts: {new Date(job.scheduledDate.seconds * 1000).toLocaleDateString()}</span>;
+            }
+            return <span className="text-xs font-semibold text-gray-400">Priority: #{job.priority ?? 'N/A'}</span>;
+        }
+        default:
+            return <span className="text-xs text-gray-500">--</span>;
+    }
+};
+
+
 // Component for a single row in the jobs table
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPerHour }) => {
     const liveDuration = calculateJobDuration(job, currentTime);
+    const remainingMinutes = job.estimatedTime ? job.estimatedTime - (liveDuration?.totalMinutes || 0) : null;
 
-    // Logic to determine if training is recommended for the assigned employee
     const isTrainingRecommended = useMemo(() => {
         if (!job.requiredSkills || !job.employeeSkills) return false;
         return job.requiredSkills.some(reqSkill => {
@@ -48,25 +97,26 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         });
     }, [job.requiredSkills, job.employeeSkills]);
 
-    // Calculates the live cost of the job, including labor and overheads
     const calculateLiveCost = (j, cTime, rates, overheadRate) => {
         if (j.status === 'Complete' && typeof j.totalCost === 'number') {
-            return `R ${j.totalCost.toFixed(2)}`;
+            return { costString: `R ${j.totalCost.toFixed(2)}`, velocity: 0 };
         }
-        if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
         
-        const directRate = rates[j.employeeId];
+        const directRate = rates[j.employeeId] || 0;
         const burdenedRate = directRate + overheadRate;
         
         const durationResult = calculateJobDuration(j, cTime);
         let liveLaborCost = 0;
         if (durationResult) {
-            liveLaborCost = (durationResult.totalMinutes / 60) * burdenedRate;
+            liveLaborCost = (durationResult.totalSeconds / 3600) * burdenedRate;
         }
         
         const currentMaterialCost = j.materialCost || 0;
         const totalLiveCost = liveLaborCost + currentMaterialCost;
-        return `R ${totalLiveCost.toFixed(2)}`;
+        return { 
+            costString: `R ${totalLiveCost.toFixed(2)}`,
+            velocity: burdenedRate 
+        };
     };
 
     const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates, overheadCostPerHour);
@@ -75,8 +125,16 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         return new Date(timestamp.seconds * 1000).toLocaleString('en-ZA');
     };
 
+    const timeInQcMinutes = job.status === 'Awaiting QC' && job.completedAt?.seconds 
+        ? (currentTime - job.completedAt.toDate().getTime()) / 60000 
+        : 0;
+
+    const rowClass = (job.status === 'In Progress' && remainingMinutes !== null && remainingMinutes < 0) || timeInQcMinutes > 120
+        ? 'border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer animate-pulse bg-red-900/20'
+        : 'border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer';
+
     return (
-        <tr onClick={() => onClick(job)} className="border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer">
+        <tr onClick={() => onClick(job)} className={rowClass}>
             <td className="p-3 text-gray-300 text-sm">{formatDate(job.createdAt)}</td>
             <td className="p-3 text-gray-300">
                 <div className="flex items-center gap-2">
@@ -91,8 +149,16 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
             <td className="p-3 text-gray-300">{job.employeeName}</td>
             <td className="p-3"><StatusBadge status={job.status} /></td>
             <td className="p-3 text-gray-300 text-sm font-semibold">{liveDuration ? liveDuration.text : 'N/A'}</td>
+            <td className="p-3">
+                <StatusDependentCell job={job} currentTime={currentTime} />
+            </td>
             <td className="p-3"><EfficiencyBadge actualMinutes={liveDuration?.totalMinutes} estimatedMinutes={job.estimatedTime} /></td>
-            <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">{liveCost}</td>
+            <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">
+                {liveCost.costString}
+                {job.status === 'In Progress' && liveCost.velocity > 0 && (
+                    <span className="block text-xs text-yellow-400 opacity-70">+ R {liveCost.velocity.toFixed(2)}/hr</span>
+                )}
+            </td>
         </tr>
     );
 };
@@ -265,6 +331,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                                 <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Status</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Actual Time</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400">Queue Status / Progress</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Efficiency</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400 text-right">Job Cost</th>
                             </tr>
@@ -296,7 +363,9 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                                 <thead className="invisible h-0">
                                     <tr>
                                         <th className="p-0">Created</th><th className="p-0">Part</th><th className="p-0">Employee</th>
-                                        <th className="p-0">Status</th><th className="p-0">Actual Time</th><th className="p-0">Efficiency</th>
+                                        <th className="p-0">Status</th><th className="p-0">Actual Time</th>
+                                        <th className="p-0">Queue Status / Progress</th>
+                                        <th className="p-0">Efficiency</th>
                                         <th className="p-0 text-right">Job Cost</th>
                                     </tr>
                                 </thead>
@@ -330,7 +399,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                         currentTime={Date.now()}
                         employeeHourlyRates={employeeHourlyRates}
                         overheadCostPerHour={overheadCostPerHour}
-                        // --- FIX: Pass the correct 'employees' state variable ---
                         allEmployees={employees} 
                         allInventoryItems={allInventoryItems}
                         allTools={allTools}
