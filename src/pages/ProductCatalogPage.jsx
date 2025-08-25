@@ -12,8 +12,8 @@ import {
     getDepartments,
     getEmployees,
     addJobCard,
-    getTools, // --- FIX: Added getTools
-    getToolAccessories // --- FIX: Added getToolAccessories
+    getTools,
+    getToolAccessories
 } from '../api/firestore';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -28,13 +28,15 @@ import { db } from '../api/firebase';
 import SearchInput from '../components/ui/SearchInput';
 import { JOB_STATUSES } from '../config';
 import QRCode from 'qrcode';
-import { processConsumables } from '../utils/jobUtils'; // Import the utility function
+import { processConsumables } from '../utils/jobUtils';
+// --- NEW: Import the new bulk edit modal ---
+import ProductBulkEditModal from '../components/features/catalog/ProductBulkEditModal';
+
 
 // Base64 encoded logo to ensure it prints correctly
-const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)"; // Replace with your actual full base64 string
+const tojemLogoBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA... (base64 string would be very long)";
 
 
-// --- NEW COMPONENT: Quick Job Creator Modal ---
 const QuickJobCreatorModal = ({ product, recipes, departments, employees, allTools, allToolAccessories, allInventoryItems, onClose, onSuccess }) => {
     const [selections, setSelections] = useState({});
     const [quantity, setQuantity] = useState(1);
@@ -72,12 +74,10 @@ const QuickJobCreatorModal = ({ product, recipes, departments, employees, allToo
             const employeeId = selections[recipeId];
             const employee = employees.find(e => e.id === employeeId);
 
-            // Find full tool and accessory objects for printing
             const toolsForJobCard = allTools.filter(t => (recipe.tools || []).includes(t.id));
             const accessoriesForJobCard = allToolAccessories.filter(a => (recipe.accessories || []).includes(a.id));
             
-            // Process consumables to get calculated quantities and catalyst additions
-            const processedConsumablesForJob = processConsumables(recipe.consumables, allInventoryItems, 20); // Assuming 20C for quick creation
+            const processedConsumablesForJob = processConsumables(recipe.consumables, allInventoryItems, 20);
 
             const jobData = {
                 jobId: `${parentJobId}-${jobsToCreate.length + 1}`,
@@ -108,7 +108,6 @@ const QuickJobCreatorModal = ({ product, recipes, departments, employees, allToo
             await Promise.all(jobsToCreate);
             toast.success(`${jobsToCreate.length} job card(s) created successfully!`);
             
-            // --- UPDATED PRINTING LOGIC ---
             let printContents = '';
             for (const job of createdJobsData) {
                 const qrCodeDataUrl = await QRCode.toDataURL(job.jobId, { width: 80 });
@@ -175,7 +174,7 @@ const QuickJobCreatorModal = ({ product, recipes, departments, employees, allToo
                     printWindow.addEventListener('afterprint', () => printWindow.close());
                 }, 500);
             } else {
-                toast("Print window blocked. Please allow popups.", { icon: 'ℹ️' });
+                toast("Print window blocked. Please allow popups.", { icon: 'ⓘ' });
             }
 
             onSuccess();
@@ -251,6 +250,8 @@ const ProductCatalogPage = () => {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [isQuickJobModalOpen, setIsQuickJobModalOpen] = useState(false);
+    // --- NEW: State for the bulk edit modal ---
+    const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
     
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [selectedIds, setSelectedIds] = useState(new Set());
@@ -464,11 +465,18 @@ const ProductCatalogPage = () => {
                 <div className="flex justify-between items-center">
                      <h2 className="text-3xl font-bold text-white flex items-center gap-2"><Factory /> Product Command Center</h2>
                      <div className="flex gap-2">
+                        {/* --- UPDATED: Show Bulk Edit button when items are selected --- */}
                         {selectedIds.size > 0 && (
-                            <Button onClick={handleDeleteSelected} variant="danger">
-                                <Trash2 size={18} className="mr-2" />
-                                Delete Selected ({selectedIds.size})
-                            </Button>
+                            <>
+                                <Button onClick={() => setIsBulkEditModalOpen(true)} variant="secondary">
+                                    <Edit size={18} className="mr-2" />
+                                    Bulk Edit ({selectedIds.size})
+                                </Button>
+                                <Button onClick={handleDeleteSelected} variant="danger">
+                                    <Trash2 size={18} className="mr-2" />
+                                    Delete ({selectedIds.size})
+                                </Button>
+                            </>
                         )}
                         <Button onClick={() => setIsImportModalOpen(true)} variant="secondary">
                             <Upload size={18} className="mr-2" />
@@ -514,7 +522,7 @@ const ProductCatalogPage = () => {
                                     <th className="p-3 text-sm font-semibold text-gray-400">Part Number</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400">Make</th>
                                     <th className="p-3 text-sm font-semibold text-gray-400">Model/Year</th>
-                                    <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
+                                     <th className="p-3 text-sm font-semibold text-gray-400 text-center">Stock on Hand</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-right">Selling Price</th>
                                      <th className="p-3 text-sm font-semibold text-gray-400 text-center">Actions</th>
                                 </tr>
@@ -527,7 +535,7 @@ const ProductCatalogPage = () => {
                                  ) : (
                                      filteredProducts.map(product => {
                                         const hasRecipe = recipesByProduct[product.id] && recipesByProduct[product.id].length > 0;
-                                        return (
+                                         return (
                                             <tr key={product.id} className={`border-b border-gray-700 hover:bg-gray-700/50 ${selectedIds.has(product.id) ? 'bg-blue-900/50' : ''}`}>
                                                 <td className="p-3">
                                                     <input
@@ -546,7 +554,7 @@ const ProductCatalogPage = () => {
                                                 </td>
                                                  <td className="p-3 text-white font-medium">{product.name}</td>
                                                 <td className="p-3 text-gray-300 font-mono">{product.partNumber}</td>
-                                                <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
+                                                 <td className="p-3 text-gray-400">{makeMap.get(product.make) || 'N/A'}</td>
                                                 <td className="p-3 text-gray-400">{modelMap.get(product.model) || 'N/A'}</td>
                                                 <td className="p-3 text-white font-mono text-center">{product.currentStock || 0}</td>
                                                 <td className="p-3 text-green-400 font-mono text-right">R {product.sellingPrice?.toFixed(2) || '0.00'}</td>
@@ -605,6 +613,18 @@ const ProductCatalogPage = () => {
                     onClose={() => setIsQuickJobModalOpen(false)}
                     onSuccess={() => {
                         setIsQuickJobModalOpen(false);
+                    }}
+                />
+            )}
+
+            {/* --- NEW: Render the bulk edit modal --- */}
+            {isBulkEditModalOpen && (
+                <ProductBulkEditModal
+                    selectedProductIds={selectedIds}
+                    onClose={() => setIsBulkEditModalOpen(false)}
+                    onSave={() => {
+                        fetchData(); // Refetch all data to show changes
+                        setSelectedIds(new Set()); // Clear selection after saving
                     }}
                 />
             )}
