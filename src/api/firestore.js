@@ -663,13 +663,15 @@ export const listenToConsignmentStockForClient = (clientId, callback) => {
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
 
-// --- UPDATED: addConsignmentItem now accepts reorderLevel and standardStockLevel ---
+// --- UPDATED: addConsignmentItem now accepts make and model for grouping ---
 export const addConsignmentItem = (itemData) => {
     const data = {
         ...itemData,
         lastCounted: serverTimestamp(),
         reorderLevel: Number(itemData.reorderLevel) || 0,
         standardStockLevel: Number(itemData.standardStockLevel) || 0,
+        make: itemData.make || '', // Add make
+        model: itemData.model || '', // Add model
     };
     return addDoc(collection(db, 'consignmentStock'), data);
 };
@@ -686,7 +688,6 @@ export const updateConsignmentStockCounts = async (updates) => {
     return batch.commit();
 };
 
-// --- NEW: This function handles the entire client-side book-out process atomically ---
 export const bookOutConsignmentItemAndTriggerReplenishment = async (user, product) => {
     return runTransaction(db, async (transaction) => {
         const consignmentRef = collection(db, 'consignmentStock');

@@ -1,17 +1,19 @@
 // src/components/features/stock/ConsignmentStockTake.jsx
 
-import React, { useState, useEffect, useMemo, useRef } from 'react'; // --- UPDATED: Added useRef
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     getClientUsers, 
     listenToConsignmentStockForClient, 
     getProducts,
+    getMakes,      // --- NEW ---
+    getModels,     // --- NEW ---
     addConsignmentItem,
     updateConsignmentStockCounts 
 } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
-import { User, PackagePlus, Save, QrCode, Search } from 'lucide-react';
+import { User, PackagePlus, Save, QrCode, Search, ChevronDown, ChevronRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import QrScannerModal from '../scanner/QrScannerModal';
 import StockCountModal from './StockCountModal';
@@ -19,6 +21,8 @@ import StockCountModal from './StockCountModal';
 const ConsignmentStockTake = () => {
     const [clients, setClients] = useState([]);
     const [products, setProducts] = useState([]);
+    const [makes, setMakes] = useState([]); // --- NEW ---
+    const [models, setModels] = useState([]); // --- NEW ---
     const [selectedClientId, setSelectedClientId] = useState('');
     const [consignmentStock, setConsignmentStock] = useState([]);
     const [counts, setCounts] = useState({});
@@ -29,7 +33,6 @@ const ConsignmentStockTake = () => {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [itemToCount, setItemToCount] = useState(null);
 
-    // --- NEW: State for the "Add New Item" search functionality ---
     const [newItemSearchTerm, setNewItemSearchTerm] = useState('');
     const [filteredProductOptions, setFilteredProductOptions] = useState([]);
     const searchRef = useRef(null);
@@ -42,10 +45,13 @@ const ConsignmentStockTake = () => {
 
     useEffect(() => {
         const fetchInitialData = async () => {
-            const [clientUsers, allProducts] = await Promise.all([getClientUsers(), getProducts()]);
+            // --- UPDATED: Fetch makes and models ---
+            const [clientUsers, allProducts, allMakes, allModels] = await Promise.all([getClientUsers(), getProducts(), getMakes(), getModels()]);
             const formattedClients = clientUsers.map(c => ({ id: c.id, name: c.companyName || c.email }));
             setClients(formattedClients);
             setProducts(allProducts);
+            setMakes(allMakes);
+            setModels(allModels);
             setLoading(false);
         };
         fetchInitialData();
@@ -67,7 +73,6 @@ const ConsignmentStockTake = () => {
         return () => unsubscribe();
     }, [selectedClientId]);
 
-    // --- NEW: Effect to handle clicking outside the search results dropdown ---
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
@@ -122,7 +127,6 @@ const ConsignmentStockTake = () => {
         return products.filter(p => !consignedProductIds.has(p.id));
     }, [products, consignmentStock]);
 
-    // --- NEW: Effect to filter products for the search dropdown ---
     useEffect(() => {
         if (newItemSearchTerm.length > 1) {
             const searchLower = newItemSearchTerm.toLowerCase();
@@ -145,18 +149,18 @@ const ConsignmentStockTake = () => {
         );
     }, [consignmentStock, searchTerm]);
     
-    // --- UPDATED: This function now sets default values on selection ---
     const handleSelectProductFromSearch = (product) => {
         setNewItem(prev => ({ 
             ...prev, 
             productId: product.id,
-            reorderLevel: '1', // Default reorder level
-            standardStockLevel: '2' // Default standard stock level
+            reorderLevel: '1',
+            standardStockLevel: '2'
         }));
         setNewItemSearchTerm(product.name);
-        setFilteredProductOptions([]); // This closes the search results box
+        setFilteredProductOptions([]);
     };
 
+    // --- UPDATED: Includes duplicate check and passes make/model ---
     const handleAddNewItem = async () => {
         const productToAdd = products.find(p => p.id === newItem.productId);
         if (!productToAdd || !selectedClientId) {
@@ -164,6 +168,12 @@ const ConsignmentStockTake = () => {
         }
         if (Number(newItem.reorderLevel) <= 0 || Number(newItem.standardStockLevel) <= 0) {
             return toast.error("Reorder and Standard levels must be greater than 0.");
+        }
+
+        // --- NEW: Duplicate check ---
+        const isDuplicate = consignmentStock.some(item => item.productId === productToAdd.id);
+        if (isDuplicate) {
+            return toast.error("This product is already in the client's consignment stock.");
         }
 
         const client = clients.find(c => c.id === selectedClientId);
@@ -177,18 +187,48 @@ const ConsignmentStockTake = () => {
             quantity: Number(newItem.quantity) || 0,
             reorderLevel: Number(newItem.reorderLevel),
             standardStockLevel: Number(newItem.standardStockLevel),
+            make: productToAdd.make || '',
+            model: productToAdd.model || '',
         };
         
         try {
             await addConsignmentItem(itemData);
             toast.success(`${productToAdd.name} added to ${client.name}'s stock.`);
             setNewItem({ productId: '', quantity: 0, reorderLevel: '', standardStockLevel: '' });
-            setNewItemSearchTerm(''); // Clear search term after adding
+            setNewItemSearchTerm('');
         } catch (error) {
             toast.error("Failed to add item.");
             console.error(error);
         }
     };
+    
+    // --- NEW: Memoized maps and grouped stock data for display ---
+    const makeMap = useMemo(() => new Map(makes.map(m => [m.id, m.name])), [makes]);
+    const modelMap = useMemo(() => new Map(models.map(m => [m.id, m.name])), [models]);
+
+    const groupedStock = useMemo(() => {
+        const grouped = filteredStock.reduce((acc, item) => {
+            const makeName = makeMap.get(item.make) || 'Uncategorized';
+            const modelName = modelMap.get(item.model) || 'General';
+
+            if (!acc[makeName]) {
+                acc[makeName] = {};
+            }
+            if (!acc[makeName][modelName]) {
+                acc[makeName][modelName] = [];
+            }
+            acc[makeName][modelName].push(item);
+            return acc;
+        }, {});
+
+        return Object.entries(grouped).map(([makeName, models]) => ({
+            makeName,
+            models: Object.entries(models).map(([modelName, items]) => ({
+                modelName,
+                items
+            }))
+        }));
+    }, [filteredStock, makeMap, modelMap]);
 
 
     if (loading && clients.length === 0) return <p className="text-gray-400">Loading clients...</p>;
@@ -208,7 +248,6 @@ const ConsignmentStockTake = () => {
 
                 {selectedClientId && (
                     <>
-                        {/* --- UPDATED: Form now uses a searchable input --- */}
                         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                              <h3 className="text-xl font-bold text-white mb-4">Add New Item to Consignment</h3>
                              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
@@ -218,7 +257,7 @@ const ConsignmentStockTake = () => {
                                         value={newItemSearchTerm} 
                                         onChange={(e) => {
                                             setNewItemSearchTerm(e.target.value);
-                                            setNewItem(prev => ({...prev, productId: ''})); // Clear selection if user types
+                                            setNewItem(prev => ({...prev, productId: ''}));
                                         }} 
                                         placeholder="Type name or part no..."
                                     />
@@ -259,24 +298,34 @@ const ConsignmentStockTake = () => {
                                         <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save Counts</Button>
                                     </div>
                                  </div>
-                                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                                    {filteredStock.map(item => (
-                                        <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg">
-                                            <div className="md:col-span-2">
-                                                <p className="font-semibold text-white">{item.productName}</p>
-                                                <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
-                                            </div>
-                                            <p className="text-sm text-center font-mono text-gray-400">System: {item.quantity}</p>
-                                            <Input 
-                                                type="number" 
-                                                value={counts[item.id] || ''}
-                                                onChange={(e) => handleCountChange(item.id, e.target.value)}
-                                                placeholder="Enter count..."
-                                                className="text-center"
-                                            />
+                                {/* --- UPDATED: Render the new grouped list --- */}
+                                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                                    {groupedStock.length > 0 ? groupedStock.map(makeGroup => (
+                                        <div key={makeGroup.makeName}>
+                                            <h4 className="font-bold text-lg text-blue-400 border-b border-gray-700 pb-1 mb-2">{makeGroup.makeName}</h4>
+                                            {makeGroup.models.map(modelGroup => (
+                                                <div key={modelGroup.modelName} className="mb-3">
+                                                    <h5 className="font-semibold text-gray-300 pl-2">{modelGroup.modelName}</h5>
+                                                    {modelGroup.items.map(item => (
+                                                         <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg mt-1">
+                                                            <div className="md:col-span-2">
+                                                                <p className="font-semibold text-white">{item.productName}</p>
+                                                                <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
+                                                            </div>
+                                                            <p className="text-sm text-center font-mono text-gray-400">System: {item.quantity}</p>
+                                                            <Input 
+                                                                type="number" 
+                                                                value={counts[item.id] || ''}
+                                                                onChange={(e) => handleCountChange(item.id, e.target.value)}
+                                                                placeholder="Enter count..."
+                                                                className="text-center"
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ))}
                                         </div>
-                                    ))}
-                                    {filteredStock.length === 0 && <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
+                                    )) : <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
                                 </div>
                         </div>
                     </>
