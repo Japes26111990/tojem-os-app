@@ -1,6 +1,6 @@
 // src/components/features/stock/ConsignmentStockTake.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react'; // --- UPDATED: Added useRef
 import { 
     getClientUsers, 
     listenToConsignmentStockForClient, 
@@ -29,7 +29,10 @@ const ConsignmentStockTake = () => {
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [itemToCount, setItemToCount] = useState(null);
 
-    // --- NEW: State for the "Add New Item" form ---
+    // --- NEW: State for the "Add New Item" search functionality ---
+    const [newItemSearchTerm, setNewItemSearchTerm] = useState('');
+    const [filteredProductOptions, setFilteredProductOptions] = useState([]);
+    const searchRef = useRef(null);
     const [newItem, setNewItem] = useState({
         productId: '',
         quantity: 0,
@@ -64,6 +67,17 @@ const ConsignmentStockTake = () => {
         return () => unsubscribe();
     }, [selectedClientId]);
 
+    // --- NEW: Effect to handle clicking outside the search results dropdown ---
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (searchRef.current && !searchRef.current.contains(event.target)) {
+                setFilteredProductOptions([]);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     const handleCountChange = (itemId, value) => {
         setCounts(prev => ({ ...prev, [itemId]: value }));
     };
@@ -72,7 +86,6 @@ const ConsignmentStockTake = () => {
         setIsScannerOpen(false);
         const foundItem = consignmentStock.find(item => item.partNumber === scannedPartNumber);
         if (foundItem) {
-            // We need to fetch the full product details for the modal
             const fullProductDetails = products.find(p => p.id === foundItem.productId);
             setItemToCount({ ...fullProductDetails, ...foundItem, systemCount: foundItem.quantity });
         } else {
@@ -104,11 +117,25 @@ const ConsignmentStockTake = () => {
         }
     };
     
-    // --- NEW: Memoize available products to prevent re-renders ---
     const availableProducts = useMemo(() => {
         const consignedProductIds = new Set(consignmentStock.map(item => item.productId));
         return products.filter(p => !consignedProductIds.has(p.id));
     }, [products, consignmentStock]);
+
+    // --- NEW: Effect to filter products for the search dropdown ---
+    useEffect(() => {
+        if (newItemSearchTerm.length > 1) {
+            const searchLower = newItemSearchTerm.toLowerCase();
+            setFilteredProductOptions(
+                availableProducts.filter(p => 
+                    p.name.toLowerCase().includes(searchLower) ||
+                    (p.partNumber && p.partNumber.toLowerCase().includes(searchLower))
+                ).slice(0, 10)
+            );
+        } else {
+            setFilteredProductOptions([]);
+        }
+    }, [newItemSearchTerm, availableProducts]);
 
     const filteredStock = useMemo(() => {
         if (!searchTerm) return consignmentStock;
@@ -117,12 +144,18 @@ const ConsignmentStockTake = () => {
             (item.partNumber && item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
         );
     }, [consignmentStock, searchTerm]);
+    
+    // --- NEW: Handler to select a product from the search results ---
+    const handleSelectProductFromSearch = (product) => {
+        setNewItem(prev => ({ ...prev, productId: product.id }));
+        setNewItemSearchTerm(product.name);
+        setFilteredProductOptions([]);
+    };
 
-    // --- NEW: Handler for adding a new item to consignment ---
     const handleAddNewItem = async () => {
         const productToAdd = products.find(p => p.id === newItem.productId);
         if (!productToAdd || !selectedClientId) {
-            return toast.error("Please select a product.");
+            return toast.error("Please select a product from the search results.");
         }
         if (Number(newItem.reorderLevel) <= 0 || Number(newItem.standardStockLevel) <= 0) {
             return toast.error("Reorder and Standard levels must be greater than 0.");
@@ -145,6 +178,7 @@ const ConsignmentStockTake = () => {
             await addConsignmentItem(itemData);
             toast.success(`${productToAdd.name} added to ${client.name}'s stock.`);
             setNewItem({ productId: '', quantity: 0, reorderLevel: '', standardStockLevel: '' });
+            setNewItemSearchTerm(''); // Clear search term after adding
         } catch (error) {
             toast.error("Failed to add item.");
             console.error(error);
@@ -169,20 +203,43 @@ const ConsignmentStockTake = () => {
 
                 {selectedClientId && (
                     <>
-                        {/* --- NEW: Form for adding items to consignment --- */}
+                        {/* --- UPDATED: Form now uses a searchable input --- */}
                         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                              <h3 className="text-xl font-bold text-white mb-4">Add New Item to Consignment</h3>
                              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                                <div className="md:col-span-2">
-                                     <Dropdown label="Select Product" value={newItem.productId} onChange={(e) => setNewItem({...newItem, productId: e.target.value})} options={availableProducts} placeholder="Choose a product to add..."/>
+                                <div className="md:col-span-2 relative" ref={searchRef}>
+                                     <Input 
+                                        label="Search for Product" 
+                                        value={newItemSearchTerm} 
+                                        onChange={(e) => {
+                                            setNewItemSearchTerm(e.target.value);
+                                            setNewItem(prev => ({...prev, productId: ''})); // Clear selection if user types
+                                        }} 
+                                        placeholder="Type name or part no..."
+                                    />
+                                    {filteredProductOptions.length > 0 && (
+                                        <ul className="absolute z-10 w-full bg-gray-700 border border-gray-600 rounded-md mt-1 shadow-lg max-h-60 overflow-y-auto">
+                                            {filteredProductOptions.map(p => (
+                                                <li 
+                                                    key={p.id}
+                                                    onClick={() => handleSelectProductFromSearch(p)}
+                                                    className="p-3 hover:bg-blue-600 cursor-pointer text-sm"
+                                                >
+                                                    <p className="font-semibold text-white">{p.name}</p>
+                                                    <p className="text-xs text-gray-400">P/N: {p.partNumber}</p>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
                                 </div>
                                 <Input label="Initial Qty" type="number" value={newItem.quantity} onChange={(e) => setNewItem({...newItem, quantity: e.target.value})}/>
                                 <Input label="Re-order Level" type="number" value={newItem.reorderLevel} onChange={(e) => setNewItem({...newItem, reorderLevel: e.target.value})}/>
                                 <Input label="Standard Stock Level" type="number" value={newItem.standardStockLevel} onChange={(e) => setNewItem({...newItem, standardStockLevel: e.target.value})}/>
                              </div>
-                             <Button onClick={handleAddNewItem} variant="primary" className="mt-4"><PackagePlus size={16} className="mr-2"/>Add Item to Client Stock</Button>
+                             <Button onClick={handleAddNewItem} variant="primary" className="mt-4" disabled={!newItem.productId}>
+                                <PackagePlus size={16} className="mr-2"/>Add Item to Client Stock
+                             </Button>
                         </div>
-
 
                         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
