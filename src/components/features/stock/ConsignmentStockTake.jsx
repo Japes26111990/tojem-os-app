@@ -145,11 +145,16 @@ const ConsignmentStockTake = () => {
         );
     }, [consignmentStock, searchTerm]);
     
-    // --- NEW: Handler to select a product from the search results ---
+    // --- UPDATED: This function now sets default values on selection ---
     const handleSelectProductFromSearch = (product) => {
-        setNewItem(prev => ({ ...prev, productId: product.id }));
+        setNewItem(prev => ({ 
+            ...prev, 
+            productId: product.id,
+            reorderLevel: '1', // Default reorder level
+            standardStockLevel: '2' // Default standard stock level
+        }));
         setNewItemSearchTerm(product.name);
-        setFilteredProductOptions([]);
+        setFilteredProductOptions([]); // This closes the search results box
     };
 
     const handleAddNewItem = async () => {
@@ -240,6 +245,7 @@ const ConsignmentStockTake = () => {
                                 <PackagePlus size={16} className="mr-2"/>Add Item to Client Stock
                              </Button>
                         </div>
+
 
                         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
