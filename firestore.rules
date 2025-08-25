@@ -45,7 +45,6 @@ service cloud.firestore {
 
     // --- Rules for Catalog Data Dropdowns ---
     match /productCategories/{docId} { allow read, write: if isAuth(); }
-    // 'manufacturers' rule has been removed
     match /makes/{docId} { allow read, write: if isAuth(); }
     match /models/{docId} { allow read, write: if isAuth(); }
     match /units/{docId} { allow read, write: if isAuth(); }
@@ -81,12 +80,9 @@ service cloud.firestore {
     match /overheadsCategories/{docId=**} { allow read, write: if isManager(); }
     match /historicalSales/{docId} { allow read, write: if isManager(); }
     match /dailyWorkLogs/{docId} { allow read: if isManager(); allow write: if false; }
-    
-    // --- NEW RULE ADDED HERE ---
-    // This allows Managers to read the logs for the Time & Attendance report.
     match /employeeDailyLogs/{logId} {
         allow read: if isManager();
-        allow write: if false; // This collection should only be written by a backend function
+        allow write: if false;
     }
     
     // --- KAIZEN, PRAISE, TRAINING ---
@@ -97,6 +93,14 @@ service cloud.firestore {
     // --- OTHER ---
     match /reworkReasons/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /routineTasks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
+    
+    // --- NEW RULE ADDED HERE ---
+    // Allows users to read completed tasks and to mark new tasks as complete.
+    match /routineTaskCompletions/{completionId} {
+        allow read, create: if isAuth();
+        allow update, delete: if false; // Users cannot change or delete history
+    }
+
     match /systemStatus/{docId} { allow read: if isAuth(); allow write: if false; }
     match /subcontractorAdHocLogs/{docId} { allow read, write: if isManager(); }
     match /subcontractorTeamLogs/{docId} { allow read, write: if isManager(); }
