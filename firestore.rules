@@ -82,6 +82,13 @@ service cloud.firestore {
     match /historicalSales/{docId} { allow read, write: if isManager(); }
     match /dailyWorkLogs/{docId} { allow read: if isManager(); allow write: if false; }
     
+    // --- NEW RULE ADDED HERE ---
+    // This allows Managers to read the logs for the Time & Attendance report.
+    match /employeeDailyLogs/{logId} {
+        allow read: if isManager();
+        allow write: if false; // This collection should only be written by a backend function
+    }
+    
     // --- KAIZEN, PRAISE, TRAINING ---
     match /kaizenSuggestions/{docId} { allow create: if isAuth(); allow read, update, delete: if isManager(); }
     match /praise/{docId} { allow create: if isAuth(); allow read: if isAuth(); allow update, delete: if isManager(); }
