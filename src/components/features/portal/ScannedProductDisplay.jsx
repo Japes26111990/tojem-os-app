@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { collection, query, where, getDocs, writeBatch, doc } from 'firebase/firestore';
-import { db } from '../../../api/firebase';
+// --- UPDATED: Import the new function ---
+import { bookOutConsignmentItemAndTriggerReplenishment } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import { Package, DollarSign, CheckCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -24,53 +24,10 @@ const ScannedProductDisplay = ({ product, onBookOutSuccess }) => {
                     toast.dismiss(t.id);
                     setIsSubmitting(true);
                     try {
-                        // Find the specific consignment stock item for this client and product
-                        const consignmentRef = collection(db, 'consignmentStock');
-                        const q = query(consignmentRef, 
-                            where("clientId", "==", user.uid), 
-                            where("productId", "==", product.id)
-                        );
-                        
-                        const querySnapshot = await getDocs(q);
-
-                        if (querySnapshot.empty) {
-                            throw new Error("This item was not found in your consignment stock.");
-                        }
-
-                        const batch = writeBatch(db);
-                        let notificationNeeded = false;
-
-                        querySnapshot.forEach(docSnap => {
-                            const item = docSnap.data();
-                            const newQuantity = (item.quantity || 0) - 1;
-
-                            if (newQuantity < 0) {
-                                toast.error("Cannot book out. Stock level is already zero.");
-                                return;
-                            }
-                            
-                            batch.update(docSnap.ref, { quantity: newQuantity });
-
-                            // Create a notification for the admin/manager
-                            const notificationsRef = collection(db, 'notifications');
-                            const newNotifRef = doc(notificationsRef);
-                            batch.set(newNotifRef, {
-                                type: 'consignment_sold',
-                                message: `${user.companyName} sold one unit of ${product.name}.`,
-                                targetRole: 'Manager', // Or a specific role that handles this
-                                read: false,
-                                createdAt: new Date(),
-                                productId: product.id,
-                                clientId: user.uid,
-                            });
-                            notificationNeeded = true;
-                        });
-
-                        if (notificationNeeded) {
-                            await batch.commit();
-                            toast.success("Item booked out successfully! We have been notified.");
-                            onBookOutSuccess();
-                        }
+                        // --- UPDATED: Simplified logic using the new function ---
+                        await bookOutConsignmentItemAndTriggerReplenishment(user, product);
+                        toast.success("Item booked out successfully! We have been notified and will restock if necessary.");
+                        onBookOutSuccess();
 
                     } catch (error) {
                         console.error("Error booking out stock:", error);

@@ -28,7 +28,14 @@ const ConsignmentStockTake = () => {
     // State for modals
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [itemToCount, setItemToCount] = useState(null);
-    const [newItemProductId, setNewItemProductId] = useState('');
+
+    // --- NEW: State for the "Add New Item" form ---
+    const [newItem, setNewItem] = useState({
+        productId: '',
+        quantity: 0,
+        reorderLevel: '',
+        standardStockLevel: ''
+    });
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -96,7 +103,8 @@ const ConsignmentStockTake = () => {
             toast.error("Failed to update stock levels.");
         }
     };
-
+    
+    // --- NEW: Memoize available products to prevent re-renders ---
     const availableProducts = useMemo(() => {
         const consignedProductIds = new Set(consignmentStock.map(item => item.productId));
         return products.filter(p => !consignedProductIds.has(p.id));
@@ -109,6 +117,39 @@ const ConsignmentStockTake = () => {
             (item.partNumber && item.partNumber.toLowerCase().includes(searchTerm.toLowerCase()))
         );
     }, [consignmentStock, searchTerm]);
+
+    // --- NEW: Handler for adding a new item to consignment ---
+    const handleAddNewItem = async () => {
+        const productToAdd = products.find(p => p.id === newItem.productId);
+        if (!productToAdd || !selectedClientId) {
+            return toast.error("Please select a product.");
+        }
+        if (Number(newItem.reorderLevel) <= 0 || Number(newItem.standardStockLevel) <= 0) {
+            return toast.error("Reorder and Standard levels must be greater than 0.");
+        }
+
+        const client = clients.find(c => c.id === selectedClientId);
+        const itemData = {
+            clientId: selectedClientId,
+            clientName: client.name,
+            productId: productToAdd.id,
+            productName: productToAdd.name,
+            partNumber: productToAdd.partNumber,
+            sellingPrice: productToAdd.sellingPrice,
+            quantity: Number(newItem.quantity) || 0,
+            reorderLevel: Number(newItem.reorderLevel),
+            standardStockLevel: Number(newItem.standardStockLevel),
+        };
+        
+        try {
+            await addConsignmentItem(itemData);
+            toast.success(`${productToAdd.name} added to ${client.name}'s stock.`);
+            setNewItem({ productId: '', quantity: 0, reorderLevel: '', standardStockLevel: '' });
+        } catch (error) {
+            toast.error("Failed to add item.");
+            console.error(error);
+        }
+    };
 
 
     if (loading && clients.length === 0) return <p className="text-gray-400">Loading clients...</p>;
@@ -127,38 +168,55 @@ const ConsignmentStockTake = () => {
                 </div>
 
                 {selectedClientId && (
-                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
-                            <h3 className="text-xl font-bold text-white">Stock Count List</h3>
-                            <div className="flex items-center gap-2">
-                                <Button onClick={() => setIsScannerOpen(true)} variant="secondary"><QrCode size={16} className="mr-2"/>Scan to Count</Button>
-                                <div className="relative">
-                                    <Input placeholder="Search items..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <>
+                        {/* --- NEW: Form for adding items to consignment --- */}
+                        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                             <h3 className="text-xl font-bold text-white mb-4">Add New Item to Consignment</h3>
+                             <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                                <div className="md:col-span-2">
+                                     <Dropdown label="Select Product" value={newItem.productId} onChange={(e) => setNewItem({...newItem, productId: e.target.value})} options={availableProducts} placeholder="Choose a product to add..."/>
                                 </div>
-                                <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save Counts</Button>
-                            </div>
-                         </div>
-                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                            {filteredStock.map(item => (
-                                <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg">
-                                    <div className="md:col-span-2">
-                                        <p className="font-semibold text-white">{item.productName}</p>
-                                        <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
-                                    </div>
-                                    <p className="text-sm text-center font-mono text-gray-400">System: {item.quantity}</p>
-                                    <Input 
-                                        type="number" 
-                                        value={counts[item.id] || ''}
-                                        onChange={(e) => handleCountChange(item.id, e.target.value)}
-                                        placeholder="Enter count..."
-                                        className="text-center"
-                                    />
-                                </div>
-                            ))}
-                            {filteredStock.length === 0 && <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
+                                <Input label="Initial Qty" type="number" value={newItem.quantity} onChange={(e) => setNewItem({...newItem, quantity: e.target.value})}/>
+                                <Input label="Re-order Level" type="number" value={newItem.reorderLevel} onChange={(e) => setNewItem({...newItem, reorderLevel: e.target.value})}/>
+                                <Input label="Standard Stock Level" type="number" value={newItem.standardStockLevel} onChange={(e) => setNewItem({...newItem, standardStockLevel: e.target.value})}/>
+                             </div>
+                             <Button onClick={handleAddNewItem} variant="primary" className="mt-4"><PackagePlus size={16} className="mr-2"/>Add Item to Client Stock</Button>
                         </div>
-                    </div>
+
+
+                        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
+                                    <h3 className="text-xl font-bold text-white">Stock Count List</h3>
+                                    <div className="flex items-center gap-2">
+                                        <Button onClick={() => setIsScannerOpen(true)} variant="secondary"><QrCode size={16} className="mr-2"/>Scan to Count</Button>
+                                        <div className="relative">
+                                            <Input placeholder="Search items..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10"/>
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                        </div>
+                                        <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save Counts</Button>
+                                    </div>
+                                 </div>
+                                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                                    {filteredStock.map(item => (
+                                        <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg">
+                                            <div className="md:col-span-2">
+                                                <p className="font-semibold text-white">{item.productName}</p>
+                                                <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
+                                            </div>
+                                            <p className="text-sm text-center font-mono text-gray-400">System: {item.quantity}</p>
+                                            <Input 
+                                                type="number" 
+                                                value={counts[item.id] || ''}
+                                                onChange={(e) => handleCountChange(item.id, e.target.value)}
+                                                placeholder="Enter count..."
+                                                className="text-center"
+                                            />
+                                        </div>
+                                    ))}
+                                    {filteredStock.length === 0 && <p className="text-center text-gray-500 py-4">No consignment stock found for this client.</p>}
+                                </div>
+                        </div>
+                    </>
                 )}
             </div>
 

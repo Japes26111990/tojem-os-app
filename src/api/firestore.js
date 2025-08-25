@@ -662,7 +662,18 @@ export const listenToConsignmentStockForClient = (clientId, callback) => {
     const q = query(collection(db, 'consignmentStock'), where('clientId', '==', clientId), orderBy('productName'));
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
-export const addConsignmentItem = (itemData) => addDoc(collection(db, 'consignmentStock'), { ...itemData, lastCounted: serverTimestamp() });
+
+// --- UPDATED: addConsignmentItem now accepts reorderLevel and standardStockLevel ---
+export const addConsignmentItem = (itemData) => {
+    const data = {
+        ...itemData,
+        lastCounted: serverTimestamp(),
+        reorderLevel: Number(itemData.reorderLevel) || 0,
+        standardStockLevel: Number(itemData.standardStockLevel) || 0,
+    };
+    return addDoc(collection(db, 'consignmentStock'), data);
+};
+
 export const updateConsignmentStockCounts = async (updates) => {
     if (!updates || updates.length === 0) return;
     const batch = writeBatch(db);
@@ -674,6 +685,71 @@ export const updateConsignmentStockCounts = async (updates) => {
     });
     return batch.commit();
 };
+
+// --- NEW: This function handles the entire client-side book-out process atomically ---
+export const bookOutConsignmentItemAndTriggerReplenishment = async (user, product) => {
+    return runTransaction(db, async (transaction) => {
+        const consignmentRef = collection(db, 'consignmentStock');
+        const q = query(consignmentRef, 
+            where("clientId", "==", user.uid), 
+            where("productId", "==", product.id),
+            limit(1)
+        );
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            throw new Error("This item was not found in your consignment stock.");
+        }
+
+        const consignmentDoc = snapshot.docs[0];
+        const consignmentData = consignmentDoc.data();
+        const newQuantity = (consignmentData.quantity || 0) - 1;
+
+        if (newQuantity < 0) {
+            throw new Error("Cannot book out. Stock level is already zero.");
+        }
+
+        // 1. Update the consignment stock quantity
+        transaction.update(consignmentDoc.ref, { quantity: newQuantity });
+
+        // 2. Log a notification for management
+        const newNotifRef = doc(collection(db, 'notifications'));
+        transaction.set(newNotifRef, {
+            type: 'consignment_sold',
+            message: `${user.companyName} sold one unit of ${product.name}.`,
+            targetRole: 'Manager',
+            read: false,
+            createdAt: serverTimestamp(),
+            productId: product.id,
+            clientId: user.uid,
+        });
+
+        // 3. Check for reorder and create picking list if necessary
+        const reorderLevel = consignmentData.reorderLevel || 0;
+        if (newQuantity <= reorderLevel) {
+            const pickingListRef = doc(collection(db, 'pickingLists'));
+            const quantityToPick = (consignmentData.standardStockLevel || 0) - newQuantity;
+
+            if (quantityToPick > 0) {
+                transaction.set(pickingListRef, {
+                    salesOrderId: `CONSIGN-${user.companyName.substring(0, 5).toUpperCase()}-${Date.now()}`,
+                    customerName: `${user.companyName} (Consignment)`,
+                    status: JOB_STATUSES.PENDING,
+                    createdAt: serverTimestamp(),
+                    items: [{
+                        id: product.id,
+                        name: product.name,
+                        quantity: quantityToPick,
+                        location: product.location || 'N/A',
+                        shelf_number: product.shelf_number || 'N/A',
+                        shelf_level: product.shelf_level || 'N/A',
+                    }]
+                });
+            }
+        }
+    });
+};
+
 
 export const getLearningPaths = async () => getDocs(query(collection(db, 'learningPaths'), orderBy('name'))).then(s => s.docs.map(d => ({ id: d.id, ...d.data() })));
 export const addLearningPath = (pathData) => addDoc(collection(db, 'learningPaths'), { ...pathData, skillIds: [] });
