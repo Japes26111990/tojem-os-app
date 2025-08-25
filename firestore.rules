@@ -35,6 +35,12 @@ service cloud.firestore {
       allow create, delete: if false;
     }
     
+    // --- NEW: Rule for Audit Logging ---
+    match /auditLogs/{logId} {
+      allow create: if isAuth(); // Any signed-in user can create a log of their actions
+      allow read, update, delete: if isManager(); // Only managers can review the logs
+    }
+    
     // --- Production & Workshop Collections ---
     match /createdJobCards/{jobId} {
       allow read: if isAuth(); // Allows clients to read jobs linked to their order
@@ -51,14 +57,25 @@ service cloud.firestore {
 
     // --- Supply Chain Collections ---
     match /inventoryItems/{itemId} {
-        allow read: if isAuth();
-        allow write: if isManager();
+      allow read: if isAuth();
+      allow write: if isManager();
     }
     match /purchaseQueue/{docId} { allow read, write: if isAuth(); }
     match /suppliers/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /supplierItemPricing/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /oneOffPurchases/{docId} { allow read, write: if isAuth(); }
     match /pickingLists/{docId} { allow read, write: if isAuth(); }
+    
+    match /consignmentStock/{stockId} {
+      allow read: if isManager() || (isClient() && resource.data.clientId == request.auth.uid);
+      allow create: if isManager(); // Managers can add new items
+      allow update: if isAuth(); // Clients and managers can update counts
+      allow delete: if isManager();
+    }
+    
+    match /stockTakeSessions/{sessionId} {
+      allow read, create, update: if isAuth();
+    }
 
     // --- Company & Staff Collections ---
     match /employees/{docId} { allow read: if isAuth(); allow write: if isManager(); }
@@ -70,42 +87,41 @@ service cloud.firestore {
 
     // --- Sales & Customer Collections ---
     match /salesOrders/{orderId} {
-      // --- UPDATED RULE ---
-      // Allow read access if you're a Manager OR a Client querying your own orders.
-      // This 'list' permission is needed for the dashboard query.
+      // --- FIX: This rule allows clients to query for their own orders on the dashboard ---
       allow get: if isManager() || (isClient() && resource.data.customerEmail == request.auth.token.email);
-      allow list: if isManager() || (isClient() && request.query.where.customerEmail == request.auth.token.email);
+      allow list: if isManager() || (isClient() && request.query.where[0][2] == request.auth.token.email);
       allow write: if isManager();
     }
     match /quotes/{docId} { allow read, write: if isManager(); }
     match /marketingCampaigns/{docId} { allow read, write: if isManager(); }
-    
-    // --- NEW RULE FOR CUSTOMER FEEDBACK ---
     match /customerFeedback/{feedbackId} {
-        allow create: if isClient();
-        allow read: if isManager();
+      allow create: if isClient();
+      allow read: if isManager();
     }
 
     // --- Administration & BI Collections ---
     match /overheadsCategories/{docId=**} { allow read, write: if isManager(); }
     match /historicalSales/{docId} { allow read, write: if isManager(); }
     match /dailyWorkLogs/{docId} { allow read: if isManager(); allow write: if false; }
-    match /employeeDailyLogs/{logId} {
-        allow read: if isManager();
-        allow write: if false;
-    }
+    match /employeeDailyLogs/{docId} { allow read: if isManager(); allow write: if false; }
     
     // --- KAIZEN, PRAISE, TRAINING ---
     match /kaizenSuggestions/{docId} { allow create: if isAuth(); allow read, update, delete: if isManager(); }
     match /praise/{docId} { allow create: if isAuth(); allow read: if isAuth(); allow update, delete: if isManager(); }
     match /trainingResources/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     
+    // --- Rule for Learning Paths ---
+    match /learningPaths/{pathId} {
+      allow read: if isAuth();
+      allow write: if isManager();
+    }
+    
     // --- OTHER ---
     match /reworkReasons/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /routineTasks/{docId} { allow read: if isAuth(); allow write: if isManager(); }
     match /routineTaskCompletions/{completionId} {
-        allow read, create: if isAuth();
-        allow update, delete: if false;
+      allow read, create: if isAuth();
+      allow update, delete: if false;
     }
     match /systemStatus/{docId} { allow read: if isAuth(); allow write: if false; }
     match /subcontractorAdHocLogs/{docId} { allow read, write: if isManager(); }
