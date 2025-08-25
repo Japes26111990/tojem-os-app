@@ -1,5 +1,5 @@
 ﻿TOJEM Application - Full Codebase
-Generated on: 08/13/2025 11:50:45
+Generated on: 08/25/2025 12:09:14
 
 
 ==================================================
@@ -873,8 +873,8 @@ describe('calculateJobDuration', () => {
             completedAt: createTimestamp(1720364400) // 15:00:00Z
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation to match function output
-        expect(duration.text).toBe('60m'); 
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('60m 0s'); 
         expect(duration.totalMinutes).toBe(60);
     });
 
@@ -884,8 +884,8 @@ describe('calculateJobDuration', () => {
             startedAt: createTimestamp(1720366800) // 15:40:00Z
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation
-        expect(duration.text).toBe('20m'); 
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('20m 0s'); 
         expect(duration.totalMinutes).toBe(20);
     });
 
@@ -897,8 +897,8 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 600000 // 10 minutes pause
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation (60 - 10 = 50)
-        expect(duration.text).toBe('50m');
+        // --- MODIFICATION: Updated expectation (60 - 10 = 50) ---
+        expect(duration.text).toBe('50m 0s');
         expect(duration.totalMinutes).toBe(50);
     });
     
@@ -910,8 +910,8 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 0 
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
-        // Corrected expectation
-        expect(duration.text).toBe('30m');
+        // --- MODIFICATION: Updated expectation to include seconds ---
+        expect(duration.text).toBe('30m 0s');
         expect(duration.totalMinutes).toBe(30);
     });
 
@@ -924,7 +924,6 @@ describe('calculateJobDuration', () => {
         expect(calculateJobDuration(job, MOCK_CURRENT_TIME)).toBeNull();
     });
 });
-
 
 
 ==================================================
@@ -1799,7 +1798,8 @@ const ManagerFocusWidget = () => {
     return (
         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
             <h3 className="text-2xl font-bold text-white mb-4">Manager's Focus</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* --- MODIFICATION: Changed grid from lg:grid-cols-4 to a 2x2 grid for better readability --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FocusQuadrant
                     title="Urgent & Important"
                     items={urgentImportant}
@@ -1830,7 +1830,6 @@ const ManagerFocusWidget = () => {
 };
 
 export default ManagerFocusWidget;
-
 
 
 ==================================================
@@ -7429,7 +7428,7 @@ import { collection, onSnapshot, query, orderBy, doc, updateDoc } from 'firebase
 import { db } from '../../../api/firebase';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
-import { Lightbulb, Check, X, Archive } from 'lucide-react';
+import { Lightbulb, Check, X, Archive, Cpu } from 'lucide-react'; // --- IMPORT Cpu ICON ---
 import toast from 'react-hot-toast';
 
 const StatusBadge = ({ status }) => {
@@ -7514,15 +7513,21 @@ const KaizenManager = () => {
                     <p className="text-center text-gray-500 py-8">No {filter} suggestions found.</p>
                 ) : (
                     filteredSuggestions.map(suggestion => (
-                        <div key={suggestion.id} className="bg-gray-900/50 p-4 rounded-lg">
+                        // --- MODIFICATION: Added border color for system-generated suggestions ---
+                        <div key={suggestion.id} className={`bg-gray-900/50 p-4 rounded-lg border-l-4 ${suggestion.type === 'system_generated' ? 'border-purple-500' : 'border-transparent'}`}>
                             <div className="flex justify-between items-start gap-4">
                                 <div className="flex-grow">
                                     <p className="text-sm text-gray-400">
                                         Suggestion for: <span className="font-semibold text-gray-300">{suggestion.partName}</span> ({suggestion.jobIdentifier})
                                     </p>
                                     <p className="text-white my-2 italic">"{suggestion.suggestionText}"</p>
-                                    <p className="text-xs text-gray-500">
-                                        Submitted by: {suggestion.submittedBy} on {suggestion.createdAt?.toDate().toLocaleDateString()}
+                                    <p className="text-xs text-gray-500 flex items-center gap-2">
+                                        {/* --- MODIFICATION: Show "Kaizen Autopilot" for system suggestions --- */}
+                                        {suggestion.type === 'system_generated' ? (
+                                            <><Cpu size={14} className="text-purple-400"/> {suggestion.submittedBy}</>
+                                        ) : (
+                                            <>Submitted by: {suggestion.submittedBy} on {suggestion.createdAt?.toDate().toLocaleDateString()}</>
+                                        )}
                                     </p>
                                 </div>
                                 <div className="flex flex-col items-end gap-2 w-48">
@@ -7549,7 +7554,6 @@ const KaizenManager = () => {
 };
 
 export default KaizenManager;
-
 
 
 ==================================================
@@ -12188,7 +12192,7 @@ FILE: C:\Development\TOJEM-OS\tojem-os\src\components\features\tracking\LiveTrac
 import React, { useState, useEffect, useMemo } from 'react';
 import { listenToJobCards, getEmployees, updateDocument, deleteDocument, getAllInventoryItems, getTools, getToolAccessories } from '../../../api/firestore';
 import JobDetailsModal from './JobDetailsModal';
-import { ChevronDown, ChevronRight, GraduationCap } from 'lucide-react';
+import { ChevronDown, ChevronRight, GraduationCap, Clock } from 'lucide-react';
 import { calculateJobDuration } from '../../../utils/jobUtils';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Button from '../../ui/Button';
@@ -12210,7 +12214,7 @@ const StatusBadge = ({ status }) => {
 
 // Badge component to show job efficiency percentage
 const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
-    if (actualMinutes === null || estimatedMinutes === null || actualMinutes === 0 || !estimatedMinutes) {
+    if (!estimatedMinutes || estimatedMinutes <= 0 || actualMinutes === null || actualMinutes === 0) {
         return <span className="text-xs text-gray-500">N/A</span>;
     }
     const efficiency = (estimatedMinutes / actualMinutes) * 100;
@@ -12220,11 +12224,60 @@ const EfficiencyBadge = ({ actualMinutes, estimatedMinutes }) => {
     return <span className={`px-3 py-1 text-xs font-semibold rounded-full ${color}`}>{Math.round(efficiency)}%</span>
 };
 
+// --- NEW: Status-Dependent Cell for dynamic, contextual information ---
+const StatusDependentCell = ({ job, currentTime }) => {
+    switch (job.status) {
+        case 'In Progress': {
+            const liveDuration = calculateJobDuration(job, currentTime);
+            const estimatedMinutes = job.estimatedTime;
+            const actualMinutes = liveDuration?.totalMinutes;
+            if (!estimatedMinutes || estimatedMinutes <= 0 || actualMinutes === null) {
+                return <span className="text-xs text-gray-500">No Estimate</span>;
+            }
+            const remaining = estimatedMinutes - actualMinutes;
+            if (remaining >= 0) {
+                const percentage = (actualMinutes / estimatedMinutes) * 100;
+                return (
+                    <div className="w-full bg-gray-600 rounded-full h-2.5" title={`${Math.ceil(remaining)} minutes remaining`}>
+                        <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                );
+            } else {
+                return <span className="text-xs font-bold text-red-500">Overdue by {Math.abs(Math.floor(remaining))}m</span>;
+            }
+        }
+        case 'Awaiting QC': {
+            if (!job.completedAt?.seconds) return <span className="text-xs text-gray-500">Waiting...</span>;
+            const waitMillis = currentTime - job.completedAt.toDate().getTime();
+            const waitMinutes = Math.floor(waitMillis / 60000);
+            
+            let color = 'text-purple-400';
+            if (waitMinutes > 120) color = 'text-red-500';
+            else if (waitMinutes > 60) color = 'text-yellow-400';
+            
+            return (
+                <span className={`flex items-center gap-1 text-xs font-semibold ${color}`}>
+                    <Clock size={14} /> In Queue: {waitMinutes}m
+                </span>
+            );
+        }
+        case 'Pending': {
+            if (job.scheduledDate?.seconds) {
+                return <span className="text-xs font-semibold text-blue-400">ðŸ—“ï¸ Starts: {new Date(job.scheduledDate.seconds * 1000).toLocaleDateString()}</span>;
+            }
+            return <span className="text-xs font-semibold text-gray-400">Priority: #{job.priority ?? 'N/A'}</span>;
+        }
+        default:
+            return <span className="text-xs text-gray-500">--</span>;
+    }
+};
+
+
 // Component for a single row in the jobs table
 const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPerHour }) => {
     const liveDuration = calculateJobDuration(job, currentTime);
+    const remainingMinutes = job.estimatedTime ? job.estimatedTime - (liveDuration?.totalMinutes || 0) : null;
 
-    // Logic to determine if training is recommended for the assigned employee
     const isTrainingRecommended = useMemo(() => {
         if (!job.requiredSkills || !job.employeeSkills) return false;
         return job.requiredSkills.some(reqSkill => {
@@ -12233,25 +12286,26 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         });
     }, [job.requiredSkills, job.employeeSkills]);
 
-    // Calculates the live cost of the job, including labor and overheads
     const calculateLiveCost = (j, cTime, rates, overheadRate) => {
         if (j.status === 'Complete' && typeof j.totalCost === 'number') {
-            return `R ${j.totalCost.toFixed(2)}`;
+            return { costString: `R ${j.totalCost.toFixed(2)}`, velocity: 0 };
         }
-        if (!j.employeeId || !rates[j.employeeId]) return 'N/A';
         
-        const directRate = rates[j.employeeId];
+        const directRate = rates[j.employeeId] || 0;
         const burdenedRate = directRate + overheadRate;
         
         const durationResult = calculateJobDuration(j, cTime);
         let liveLaborCost = 0;
         if (durationResult) {
-            liveLaborCost = (durationResult.totalMinutes / 60) * burdenedRate;
+            liveLaborCost = (durationResult.totalSeconds / 3600) * burdenedRate;
         }
         
         const currentMaterialCost = j.materialCost || 0;
         const totalLiveCost = liveLaborCost + currentMaterialCost;
-        return `R ${totalLiveCost.toFixed(2)}`;
+        return { 
+            costString: `R ${totalLiveCost.toFixed(2)}`,
+            velocity: burdenedRate 
+        };
     };
 
     const liveCost = calculateLiveCost(job, currentTime, employeeHourlyRates, overheadCostPerHour);
@@ -12260,8 +12314,16 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
         return new Date(timestamp.seconds * 1000).toLocaleString('en-ZA');
     };
 
+    const timeInQcMinutes = job.status === 'Awaiting QC' && job.completedAt?.seconds 
+        ? (currentTime - job.completedAt.toDate().getTime()) / 60000 
+        : 0;
+
+    const rowClass = (job.status === 'In Progress' && remainingMinutes !== null && remainingMinutes < 0) || timeInQcMinutes > 120
+        ? 'border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer animate-pulse bg-red-900/20'
+        : 'border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer';
+
     return (
-        <tr onClick={() => onClick(job)} className="border-b border-gray-700 hover:bg-gray-700/50 cursor-pointer">
+        <tr onClick={() => onClick(job)} className={rowClass}>
             <td className="p-3 text-gray-300 text-sm">{formatDate(job.createdAt)}</td>
             <td className="p-3 text-gray-300">
                 <div className="flex items-center gap-2">
@@ -12276,8 +12338,16 @@ const JobRow = ({ job, onClick, currentTime, employeeHourlyRates, overheadCostPe
             <td className="p-3 text-gray-300">{job.employeeName}</td>
             <td className="p-3"><StatusBadge status={job.status} /></td>
             <td className="p-3 text-gray-300 text-sm font-semibold">{liveDuration ? liveDuration.text : 'N/A'}</td>
+            <td className="p-3">
+                <StatusDependentCell job={job} currentTime={currentTime} />
+            </td>
             <td className="p-3"><EfficiencyBadge actualMinutes={liveDuration?.totalMinutes} estimatedMinutes={job.estimatedTime} /></td>
-            <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">{liveCost}</td>
+            <td className="p-3 text-gray-200 text-sm font-semibold font-mono text-right">
+                {liveCost.costString}
+                {job.status === 'In Progress' && liveCost.velocity > 0 && (
+                    <span className="block text-xs text-yellow-400 opacity-70">+ R {liveCost.velocity.toFixed(2)}/hr</span>
+                )}
+            </td>
         </tr>
     );
 };
@@ -12450,6 +12520,7 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                                 <th className="p-3 text-sm font-semibold text-gray-400">Employee</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Status</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Actual Time</th>
+                                <th className="p-3 text-sm font-semibold text-gray-400">Queue Status / Progress</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400">Efficiency</th>
                                 <th className="p-3 text-sm font-semibold text-gray-400 text-right">Job Cost</th>
                             </tr>
@@ -12481,7 +12552,9 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                                 <thead className="invisible h-0">
                                     <tr>
                                         <th className="p-0">Created</th><th className="p-0">Part</th><th className="p-0">Employee</th>
-                                        <th className="p-0">Status</th><th className="p-0">Actual Time</th><th className="p-0">Efficiency</th>
+                                        <th className="p-0">Status</th><th className="p-0">Actual Time</th>
+                                        <th className="p-0">Queue Status / Progress</th>
+                                        <th className="p-0">Efficiency</th>
                                         <th className="p-0 text-right">Job Cost</th>
                                     </tr>
                                 </thead>
@@ -12515,7 +12588,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
                         currentTime={Date.now()}
                         employeeHourlyRates={employeeHourlyRates}
                         overheadCostPerHour={overheadCostPerHour}
-                        // --- FIX: Pass the correct 'employees' state variable ---
                         allEmployees={employees} 
                         allInventoryItems={allInventoryItems}
                         allTools={allTools}
@@ -12530,7 +12602,6 @@ const LiveTrackingTable = ({ overheadCostPerHour }) => {
 };
 
 export default LiveTrackingTable;
-
 
 
 ==================================================
@@ -24145,7 +24216,7 @@ export const processConsumables = (consumablesFromRecipe, allInventoryItems, tem
  * Calculates the duration of a job, accounting for pauses.
  * @param {Object} job - The job object from Firestore.
  * @param {number} currentTime - The current time (Date.now()) for live calculation.
- * @returns {{text: string, totalMinutes: number} | null} - The formatted duration and total minutes, or null.
+ * @returns {{text: string, totalMinutes: number, totalSeconds: number} | null} - The formatted duration, total minutes, and total seconds, or null.
  */
 export const calculateJobDuration = (job, currentTime) => {
     if (!job.startedAt?.seconds) return null;
@@ -24171,16 +24242,19 @@ export const calculateJobDuration = (job, currentTime) => {
     const totalMinutes = Math.floor(durationSeconds / 60);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
+    const seconds = Math.floor(durationSeconds % 60);
     
+    // --- MODIFICATION: Updated text output to include seconds for live feedback ---
     let text = '';
     if (hours > 0) {
-        text += `${hours}h`;
+        text += `${hours}h `;
     }
-    if (minutes > 0 || hours === 0) {
-        text += ` ${minutes}m`;
+    if (minutes > 0 || hours > 0) {
+        text += `${minutes}m `;
     }
+    text += `${seconds}s`;
 
-    return { text: text.trim(), totalMinutes };
+    return { text: text.trim(), totalMinutes, totalSeconds: durationSeconds };
 };
 
 
@@ -24208,6 +24282,7 @@ describe('calculateJobDuration', () => {
             completedAt: createTimestamp(1720364400) // 15:00:00 UTC
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
+        // --- MODIFICATION: Updated expectation to include seconds ---
         expect(duration.text).toBe('60m 0s');
         expect(duration.totalMinutes).toBe(60);
     });
@@ -24219,6 +24294,7 @@ describe('calculateJobDuration', () => {
         };
         // MOCK_CURRENT_TIME is 16:00:00 UTC, so duration should be 20 minutes
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
+        // --- MODIFICATION: Updated expectation to include seconds ---
         expect(duration.text).toBe('20m 0s');
         expect(duration.totalMinutes).toBe(20);
     });
@@ -24231,6 +24307,7 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 600000 // 10 minutes
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
+        // --- MODIFICATION: Updated expectation to include seconds ---
         expect(duration.text).toBe('50m 0s');
         expect(duration.totalMinutes).toBe(50);
     });
@@ -24243,6 +24320,7 @@ describe('calculateJobDuration', () => {
             totalPausedMilliseconds: 0
         };
         const duration = calculateJobDuration(job, MOCK_CURRENT_TIME);
+        // --- MODIFICATION: Updated expectation to include seconds ---
         expect(duration.text).toBe('30m 0s');
         expect(duration.totalMinutes).toBe(30);
     });
