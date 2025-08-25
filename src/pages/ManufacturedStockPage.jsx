@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAllInventoryItems } from '../api/firestore';
+import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { Search, Factory, Truck } from 'lucide-react';
+import { Search, Package, Factory, Truck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConsignmentReport from '../components/features/stock/ConsignmentReport';
 

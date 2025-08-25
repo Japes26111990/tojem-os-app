@@ -5,15 +5,16 @@ import {
     getClientUsers, 
     listenToConsignmentStockForClient, 
     getProducts,
-    getMakes,      // --- NEW ---
-    getModels,     // --- NEW ---
+    getMakes,
+    getModels,
     addConsignmentItem,
-    updateConsignmentStockCounts 
+    updateConsignmentStockCounts,
+    deleteConsignmentItem // --- NEW: Import delete function ---
 } from '../../../api/firestore';
 import Button from '../../ui/Button';
 import Dropdown from '../../ui/Dropdown';
 import Input from '../../ui/Input';
-import { User, PackagePlus, Save, QrCode, Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { User, PackagePlus, Save, QrCode, Search, Trash2 } from 'lucide-react'; // --- NEW: Import Trash2 icon ---
 import toast from 'react-hot-toast';
 import QrScannerModal from '../scanner/QrScannerModal';
 import StockCountModal from './StockCountModal';
@@ -21,15 +22,14 @@ import StockCountModal from './StockCountModal';
 const ConsignmentStockTake = () => {
     const [clients, setClients] = useState([]);
     const [products, setProducts] = useState([]);
-    const [makes, setMakes] = useState([]); // --- NEW ---
-    const [models, setModels] = useState([]); // --- NEW ---
+    const [makes, setMakes] = useState([]);
+    const [models, setModels] = useState([]);
     const [selectedClientId, setSelectedClientId] = useState('');
     const [consignmentStock, setConsignmentStock] = useState([]);
     const [counts, setCounts] = useState({});
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     
-    // State for modals
     const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [itemToCount, setItemToCount] = useState(null);
 
@@ -45,7 +45,6 @@ const ConsignmentStockTake = () => {
 
     useEffect(() => {
         const fetchInitialData = async () => {
-            // --- UPDATED: Fetch makes and models ---
             const [clientUsers, allProducts, allMakes, allModels] = await Promise.all([getClientUsers(), getProducts(), getMakes(), getModels()]);
             const formattedClients = clientUsers.map(c => ({ id: c.id, name: c.companyName || c.email }));
             setClients(formattedClients);
@@ -160,7 +159,6 @@ const ConsignmentStockTake = () => {
         setFilteredProductOptions([]);
     };
 
-    // --- UPDATED: Includes duplicate check and passes make/model ---
     const handleAddNewItem = async () => {
         const productToAdd = products.find(p => p.id === newItem.productId);
         if (!productToAdd || !selectedClientId) {
@@ -170,7 +168,6 @@ const ConsignmentStockTake = () => {
             return toast.error("Reorder and Standard levels must be greater than 0.");
         }
 
-        // --- NEW: Duplicate check ---
         const isDuplicate = consignmentStock.some(item => item.productId === productToAdd.id);
         if (isDuplicate) {
             return toast.error("This product is already in the client's consignment stock.");
@@ -202,7 +199,26 @@ const ConsignmentStockTake = () => {
         }
     };
     
-    // --- NEW: Memoized maps and grouped stock data for display ---
+    // --- NEW: Handler for deleting an item ---
+    const handleDeleteItem = (itemId, itemName) => {
+        toast((t) => (
+            <span>
+                Remove "{itemName}" from this client's stock?
+                <Button variant="danger" size="sm" className="ml-2" onClick={async () => {
+                    toast.dismiss(t.id);
+                    try {
+                        await deleteConsignmentItem(itemId);
+                        toast.success("Item removed successfully.");
+                    } catch (error) {
+                        toast.error("Failed to remove item.");
+                    }
+                }}>
+                    Confirm
+                </Button>
+            </span>
+        ));
+    };
+
     const makeMap = useMemo(() => new Map(makes.map(m => [m.id, m.name])), [makes]);
     const modelMap = useMemo(() => new Map(models.map(m => [m.id, m.name])), [models]);
 
@@ -285,7 +301,6 @@ const ConsignmentStockTake = () => {
                              </Button>
                         </div>
 
-
                         <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
                                     <h3 className="text-xl font-bold text-white">Stock Count List</h3>
@@ -298,7 +313,7 @@ const ConsignmentStockTake = () => {
                                         <Button onClick={handleReconcile} variant="primary"><Save size={16} className="mr-2"/>Save Counts</Button>
                                     </div>
                                  </div>
-                                {/* --- UPDATED: Render the new grouped list --- */}
+                                
                                 <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                                     {groupedStock.length > 0 ? groupedStock.map(makeGroup => (
                                         <div key={makeGroup.makeName}>
@@ -307,7 +322,7 @@ const ConsignmentStockTake = () => {
                                                 <div key={modelGroup.modelName} className="mb-3">
                                                     <h5 className="font-semibold text-gray-300 pl-2">{modelGroup.modelName}</h5>
                                                     {modelGroup.items.map(item => (
-                                                         <div key={item.id} className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center bg-gray-900/50 p-3 rounded-lg mt-1">
+                                                         <div key={item.id} className="grid grid-cols-2 md:grid-cols-5 gap-4 items-center bg-gray-900/50 p-3 rounded-lg mt-1">
                                                             <div className="md:col-span-2">
                                                                 <p className="font-semibold text-white">{item.productName}</p>
                                                                 <p className="text-xs text-gray-400">P/N: {item.partNumber}</p>
@@ -320,6 +335,12 @@ const ConsignmentStockTake = () => {
                                                                 placeholder="Enter count..."
                                                                 className="text-center"
                                                             />
+                                                            {/* --- NEW: Delete button for each item --- */}
+                                                            <div className="text-right">
+                                                                <Button onClick={() => handleDeleteItem(item.id, item.productName)} variant="danger" size="sm" className="p-2">
+                                                                    <Trash2 size={16} />
+                                                                </Button>
+                                                            </div>
                                                         </div>
                                                     ))}
                                                 </div>

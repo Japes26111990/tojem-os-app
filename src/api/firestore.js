@@ -663,18 +663,22 @@ export const listenToConsignmentStockForClient = (clientId, callback) => {
     return onSnapshot(q, (snapshot) => callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
 };
 
-// --- UPDATED: addConsignmentItem now accepts make and model for grouping ---
 export const addConsignmentItem = (itemData) => {
     const data = {
         ...itemData,
         lastCounted: serverTimestamp(),
         reorderLevel: Number(itemData.reorderLevel) || 0,
         standardStockLevel: Number(itemData.standardStockLevel) || 0,
-        make: itemData.make || '', // Add make
-        model: itemData.model || '', // Add model
+        make: itemData.make || '',
+        model: itemData.model || '',
     };
     return addDoc(collection(db, 'consignmentStock'), data);
 };
+// --- NEW: Function to delete a consignment item ---
+export const deleteConsignmentItem = (itemId) => {
+    return deleteDoc(doc(db, 'consignmentStock', itemId));
+};
+
 
 export const updateConsignmentStockCounts = async (updates) => {
     if (!updates || updates.length === 0) return;

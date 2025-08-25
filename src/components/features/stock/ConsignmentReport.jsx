@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getClientUsers, listenToConsignmentStockForClient } from '../../../api/firestore';
-import { Truck, User } from 'lucide-react';
+import { Truck, User, DollarSign } from 'lucide-react';
 
 const KpiCard = ({ icon, title, value, color }) => (
     <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
@@ -66,34 +66,48 @@ const ConsignmentReport = () => {
         <div className="space-y-6">
             <KpiCard
                 icon={<Truck size={24} />}
-                title="Total Value of Consignment Stock"
+                title="Total Value of All Consignment Stock"
                 value={`R ${totalConsignmentValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`}
                 color="bg-purple-500/20 text-purple-400"
             />
             {loading ? <p>Loading consignment data...</p> : (
-                consignmentStock.map(clientData => (
-                    <div key={clientData.clientId} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-                        <h4 className="font-bold text-white text-lg mb-2 flex items-center gap-2"><User /> {clientData.clientName}</h4>
-                         <div className="overflow-x-auto max-h-72">
-                            <table className="w-full text-sm text-left">
-                                <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
-                                    <tr>
-                                        <th className="p-2">Product Name</th>
-                                        <th className="p-2 text-center">Quantity on Hand</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {clientData.items.map(item => (
-                                        <tr key={item.id} className="border-b border-gray-700">
-                                            <td className="p-2 text-white">{item.productName}</td>
-                                            <td className="p-2 text-center font-bold">{item.quantity || 0}</td>
+                consignmentStock.map(clientData => {
+                    // --- NEW: Calculate value for each client ---
+                    const clientTotalValue = clientData.items.reduce((sum, item) => {
+                        return sum + (item.quantity || 0) * (item.sellingPrice || 0);
+                    }, 0);
+
+                    return (
+                        <div key={clientData.clientId} className="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                            {/* --- UPDATED: Display client-specific value --- */}
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-bold text-white text-lg flex items-center gap-2"><User /> {clientData.clientName}</h4>
+                                <div className="text-right">
+                                    <p className="text-xs text-gray-400">Stock Value</p>
+                                    <p className="font-semibold text-green-400 font-mono text-lg">R {clientTotalValue.toLocaleString('en-ZA', { minimumFractionDigits: 2 })}</p>
+                                </div>
+                            </div>
+                             <div className="overflow-x-auto max-h-72">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-xs text-gray-400 uppercase bg-gray-700 sticky top-0">
+                                        <tr>
+                                            <th className="p-2">Product Name</th>
+                                            <th className="p-2 text-center">Quantity on Hand</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        {clientData.items.map(item => (
+                                            <tr key={item.id} className="border-b border-gray-700">
+                                                <td className="p-2 text-white">{item.productName}</td>
+                                                <td className="p-2 text-center font-bold">{item.quantity || 0}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                ))
+                    );
+                })
             )}
         </div>
     );
